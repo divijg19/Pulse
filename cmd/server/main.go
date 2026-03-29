@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/divijg19/Pulse/internal/api"
+	"github.com/divijg19/Pulse/internal/stream"
 )
 
 func main() {
@@ -14,4 +17,8 @@ func main() {
 	})
 	fmt.Println("Server running on :8080")
 	http.ListenAndServe(":8080", nil)
+
+	hub := stream.NewHub()
+
+	http.Handle("/stream", &api.StreamHandler{Hub: hub})
 }
