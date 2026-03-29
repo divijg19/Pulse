@@ -10,7 +10,7 @@
 
 Instead of firing requests and waiting for a batched response, `Pulse` utilizes a concurrent worker pool and **Server-Sent Events (SSE)** to stream metrics, logs, and latency visualizations to a reactive UI the exact millisecond they happen.
 
-*(Insert a 5-second high-framerate GIF of the UI streaming latency bars here)*
+*(Will insert a 5-second high-framerate GIF of the UI streaming latency bars here)*
 
 ---
 
