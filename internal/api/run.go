@@ -17,7 +17,7 @@ func HandleRun(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 
-	req := model.RunRequest{URL: r.URL.String(), Method: r.Method, Concurrency: 1}
+	req := model.RunRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
