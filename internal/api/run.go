@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/divijg19/Pulse/internal/engine"
 	"github.com/divijg19/Pulse/internal/model"
 )
 
@@ -45,4 +46,7 @@ func HandleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Printf("Received run request: %+v\n", req)
+
+	result := engine.ExecuteSingle(req.URL, req.Method)
+	fmt.Printf("Execution result: %+v\n", result)
 }
