@@ -1,21 +1,28 @@
-# `Pulse`
-
-To install dependencies:
+## Usage
 
 ```bash
-bun install
+$ npm install # or pnpm install or yarn install
 ```
 
-To start a development server:
+### Learn more on the [Solid Website](https://solidjs.com) and come chat with us on our [Discord](https://discord.com/invite/solidjs)
 
-```bash
-bun dev
-```
+## Available Scripts
 
-To run for production:
+In the project directory, you can run:
 
-```bash
-bun start
-```
+### `npm run dev`
 
-This project was created using `bun init` in bun v1.3.11. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Runs the app in the development mode.<br>
+Open [http://localhost:5173](http://localhost:5173) to view it in the browser.
+
+### `npm run build`
+
+Builds the app for production to the `dist` folder.<br>
+It correctly bundles Solid in production mode and optimizes the build for the best performance.
+
+The build is minified and the filenames include the hashes.<br>
+Your app is ready to be deployed!
+
+## Deployment
+
+Learn more about deploying your application with the [documentations](https://vite.dev/guide/static-deploy.html)
