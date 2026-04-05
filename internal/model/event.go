@@ -1,7 +1,7 @@
 package model
 
 type Event struct {
-	Type  string
-	RunID string
-	Data  any
+	Type  string `json:"type"`
+	RunID string `json:"run_id"`
+	Data  any    `json:"data"`
 }

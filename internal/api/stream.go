@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
@@ -19,20 +20,23 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch := make(chan any, 10)
-
-	// NOTE: we'll fix typing later — focus on flow first
-
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	clientChan := make(chan model.Event, 10)
+	h.Hub.Add(clientChan)
+	defer h.Hub.Remove(clientChan)
 
 	for {
 		select {
-		case msg := <-ch:
-			data, _ := json.Marshal(msg)
-			fmt.Fprintf(w, "data: %s\n\n", data)
+		case event := <-clientChan:
+			jsonData, _ := json.Marshal(event.Data)
+			fmt.Fprintf(w, "event: %s\n", event.Type)
+			fmt.Fprintf(w, "data: %s\n\n", jsonData)
 			flusher.Flush()
 		case <-r.Context().Done():
+			// The client closed the connection (browser tab closed)
 			return
 		}
 	}
