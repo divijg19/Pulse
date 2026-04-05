@@ -8,9 +8,14 @@ import (
 
 	"github.com/divijg19/Pulse/internal/engine"
 	"github.com/divijg19/Pulse/internal/model"
+	"github.com/divijg19/Pulse/internal/stream"
 )
 
-func HandleRun(w http.ResponseWriter, r *http.Request) {
+type RunHandler struct {
+	Hub *stream.Hub
+}
+
+func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -47,10 +52,6 @@ func HandleRun(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Received run request: %+v\n", req)
 
-	result := engine.ExecuteConcurrent(req.URL, req.Method, req.Concurrency)
-	fmt.Printf("Executed %d requests to %s with method %s\n", req.Concurrency, req.URL, req.Method)
-	if len(result) > 0 {
-		fmt.Printf("Latency: %d ms\n", result[0].Latency)
-	}
-	fmt.Printf("Execution result: %+v\n", result)
+	engine.ExecuteConcurrent(req.URL, req.Method, req.Concurrency, h.Hub)
+	fmt.Printf("Finished executing %d requests to %s with method %s\n", req.Concurrency, req.URL, req.Method)
 }
