@@ -47,6 +47,10 @@ func HandleRun(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Received run request: %+v\n", req)
 
-	result := engine.ExecuteSingle(req.URL, req.Method)
+	result := engine.ExecuteConcurrent(req.URL, req.Method, req.Concurrency)
+	fmt.Printf("Executed %d requests to %s with method %s\n", req.Concurrency, req.URL, req.Method)
+	if len(result) > 0 {
+		fmt.Printf("Latency: %d ms\n", result[0].Latency)
+	}
 	fmt.Printf("Execution result: %+v\n", result)
 }
