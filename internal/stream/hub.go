@@ -8,19 +8,19 @@ import (
 
 type Hub struct {
 	mu      sync.Mutex
-	clients map[chan model.Event]struct{}
+	clients map[chan model.Event]bool
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		clients: make(map[chan model.Event]struct{}),
+		clients: make(map[chan model.Event]bool),
 	}
 }
 
 func (h *Hub) Add(ch chan model.Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.clients[ch] = struct{}{}
+	h.clients[ch] = true
 }
 
 func (h *Hub) Remove(ch chan model.Event) {
