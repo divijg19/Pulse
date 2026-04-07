@@ -22,3 +22,14 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
 	background: rgba(255, 255, 255, 0.2);
 }
+
+/* Remove native number input spinner for CC control */
+input.no-spinner::-webkit-outer-spin-button,
+input.no-spinner::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+input.no-spinner {
+	-moz-appearance: textfield;
+	appearance: textfield;
+}

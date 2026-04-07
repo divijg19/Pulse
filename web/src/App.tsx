@@ -141,7 +141,7 @@ export default function App() {
 							class={`absolute -inset-0.5 rounded-xl blur opacity-30 transition duration-500 ${isRunning() ? "bg-linear-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 animate-pulse" : "bg-linear-to-r from-cyan-500/20 via-blue-500/20 to-purple-500/20 group-hover:opacity-60"}`}
 						></div>
 
-						<div class="relative flex items-center bg-[#111113] border border-white/10 rounded-xl h-14 p-1 shadow-2xl focus-within:border-cyan-500/50 transition-colors">
+						<div class="relative flex items-center bg-[#111113] border border-white/10 rounded-xl h-14 p-2 shadow-2xl focus-within:border-cyan-500/50 transition-colors">
 							<select
 								value={method()}
 								onChange={(e) => setMethod(e.currentTarget.value)}
@@ -153,33 +153,54 @@ export default function App() {
 								<option class="bg-zinc-900 text-rose-400">DELETE</option>
 							</select>
 
-							<div class="w-px h-6 bg-white/10 mx-2"></div>
+							<div class="w-px h-6 bg-white/10 mx-3"></div>
 							<input
 								type="text"
 								value={url()}
 								onInput={(e) => setUrl(e.currentTarget.value)}
-								class="flex-1 bg-transparent border-none px-2 outline-none font-mono text-zinc-200 placeholder-zinc-600 text-[15px]"
+								class="flex-1 min-w-0 bg-transparent border-none px-2 outline-none font-mono text-zinc-200 placeholder-zinc-600 text-[15px]"
 								placeholder="Enter API endpoint..."
 							/>
-							<div class="w-px h-6 bg-white/10 mx-2"></div>
+							<div class="w-px h-6 bg-white/10 mx-3"></div>
 
-							<div class="flex items-center gap-2 px-3 hover:bg-white/5 rounded-lg transition-colors h-full cursor-text">
-								<span class="text-zinc-500 text-xs font-mono uppercase tracking-widest">
-									CC
-								</span>
-								<input
-									type="number"
-									value={concurrency()}
-									onInput={(e) => setConcurrency(Number(e.currentTarget.value))}
-									class="bg-transparent w-10 outline-none text-zinc-200 font-mono text-[15px] text-center"
-								/>
+							<div class="flex items-center gap-2 px-2 hover:bg-white/5 transition-colors h-full shrink-0">
+								<button
+									type="button"
+									onClick={() => setConcurrency((c) => Math.max(1, c - 1))}
+									class="px-2 py-1 rounded-md text-sm text-zinc-300 hover:bg-white/5 transition-colors cursor-pointer"
+								>
+									-
+								</button>
+
+								<div class="flex items-center gap-2 px-1">
+									<span class="text-zinc-500 text-xs font-mono uppercase tracking-widest">
+										CC
+									</span>
+									<input
+										type="number"
+										value={concurrency()}
+										onInput={(e) =>
+											setConcurrency(Number(e.currentTarget.value))
+										}
+										min="1"
+										class="no-spinner bg-transparent w-12 outline-none text-zinc-200 font-mono text-[15px] text-center"
+									/>
+								</div>
+
+								<button
+									type="button"
+									onClick={() => setConcurrency((c) => c + 1)}
+									class="px-2 py-1 rounded-md text-sm text-zinc-300 hover:bg-white/5 transition-colors cursor-pointer"
+								>
+									+
+								</button>
 							</div>
 
 							<button
 								type="button"
 								onClick={handleRun}
 								disabled={isRunning()}
-								class={`h-full w-28 ml-2 rounded-lg font-bold text-sm tracking-widest uppercase transition-all shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] ${isRunning() ? "bg-cyan-900/50 text-cyan-500 cursor-not-allowed" : "bg-zinc-100 text-zinc-950 hover:bg-white active:translate-y-px active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]"}`}
+								class={`h-full w-28 ml-3 rounded-lg font-bold text-sm tracking-widest uppercase transition-all shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] ${isRunning() ? "bg-cyan-900/50 text-cyan-500 cursor-not-allowed" : "bg-zinc-100 text-zinc-950 hover:bg-white active:translate-y-px active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]"}`}
 							>
 								{isRunning() ? "..." : "Run"}
 							</button>
@@ -228,7 +249,7 @@ export default function App() {
 				{/* WORKSPACE */}
 				<div class="flex-1 min-h-0 flex flex-col bg-[#0f0f11]/80 backdrop-blur-xl border border-white/5 rounded-2xl overflow-hidden shadow-2xl relative">
 					<div class="flex items-center justify-center p-3 border-b border-white/5 bg-white/1">
-						<div class="flex p-1 bg-black/40 rounded-lg border border-white/5 backdrop-blur-md">
+						<div class="p-1 bg-black/40 rounded-lg border border-white/5 backdrop-blur-md">
 							<button
 								type="button"
 								onClick={() => setActiveTab("timeline")}
