@@ -1,56 +1,80 @@
 import { createEffect, createSignal, For, onCleanup } from "solid-js";
 
-// Define what the Go backend sends us
 type Result = {
 	Status: number;
-	Latency: number; // Go sends time.Duration as nanoseconds
+	Latency: number;
 	Error: string;
 };
 
 export default function App() {
 	const [activeTab, setActiveTab] = createSignal("timeline");
 
-	// Input State
 	const [method, setMethod] = createSignal("GET");
 	const [url, setUrl] = createSignal("https://httpbin.org/delay/1");
 	const [concurrency, setConcurrency] = createSignal(10);
 
-	// Execution State
 	const [isRunning, setIsRunning] = createSignal(false);
 	const [results, setResults] = createSignal<Result[]>([]);
 
-	// Derived State (Max Latency for the Timeline Bars)
+	// LIVE TIMER STATE
+	const [elapsedMs, setElapsedMs] = createSignal(0);
+
+	// --- 🧮 LIVE MATH & METRICS ---
 	const maxLatency = () => {
 		const res = results();
 		if (res.length === 0) return 0;
 		return Math.max(...res.map((r) => r.Latency));
 	};
 
-	// 🔌 Establish the SSE Stream Connection
-	createEffect(() => {
-		// The Vite proxy routes this to http://localhost:8080/stream
-		const eventSource = new EventSource("/stream");
+	const totalReqs = () => results().length;
 
+	const successRate = () => {
+		const total = totalReqs();
+		if (total === 0) return "0%";
+		const successes = results().filter(
+			(r) => r.Status >= 200 && r.Status < 400,
+		).length;
+		return `${Math.round((successes / total) * 100)}%`;
+	};
+
+	const avgLatency = () => {
+		const total = totalReqs();
+		if (total === 0) return "0.00s";
+		const sum = results().reduce((acc, r) => acc + r.Latency, 0);
+		return formatLatency(sum / total);
+	};
+
+	const currentRPS = () => {
+		const total = totalReqs();
+		const seconds = elapsedMs() / 1000;
+		if (seconds === 0 || total === 0) return "0.0";
+		return (total / seconds).toFixed(1);
+	};
+
+	// --- 🔌 CONNECTION ---
+	createEffect(() => {
+		const eventSource = new EventSource("/stream");
 		eventSource.addEventListener("result", (event) => {
 			const data = JSON.parse(event.data) as Result;
-			// Append the new result to our state array
 			setResults((prev) => [...prev, data]);
 		});
-
-		eventSource.onerror = (err) => {
-			console.error("SSE Error:", err);
-		};
-
-		// Cleanup when component unmounts
+		eventSource.onerror = (err) => console.error("SSE Error:", err);
 		onCleanup(() => eventSource.close());
 	});
 
-	// 🚀 Fire the Request Batch
+	// --- 🚀 EXECUTION ---
 	const handleRun = async () => {
 		if (isRunning()) return;
 
 		setIsRunning(true);
-		setResults([]); // Clear previous run
+		setResults([]);
+		setElapsedMs(0);
+
+		// Start a high-speed live timer (ticks every 50ms)
+		const startTime = Date.now();
+		const timer = setInterval(() => {
+			setElapsedMs(Date.now() - startTime);
+		}, 50);
 
 		try {
 			await fetch("/run", {
@@ -62,17 +86,16 @@ export default function App() {
 					concurrency: Number(concurrency()),
 				}),
 			});
-			// We don't need to wait for the response to render data!
-			// The EventSource will catch the stream and populate the UI automatically.
 		} catch (e) {
 			console.error("Failed to start run", e);
 		} finally {
-			// Small timeout to let the final SSE events arrive before resetting button
-			setTimeout(() => setIsRunning(false), 500);
+			setTimeout(() => {
+				setIsRunning(false);
+				clearInterval(timer); // Stop the clock when done!
+			}, 500);
 		}
 	};
 
-	// Helper to format nanoseconds to seconds (e.g., 1.24s)
 	const formatLatency = (nanoseconds: number) => {
 		return `${(nanoseconds / 1_000_000_000).toFixed(2)}s`;
 	};
@@ -87,18 +110,26 @@ export default function App() {
 				<header class="flex justify-between items-center shrink-0">
 					<div class="flex items-center gap-3">
 						<div class="relative flex h-2.5 w-2.5">
-							<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-60"></span>
-							<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]"></span>
+							<span
+								class={`absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-60 ${isRunning() ? "animate-ping" : ""}`}
+							></span>
+							<span
+								class={`relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500 ${isRunning() ? "shadow-[0_0_15px_rgba(6,182,212,1)]" : "shadow-[0_0_8px_rgba(6,182,212,0.5)]"}`}
+							></span>
 						</div>
 						<h1 class="text-xl font-bold tracking-tight text-zinc-100">
 							Pulse
 						</h1>
 					</div>
-					<div class="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-mono">
+					<div class="text-[10px] uppercase tracking-[0.2em] font-mono">
 						{isRunning() ? (
-							<span class="text-cyan-400 animate-pulse">Running Batch...</span>
+							<span class="text-cyan-400 animate-pulse">
+								{elapsedMs() > 0
+									? `${(elapsedMs() / 1000).toFixed(1)}s ELAPSED`
+									: "RUNNING..."}
+							</span>
 						) : (
-							"System Ready"
+							<span class="text-zinc-500">SYSTEM READY</span>
 						)}
 					</div>
 				</header>
@@ -106,13 +137,15 @@ export default function App() {
 				{/* COMMAND BAR */}
 				<div class="shrink-0 w-full max-w-3xl mx-auto flex flex-col gap-4">
 					<div class="relative group">
-						<div class="absolute -inset-0.5 bg-linear-to-r from-cyan-500/20 via-blue-500/20 to-purple-500/20 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+						<div
+							class={`absolute -inset-0.5 rounded-xl blur opacity-30 transition duration-500 ${isRunning() ? "bg-linear-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 animate-pulse" : "bg-linear-to-r from-cyan-500/20 via-blue-500/20 to-purple-500/20 group-hover:opacity-60"}`}
+						></div>
 
 						<div class="relative flex items-center bg-[#111113] border border-white/10 rounded-xl h-14 p-1 shadow-2xl focus-within:border-cyan-500/50 transition-colors">
 							<select
 								value={method()}
 								onChange={(e) => setMethod(e.currentTarget.value)}
-								class="h-full bg-transparent border-none text-cyan-400 font-bold px-4 outline-none cursor-pointer appearance-none text-sm tracking-widest uppercase hover:text-cyan-300 transition-colors"
+								class="h-full bg-transparent border-none text-cyan-400 font-bold px-4 outline-none cursor-pointer appearance-none text-sm tracking-widest uppercase hover:text-cyan-300"
 							>
 								<option class="bg-zinc-900 text-cyan-400">GET</option>
 								<option class="bg-zinc-900 text-green-400">POST</option>
@@ -120,27 +153,25 @@ export default function App() {
 								<option class="bg-zinc-900 text-rose-400">DELETE</option>
 							</select>
 
-							<div class="w-px h-6 bg-white/10 mx-1"></div>
-
+							<div class="w-px h-6 bg-white/10 mx-2"></div>
 							<input
 								type="text"
 								value={url()}
 								onInput={(e) => setUrl(e.currentTarget.value)}
-								class="flex-1 min-w-0 bg-transparent border-none px-2 outline-none font-mono text-zinc-200 placeholder-zinc-600 text-[15px]"
+								class="flex-1 bg-transparent border-none px-2 outline-none font-mono text-zinc-200 placeholder-zinc-600 text-[15px]"
 								placeholder="Enter API endpoint..."
 							/>
+							<div class="w-px h-6 bg-white/10 mx-2"></div>
 
-							<div class="w-px h-6 bg-white/10 mx-1"></div>
-
-							<div class="flex items-center gap-3 px-3 hover:bg-white/5 rounded-lg transition-colors h-full cursor-text flex-none w-44 justify-center">
-								<span class="text-zinc-300 text-sm font-mono uppercase tracking-widest">
+							<div class="flex items-center gap-2 px-3 hover:bg-white/5 rounded-lg transition-colors h-full cursor-text">
+								<span class="text-zinc-500 text-xs font-mono uppercase tracking-widest">
 									CC
 								</span>
 								<input
 									type="number"
 									value={concurrency()}
 									onInput={(e) => setConcurrency(Number(e.currentTarget.value))}
-									class="bg-transparent w-16 outline-none text-zinc-200 font-mono text-[15px] text-center"
+									class="bg-transparent w-10 outline-none text-zinc-200 font-mono text-[15px] text-center"
 								/>
 							</div>
 
@@ -148,14 +179,48 @@ export default function App() {
 								type="button"
 								onClick={handleRun}
 								disabled={isRunning()}
-								class={`h-full px-6 ml-1 rounded-lg font-bold text-sm tracking-widest uppercase transition-all shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] ${
-									isRunning()
-										? "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-										: "bg-zinc-100 text-zinc-950 hover:bg-white active:translate-y-px active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]"
-								}`}
+								class={`h-full w-28 ml-2 rounded-lg font-bold text-sm tracking-widest uppercase transition-all shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] ${isRunning() ? "bg-cyan-900/50 text-cyan-500 cursor-not-allowed" : "bg-zinc-100 text-zinc-950 hover:bg-white active:translate-y-px active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]"}`}
 							>
 								{isRunning() ? "..." : "Run"}
 							</button>
+						</div>
+					</div>
+
+					{/* 📊 LIVE METRICS STRIP */}
+					<div class="flex justify-between items-center px-4 py-2 bg-linear-to-r from-transparent via-white/2 to-transparent border-y border-white/2">
+						<div class="flex items-baseline gap-2 w-1/4">
+							<span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+								Requests
+							</span>
+							<span class="font-mono text-sm text-zinc-300">
+								{totalReqs()} / {concurrency()}
+							</span>
+						</div>
+						<div class="flex items-baseline gap-2 w-1/4 justify-center">
+							<span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+								Success
+							</span>
+							<span
+								class={`font-mono text-sm ${parseFloat(successRate()) < 100 ? "text-amber-400" : "text-emerald-400"}`}
+							>
+								{successRate()}
+							</span>
+						</div>
+						<div class="flex items-baseline gap-2 w-1/4 justify-center">
+							<span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+								Avg Latency
+							</span>
+							<span class="font-mono text-sm text-amber-400">
+								{avgLatency()}
+							</span>
+						</div>
+						<div class="flex items-baseline gap-2 w-1/4 justify-end">
+							<span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+								RPS
+							</span>
+							<span class="font-mono text-sm text-fuchsia-400">
+								{currentRPS()}
+							</span>
 						</div>
 					</div>
 				</div>
@@ -183,22 +248,20 @@ export default function App() {
 
 					<div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
 						{activeTab() === "timeline" && (
-							<div class="space-y-1.5 max-w-4xl mx-auto w-full">
-								{results().length === 0 && (
+							<div class="space-y-1.5 max-w-4xl mx-auto w-full pb-8">
+								{results().length === 0 && !isRunning() && (
 									<div class="text-center text-zinc-600 font-mono mt-10">
 										Awaiting execution...
 									</div>
 								)}
 
-								{/* 📊 DYNAMIC TIMELINE BARS */}
 								<For each={results()}>
 									{(res) => {
 										const isError = res.Status >= 400 || res.Status === 0;
 										const width = Math.max(
 											(res.Latency / maxLatency()) * 100,
 											1,
-										); // Min 1% width
-
+										);
 										return (
 											<div class="w-full bg-black/40 rounded h-8 relative overflow-hidden flex items-center px-3 group border border-transparent hover:border-white/5 transition-colors">
 												<div
@@ -223,14 +286,12 @@ export default function App() {
 						)}
 
 						{activeTab() === "logs" && (
-							<div class="font-mono text-xs space-y-1 max-w-4xl mx-auto w-full">
-								{results().length === 0 && (
+							<div class="font-mono text-xs space-y-1 max-w-4xl mx-auto w-full pb-8">
+								{results().length === 0 && !isRunning() && (
 									<div class="text-center text-zinc-600 mt-10">
 										No logs yet.
 									</div>
 								)}
-
-								{/* 📜 DYNAMIC LOGS */}
 								<For each={results()}>
 									{(res) => {
 										const isError = res.Status >= 400 || res.Status === 0;
