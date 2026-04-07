@@ -12,7 +12,7 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: "../static",
+		outDir: "../cmd/server/static",
 		emptyOutDir: true,
 	},
 });

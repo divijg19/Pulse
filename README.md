@@ -77,9 +77,8 @@ Simple > clever
 * [Go 1.21+](https://go.dev/dl/) installed.
 
 ### 🚀 Deployment
-Backend: single Go binary
-Platforms: Render / Fly.io / Railway
-Frontend: static (served or CDN)
+Backend: single Go binary with server-sent events
+Frontend: css, vite + solidjs static (served or CDN)
 
 ### Test via CLI (cURL)
 Because `Pulse` uses standard SSE, you can interact with it directly from your terminal:

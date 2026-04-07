@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -9,12 +11,20 @@ import (
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
+//go:embed static/*
+var staticFiles embed.FS
+
 func main() {
-	fs := http.FileServer(http.Dir("static/"))
+	subFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		log.Fatalf("Failed to load embedded static files: %v", err)
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fs.ServeHTTP(w, r)
-	})
+
+	// Serve the embedded files
+	mux.Handle("/", http.FileServer(http.FS(subFS)))
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "OK")
 	})
@@ -25,7 +35,7 @@ func main() {
 	mux.HandleFunc("/run", runHandler.HandleRun)
 	mux.Handle("/stream", &api.StreamHandler{Hub: hub})
 
-	fmt.Println("Server running on :8080")
+	fmt.Println("⚡ Pulse Engine Running on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
