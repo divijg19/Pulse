@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -15,6 +17,8 @@ type RunHandler struct {
 	Hub *stream.Hub
 }
 
+const maxRunRequestBodyBytes = 1 << 20
+
 func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -22,9 +26,21 @@ func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(w, r.Body, maxRunRequestBodyBytes)
 
 	req := model.RunRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -52,6 +68,6 @@ func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Received run request: %+v\n", req)
 
-	engine.ExecuteConcurrent(req.URL, req.Method, req.Concurrency, h.Hub)
+	engine.ExecuteConcurrent(r.Context(), req.URL, req.Method, req.Concurrency, h.Hub)
 	fmt.Printf("Finished executing %d requests to %s with method %s\n", req.Concurrency, req.URL, req.Method)
 }

@@ -4,7 +4,7 @@
 
 ### 1. Concurrency & Memory Safety
 * **Goroutine Fan-Out:** Requests are executed concurrently but bound by a strict context lifecycle. If a user drops the connection or hits "Stop", `context.Cancel` is propagated, instantly killing hanging TCP dials.
-* **OOM Prevention:** Response bodies are read using `io.LimitReader` (capped at 10KB). If a user accidentally points `Pulse` at a 50MB file with a concurrency of 100, the server stays safe.
+* **OOM Prevention:** Response bodies are read using `io.LimitReader` (capped at 1MB per response drain). If a user accidentally points `Pulse` at a very large payload with high concurrency, the server still bounds read amplification.
 
 ### 2. SSE over WebSockets
 `Pulse` relies on a strictly uni-directional data flow (Server → Client). By choosing **Server-Sent Events (SSE)** over WebSockets, the architecture remains stateless, cache-proxy friendly, and automatically handles reconnects. It also means you can test the stream via a simple `curl` command.

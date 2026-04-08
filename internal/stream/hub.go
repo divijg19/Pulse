@@ -26,6 +26,9 @@ func (h *Hub) Add(ch chan model.Event) {
 func (h *Hub) Remove(ch chan model.Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if _, ok := h.clients[ch]; !ok {
+		return
+	}
 	delete(h.clients, ch)
 	close(ch)
 }
