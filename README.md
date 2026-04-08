@@ -2,7 +2,7 @@
 
 > **A real-time observability surface for HTTP behavior.**
 
-![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)
+![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
@@ -74,7 +74,7 @@ Simple > clever
 ## ⚙️ Getting Started
 
 ### Prerequisites
-* [Go 1.21+](https://go.dev/dl/) installed.
+* [Go 1.25+](https://go.dev/dl/) installed.
 
 ### 🚀 Deployment
 Backend: single Go binary with server-sent events

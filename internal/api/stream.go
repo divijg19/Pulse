@@ -30,10 +30,20 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		select {
-		case event := <-clientChan:
-			jsonData, _ := json.Marshal(event.Data)
-			fmt.Fprintf(w, "event: %s\n", event.Type)
-			fmt.Fprintf(w, "data: %s\n\n", jsonData)
+		case event, ok := <-clientChan:
+			if !ok {
+				return
+			}
+			jsonData, err := json.Marshal(event.Data)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\n", event.Type); err != nil {
+				return
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-r.Context().Done():
 			// The client closed the connection (browser tab closed)
