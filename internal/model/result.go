@@ -8,4 +8,6 @@ type Result struct {
 	Latency   time.Duration
 	Timestamp time.Time
 	Error     string
+	ResponseHeaders map[string]string
+	ResponseBody    string
 }

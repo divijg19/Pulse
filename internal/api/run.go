@@ -68,6 +68,6 @@ func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Received run request: %+v\n", req)
 
-	engine.ExecuteConcurrent(r.Context(), req.URL, req.Method, req.Concurrency, h.Hub)
+	engine.ExecuteConcurrent(r.Context(), req, h.Hub)
 	fmt.Printf("Finished executing %d requests to %s with method %s\n", req.Concurrency, req.URL, req.Method)
 }

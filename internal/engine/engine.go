@@ -8,10 +8,10 @@ import (
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
-func ExecuteConcurrent(ctx context.Context, url string, method string, concurrency int, hub *stream.Hub) {
+func ExecuteConcurrent(ctx context.Context, runReq model.RunRequest, hub *stream.Hub) {
 	var wg sync.WaitGroup
 
-	for range concurrency {
+	for range runReq.Concurrency {
 		select {
 		case <-ctx.Done():
 			wg.Wait()
@@ -31,7 +31,7 @@ func ExecuteConcurrent(ctx context.Context, url string, method string, concurren
 			}
 
 			// 1. Make the HTTP call
-			res := ExecuteSingle(ctx, url, method)
+			res := ExecuteSingle(ctx, runReq.URL, runReq.Method, runReq.Headers, runReq.Body)
 			if ctx.Err() != nil {
 				return
 			}
