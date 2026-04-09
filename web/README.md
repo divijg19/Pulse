@@ -1,28 +1,69 @@
-## Usage
+# Web Frontend (SolidJS)
+
+This directory contains the Pulse frontend application built with SolidJS + Vite + Tailwind v4.
+
+The backend serves compiled assets from the embedded static output, so this app is not deployed separately in production.
+
+For backend endpoint contracts and execution semantics, see [../ARCHITECTURE.md](../ARCHITECTURE.md).
+
+## Tooling
+
+- Runtime framework: SolidJS
+- Bundler/dev server: Vite
+- Styling: Tailwind CSS v4
+- Formatter/lint: Biome
+
+## Scripts
+
+Run from `web/`:
 
 ```bash
-$ npm install # or pnpm install or yarn install
+bun install --frozen-lockfile
 ```
 
-### Learn more on the [Solid Website](https://solidjs.com) and come chat with us on our [Discord](https://discord.com/invite/solidjs)
+Available commands:
 
-## Available Scripts
+- `bun run dev`: start Vite dev server.
+- `bun run build`: type-check and build production bundle.
+- `bun run preview`: preview built bundle locally.
+- `bun run lint`: run Biome checks with write mode.
+- `bun run format`: run Biome formatting.
 
-In the project directory, you can run:
+## Frontend Behavior Contract
 
-### `npm run dev`
+### Control flow
 
-Runs the app in the development mode.<br>
-Open [http://localhost:5173](http://localhost:5173) to view it in the browser.
+- Sends run configuration to `POST /run`.
+- Subscribes to `GET /stream` with EventSource.
+- Appends each `result` event as it arrives.
 
-### `npm run build`
+### Payload editor
 
-Builds the app for production to the `dist` folder.<br>
-It correctly bundles Solid in production mode and optimizes the build for the best performance.
+- Allows optional request headers (key/value list).
+- Allows optional request body (raw string).
+- Serializes headers into an object before POST.
 
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
+### Request drawer
 
-## Deployment
+- Opens from timeline/log row selection.
+- Displays status, latency, request method/url, response headers, response body, and error.
+- Drawer visibility is decoupled from selected payload to preserve close animation quality.
 
-Learn more about deploying your application with the [documentations](https://vite.dev/guide/static-deploy.html)
+The expected result event schema is defined in [../ARCHITECTURE.md](../ARCHITECTURE.md).
+
+## Build and Embed Workflow
+
+Production build flow:
+
+1. Build frontend (`bun run build`) in `web/`.
+2. Copy or output build assets into server embedded static location.
+3. Build Go server binary.
+
+CI and release workflows execute this order automatically to keep embed assets valid.
+
+## Styling Guidelines
+
+- Keep the existing Vantablack + neon visual language.
+- Use Tailwind utility classes only (no external UI kits).
+- Avoid heavy dependencies for editors/charts.
+- Prefer composable primitives (`createSignal`, `createEffect`, `For`, `Show`).
