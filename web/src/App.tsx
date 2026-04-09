@@ -4,27 +4,33 @@ type Result = {
 	Status: number;
 	Latency: number;
 	Error: string;
+
 	ResponseHeaders?: Record<string, string>;
 	ResponseBody?: string;
+
 	RequestMethod?: string;
 	RequestURL?: string;
 };
 
 export default function App() {
+	// View state
 	const [activeTab, setActiveTab] = createSignal("timeline");
 
+	// Request form state
 	const [method, setMethod] = createSignal("GET");
 	const [url, setUrl] = createSignal("https://httpbin.org/delay/1");
 	const [concurrency, setConcurrency] = createSignal(10);
-
-	const [isRunning, setIsRunning] = createSignal(false);
-	const [results, setResults] = createSignal<Result[]>([]);
 	const [reqHeaders, setReqHeaders] = createSignal<
 		{ key: string; value: string }[]
 	>([]);
 	const [reqBody, setReqBody] = createSignal("");
 	const [showPayloadEditor, setShowPayloadEditor] = createSignal(false);
+
+	// Run/result state
+	const [isRunning, setIsRunning] = createSignal(false);
+	const [results, setResults] = createSignal<Result[]>([]);
 	const [selectedResult, setSelectedResult] = createSignal<Result | null>(null);
+	const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
 	const [activeRequestMethod, setActiveRequestMethod] = createSignal("GET");
 
 	// LIVE TIMER STATE
@@ -116,11 +122,11 @@ export default function App() {
 		);
 
 		setActiveRequestMethod(method());
-		setUrl(url());
 
 		setIsRunning(true);
 		setResults([]);
 		setElapsedMs(0);
+		setIsDrawerOpen(false);
 		setSelectedResult(null);
 
 		// Start a high-speed live timer (ticks every 50ms)
@@ -424,7 +430,10 @@ export default function App() {
 										return (
 											<button
 												type="button"
-												onClick={() => setSelectedResult(res)}
+												onClick={() => {
+													setSelectedResult(res);
+													setIsDrawerOpen(true);
+												}}
 												class="w-full bg-black/40 rounded h-8 relative overflow-hidden flex items-center px-3 group border border-transparent hover:border-white/5 transition-colors cursor-pointer"
 											>
 												<div
@@ -461,7 +470,10 @@ export default function App() {
 										return (
 											<button
 												type="button"
-												onClick={() => setSelectedResult(res)}
+												onClick={() => {
+													setSelectedResult(res);
+													setIsDrawerOpen(true);
+												}}
 												class={`flex gap-4 p-1.5 rounded items-center group transition-colors cursor-pointer ${isError ? "bg-rose-500/5 border border-rose-500/10 hover:bg-rose-500/10" : "hover:bg-white/5"}`}
 											>
 												<span
@@ -496,7 +508,7 @@ export default function App() {
 				</div>
 
 				<div
-					class={`fixed top-0 right-0 h-full w-150 max-w-full bg-[#09090b]/95 backdrop-blur-2xl border-l border-white/10 shadow-2xl z-50 transform transition-transform duration-300 ${selectedResult() ? "translate-x-0" : "translate-x-full"}`}
+					class={`fixed top-0 right-0 h-full w-150 max-w-full bg-[#09090b]/95 backdrop-blur-2xl border-l border-white/10 shadow-2xl z-50 transform transition-transform duration-300 ${isDrawerOpen() ? "translate-x-0" : "translate-x-full"}`}
 				>
 					<div class="h-full flex flex-col">
 						<div class="p-4 border-b border-white/10 bg-black/20">
@@ -526,7 +538,7 @@ export default function App() {
 								</div>
 								<button
 									type="button"
-									onClick={() => setSelectedResult(null)}
+									onClick={() => setIsDrawerOpen(false)}
 									class="px-3 py-2 rounded-md border border-white/15 text-zinc-300 text-xs font-mono uppercase tracking-widest hover:bg-white/5 transition-colors"
 								>
 									Close
