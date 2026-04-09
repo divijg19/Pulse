@@ -13,21 +13,23 @@ jobs:
   release:
     name: Build and Publish Release
     runs-on: ubuntu-latest
+    env:
+      FILE_NAME: ""
     strategy:
       matrix:
         include:
           - os: linux
             arch: amd64
-            name: pulse-linux-amd64
+            suffix: linux-amd64
           - os: windows
             arch: amd64
-            name: pulse-windows-amd64.exe
+            suffix: windows-amd64.exe
           - os: darwin
             arch: amd64
-            name: pulse-mac-amd64
+            suffix: mac-amd64
           - os: darwin
             arch: arm64
-            name: pulse-mac-arm64
+            suffix: mac-arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -53,12 +55,18 @@ jobs:
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
+          # If triggered by a tag (v0.6.3), use it. Otherwise, fallback to 'dev'.
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
         run: |
-          go build -ldflags="-s -w" -o ${{ matrix.name }} ./cmd/server
+          FILE_NAME="pulse-${VERSION}-${{ matrix.suffix }}"
+          go build -ldflags="-s -w" -o $FILE_NAME ./cmd/server
+          echo "FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.name }}
+          files: ${{ env.FILE_NAME }}
+          # Ensure manual dispatches don't accidentally attach to an old tag
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
