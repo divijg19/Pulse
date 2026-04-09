@@ -1,9 +1,13 @@
-import { createEffect, createSignal, For, onCleanup } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 
 type Result = {
 	Status: number;
 	Latency: number;
 	Error: string;
+	ResponseHeaders?: Record<string, string>;
+	ResponseBody?: string;
+	RequestMethod?: string;
+	RequestURL?: string;
 };
 
 export default function App() {
@@ -15,6 +19,13 @@ export default function App() {
 
 	const [isRunning, setIsRunning] = createSignal(false);
 	const [results, setResults] = createSignal<Result[]>([]);
+	const [reqHeaders, setReqHeaders] = createSignal<
+		{ key: string; value: string }[]
+	>([]);
+	const [reqBody, setReqBody] = createSignal("");
+	const [showPayloadEditor, setShowPayloadEditor] = createSignal(false);
+	const [selectedResult, setSelectedResult] = createSignal<Result | null>(null);
+	const [activeRequestMethod, setActiveRequestMethod] = createSignal("GET");
 
 	// LIVE TIMER STATE
 	const [elapsedMs, setElapsedMs] = createSignal(0);
@@ -56,19 +67,61 @@ export default function App() {
 		const eventSource = new EventSource("/stream");
 		eventSource.addEventListener("result", (event) => {
 			const data = JSON.parse(event.data) as Result;
-			setResults((prev) => [...prev, data]);
+			setResults((prev) => [
+				...prev,
+				{
+					...data,
+					RequestMethod: activeRequestMethod(),
+					RequestURL: url(),
+				},
+			]);
 		});
 		eventSource.onerror = (err) => console.error("SSE Error:", err);
 		onCleanup(() => eventSource.close());
 	});
 
+	const addHeader = () => {
+		setReqHeaders((prev) => [...prev, { key: "", value: "" }]);
+	};
+
+	const updateHeader = (
+		index: number,
+		field: "key" | "value",
+		value: string,
+	) => {
+		setReqHeaders((prev) =>
+			prev.map((header, i) =>
+				i === index ? { ...header, [field]: value } : header,
+			),
+		);
+	};
+
+	const removeHeader = (index: number) => {
+		setReqHeaders((prev) => prev.filter((_, i) => i !== index));
+	};
+
 	// --- 🚀 EXECUTION ---
 	const handleRun = async () => {
 		if (isRunning()) return;
 
+		const parsedHeaders = reqHeaders().reduce<Record<string, string>>(
+			(acc, header) => {
+				const key = header.key.trim();
+				if (key !== "") {
+					acc[key] = header.value;
+				}
+				return acc;
+			},
+			{},
+		);
+
+		setActiveRequestMethod(method());
+		setUrl(url());
+
 		setIsRunning(true);
 		setResults([]);
 		setElapsedMs(0);
+		setSelectedResult(null);
 
 		// Start a high-speed live timer (ticks every 50ms)
 		const startTime = Date.now();
@@ -83,6 +136,8 @@ export default function App() {
 				body: JSON.stringify({
 					url: url(),
 					method: method(),
+					headers: parsedHeaders,
+					body: reqBody(),
 					concurrency: Number(concurrency()),
 				}),
 			});
@@ -194,6 +249,14 @@ export default function App() {
 								>
 									+
 								</button>
+
+								<button
+									type="button"
+									onClick={() => setShowPayloadEditor((current) => !current)}
+									class={`px-2 py-1 rounded-md text-xs font-mono uppercase tracking-widest border transition-colors cursor-pointer ${showPayloadEditor() ? "text-cyan-300 border-cyan-500/40 bg-cyan-500/10" : "text-zinc-400 border-white/10 hover:text-zinc-200 hover:border-white/20"}`}
+								>
+									Payload
+								</button>
 							</div>
 
 							<button
@@ -206,6 +269,81 @@ export default function App() {
 							</button>
 						</div>
 					</div>
+
+					<Show when={showPayloadEditor()}>
+						<div class="bg-black/20 border-y border-white/5 p-4 rounded-xl">
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<div class="space-y-3">
+									<div class="flex items-center justify-between">
+										<h3 class="text-xs font-bold uppercase tracking-widest text-zinc-400">
+											Headers
+										</h3>
+										<button
+											type="button"
+											onClick={addHeader}
+											class="px-2 py-1 rounded-md text-xs font-mono uppercase tracking-widest border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+										>
+											Add Header
+										</button>
+									</div>
+
+									<div class="space-y-2 max-h-44 overflow-y-auto pr-1">
+										<For each={reqHeaders()}>
+											{(header, index) => (
+												<div class="flex items-center gap-2">
+													<input
+														type="text"
+														value={header.key}
+														onInput={(e) =>
+															updateHeader(
+																index(),
+																"key",
+																e.currentTarget.value,
+															)
+														}
+														placeholder="Key"
+														class="flex-1 h-9 px-2 rounded-md bg-black/40 border border-white/10 text-zinc-200 text-xs font-mono outline-none focus:border-cyan-500/50"
+													/>
+													<input
+														type="text"
+														value={header.value}
+														onInput={(e) =>
+															updateHeader(
+																index(),
+																"value",
+																e.currentTarget.value,
+															)
+														}
+														placeholder="Value"
+														class="flex-1 h-9 px-2 rounded-md bg-black/40 border border-white/10 text-zinc-200 text-xs font-mono outline-none focus:border-cyan-500/50"
+													/>
+													<button
+														type="button"
+														onClick={() => removeHeader(index())}
+														class="h-9 w-9 rounded-md border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 transition-colors"
+													>
+														x
+													</button>
+												</div>
+											)}
+										</For>
+									</div>
+								</div>
+
+								<div class="space-y-3">
+									<h3 class="text-xs font-bold uppercase tracking-widest text-zinc-400">
+										Body
+									</h3>
+									<textarea
+										value={reqBody()}
+										onInput={(e) => setReqBody(e.currentTarget.value)}
+										placeholder='{"name":"pulse"}'
+										class="min-h-40 w-full bg-black/40 border border-white/10 text-zinc-300 font-mono text-sm p-2 rounded-lg outline-none focus:border-cyan-500/50"
+									/>
+								</div>
+							</div>
+						</div>
+					</Show>
 
 					{/* 📊 LIVE METRICS STRIP */}
 					<div class="flex justify-between items-center px-4 py-2 bg-linear-to-r from-transparent via-white/2 to-transparent border-y border-white/2">
@@ -284,7 +422,11 @@ export default function App() {
 											1,
 										);
 										return (
-											<div class="w-full bg-black/40 rounded h-8 relative overflow-hidden flex items-center px-3 group border border-transparent hover:border-white/5 transition-colors">
+											<button
+												type="button"
+												onClick={() => setSelectedResult(res)}
+												class="w-full bg-black/40 rounded h-8 relative overflow-hidden flex items-center px-3 group border border-transparent hover:border-white/5 transition-colors cursor-pointer"
+											>
 												<div
 													class={`absolute left-0 top-0 bottom-0 transition-all duration-300 ${isError ? "bg-rose-500/10 border-r border-rose-500 group-hover:bg-rose-500/20" : "bg-cyan-500/10 border-r border-cyan-400 group-hover:bg-cyan-500/20"}`}
 													style={{ width: `${width}%` }}
@@ -299,7 +441,7 @@ export default function App() {
 														{formatLatency(res.Latency)}
 													</span>
 												</div>
-											</div>
+											</button>
 										);
 									}}
 								</For>
@@ -317,8 +459,10 @@ export default function App() {
 									{(res) => {
 										const isError = res.Status >= 400 || res.Status === 0;
 										return (
-											<div
-												class={`flex gap-4 p-1.5 rounded items-center group transition-colors ${isError ? "bg-rose-500/5 border border-rose-500/10 hover:bg-rose-500/10" : "hover:bg-white/5"}`}
+											<button
+												type="button"
+												onClick={() => setSelectedResult(res)}
+												class={`flex gap-4 p-1.5 rounded items-center group transition-colors cursor-pointer ${isError ? "bg-rose-500/5 border border-rose-500/10 hover:bg-rose-500/10" : "hover:bg-white/5"}`}
 											>
 												<span
 													class={
@@ -327,10 +471,10 @@ export default function App() {
 															: "text-cyan-400 w-10"
 													}
 												>
-													{method()}
+													{res.RequestMethod || method()}
 												</span>
 												<span class="text-zinc-400 truncate flex-1 group-hover:text-zinc-200">
-													{url()}
+													{res.RequestURL || url()}
 												</span>
 												<span
 													class={`w-16 text-right font-bold ${isError ? "text-rose-500" : "text-cyan-400"}`}
@@ -342,12 +486,106 @@ export default function App() {
 												>
 													{formatLatency(res.Latency)}
 												</span>
-											</div>
+											</button>
 										);
 									}}
 								</For>
 							</div>
 						)}
+					</div>
+				</div>
+
+				<div
+					class={`fixed top-0 right-0 h-full w-150 max-w-full bg-[#09090b]/95 backdrop-blur-2xl border-l border-white/10 shadow-2xl z-50 transform transition-transform duration-300 ${selectedResult() ? "translate-x-0" : "translate-x-full"}`}
+				>
+					<div class="h-full flex flex-col">
+						<div class="p-4 border-b border-white/10 bg-black/20">
+							<div class="flex items-start justify-between gap-4">
+								<div class="space-y-2 min-w-0">
+									<div class="flex items-center gap-2">
+										<span class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+											Request
+										</span>
+										<span class="text-xs font-mono text-cyan-300 uppercase">
+											{selectedResult()?.RequestMethod || method()}
+										</span>
+									</div>
+									<div class="text-xs text-zinc-400 font-mono truncate max-w-105">
+										{selectedResult()?.RequestURL || url()}
+									</div>
+									<div class="flex items-center gap-3 text-xs font-mono">
+										<span
+											class={`${(selectedResult()?.Status || 0) >= 400 || (selectedResult()?.Status || 0) === 0 ? "text-rose-400" : "text-cyan-400"}`}
+										>
+											Status: {selectedResult()?.Status || 0}
+										</span>
+										<span class="text-zinc-500">
+											Latency: {formatLatency(selectedResult()?.Latency || 0)}
+										</span>
+									</div>
+								</div>
+								<button
+									type="button"
+									onClick={() => setSelectedResult(null)}
+									class="px-3 py-2 rounded-md border border-white/15 text-zinc-300 text-xs font-mono uppercase tracking-widest hover:bg-white/5 transition-colors"
+								>
+									Close
+								</button>
+							</div>
+						</div>
+
+						<div class="flex-1 overflow-y-auto p-4 space-y-4">
+							<div class="space-y-2">
+								<h3 class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+									Response Headers
+								</h3>
+								<div class="rounded-xl border border-white/10 bg-black/30 divide-y divide-white/5">
+									<Show
+										when={
+											Object.keys(selectedResult()?.ResponseHeaders || {})
+												.length > 0
+										}
+										fallback={
+											<div class="p-3 text-xs text-zinc-500 font-mono">
+												No headers captured.
+											</div>
+										}
+									>
+										<For
+											each={Object.entries(
+												selectedResult()?.ResponseHeaders || {},
+											)}
+										>
+											{([key, value]) => (
+												<div class="p-3 flex flex-col gap-1">
+													<span class="text-xs font-mono text-cyan-300 break-all">
+														{key}
+													</span>
+													<span class="text-xs font-mono text-zinc-400 break-all">
+														{value}
+													</span>
+												</div>
+											)}
+										</For>
+									</Show>
+								</div>
+							</div>
+
+							<Show when={selectedResult()?.Error}>
+								<div class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-mono text-rose-300 break-all">
+									{selectedResult()?.Error}
+								</div>
+							</Show>
+
+							<div class="space-y-2">
+								<h3 class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+									Response Body
+								</h3>
+								<pre class="bg-black/50 p-4 rounded-xl border border-white/10 overflow-x-auto text-xs text-zinc-300 whitespace-pre-wrap wrap-break-word">
+									{selectedResult()?.ResponseBody || ""}
+								</pre>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
