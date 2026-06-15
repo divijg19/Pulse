@@ -109,3 +109,6 @@ case ":${PATH}:" in
 esac
 
 echo "Run: pulse"
+echo "  Opens the canonical Pulse terminal UI."
+echo "Run: pulse web"
+echo "  Starts the browser WebUI at http://localhost:8080."

@@ -59,7 +59,7 @@ jobs:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
         run: |
           FILE_NAME="pulse-${VERSION}-${{ matrix.suffix }}"
-          go build -ldflags="-s -w" -o $FILE_NAME ./cmd/server
+          go build -ldflags="-s -w" -o $FILE_NAME ./cmd/pulse
           echo "FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
 
       - name: Upload release asset
