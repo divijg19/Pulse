@@ -1,6 +1,6 @@
 # `Pulse`
 
-> A real-time observability surface for HTTP behavior.
+> A real-time terminal-first observability surface for HTTP behavior.
 
 ![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)
 ![Frontend](https://img.shields.io/badge/Frontend-SolidJS%20%2B%20Vite-blue)
@@ -15,6 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/divijg19/Pulse/main/install.sh | ba
 
 Pulse is a live, streaming API explorer for backend and infrastructure workflows.
 Instead of waiting for a batch to finish, you see request outcomes as they happen.
+The canonical experience is the native terminal UI; `pulse web` starts the browser WebUI when you want it.
 
 ## Why Pulse? (The Philosophy)
 
@@ -30,10 +31,10 @@ Design principles:
 
 ## Features
 
-- Concurrent HTTP execution with immediate SSE result streaming.
+- Canonical terminal UI with command bar, payload editor, live metrics, timeline/log views, and response inspector.
+- Optional browser WebUI started with `pulse web`.
+- Concurrent HTTP execution with immediate result streaming.
 - Payload editor for request headers and raw body.
-- Interactive request drawer for status, latency, response headers, response body, and errors.
-- Live timeline and log views for per-request behavior.
 - Single deployable Go binary with embedded frontend assets.
 
 ## Core Experience
@@ -59,6 +60,12 @@ curl -fsSL https://raw.githubusercontent.com/divijg19/Pulse/main/install.sh | ba
 pulse
 ```
 
+`pulse` opens the terminal UI. To start the browser WebUI instead:
+
+```bash
+pulse web
+```
+
 ### Option B: Build from source
 
 Prerequisites:
@@ -75,11 +82,15 @@ bun install --frozen-lockfile
 bun run build
 cd ..
 
-go build -o pulse ./cmd/server
+go build -o pulse ./cmd/pulse
 ./pulse
 ```
 
-Default server address: http://localhost:8080
+Default WebUI address: http://localhost:8080
+
+```bash
+./pulse web
+```
 
 ## Endpoints
 
@@ -89,7 +100,7 @@ Default server address: http://localhost:8080
 
 For full request/response schema, validation rules, and limits, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## CLI Smoke Test
+## WebUI Smoke Test
 
 Stream channel:
 

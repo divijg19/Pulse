@@ -4,6 +4,11 @@ This document describes the production architecture, data contracts, lifecycle b
 
 ## System Overview
 
+Pulse has two user-facing entrypoints:
+
+- `pulse`: canonical terminal UI.
+- `pulse web`: embedded browser WebUI server.
+
 Pulse has two execution planes:
 
 - Control plane: `POST /run` starts a concurrent run.
@@ -12,6 +17,9 @@ Pulse has two execution planes:
 High-level flow:
 
 ```text
+Terminal UI
+    └─ in-process run ---> Engine fan-out (N goroutines)
+
 Browser UI
     ├─ POST /run  ---> API validation ---> Engine fan-out (N goroutines)
     └─ GET /stream <--- Hub broadcast <--- Per-request Result production
@@ -19,11 +27,23 @@ Browser UI
 
 ## Components
 
-### cmd/server
+### cmd/pulse
+
+- Starts the canonical TUI by default.
+- Starts the embedded WebUI server with `pulse web`.
+- Embeds compiled WebUI static assets.
+
+### internal/server
 
 - Boots an `http.Server` with explicit timeouts.
 - Serves embedded static assets.
 - Registers `/health`, `/run`, `/stream`.
+
+### internal/tui
+
+- Runs the native terminal experience.
+- Uses the same engine and validation path as the WebUI.
+- Presents request controls, payload editing, live metrics, result timeline/logs, and response inspection.
 
 ### internal/api
 
@@ -56,6 +76,11 @@ Browser UI
 - Thread-safe hub using mutex-protected client map.
 - Non-blocking broadcast so slow clients do not stall producers.
 - Idempotent remove path prevents close-on-closed channel panics.
+
+### internal/runconfig
+
+- Normalizes and validates shared run configuration.
+- Enforces URL, method, and concurrency constraints for both UI surfaces.
 
 ### web
 
@@ -99,12 +124,12 @@ SSE event type: `result`
 
 Event payload fields:
 
-- `status` HTTP status code.
-- `latency` Go duration encoded in nanoseconds.
-- `timestamp` request completion timestamp.
-- `error` error string when execution/read fails.
-- `responseHeaders` flattened response header map.
-- `responseBody` truncated response body capture (10 KiB max).
+- `Status` HTTP status code.
+- `Latency` Go duration encoded in nanoseconds.
+- `Timestamp` request completion timestamp.
+- `Error` error string when execution/read fails.
+- `ResponseHeaders` flattened response header map.
+- `ResponseBody` truncated response body capture (10 KiB max).
 
 Streaming semantics:
 
@@ -116,8 +141,8 @@ Streaming semantics:
 
 Cancellation propagation path:
 
-1. Client disconnects or request context is canceled.
-2. API handler context closes.
+1. TUI cancellation, browser disconnect, or request context cancellation is observed.
+2. The active run context closes.
 3. Engine fan-out loop and workers observe `ctx.Done()`.
 4. In-flight HTTP request is canceled by context-aware request.
 5. Worker exits without extra broadcasts.
@@ -150,7 +175,8 @@ Result payload implications:
 ## Operational Notes
 
 - Health endpoint: `GET /health`.
-- Binary serves embedded frontend assets; no separate runtime static server required.
+- `pulse` starts the native terminal UI.
+- `pulse web` serves embedded frontend assets; no separate runtime static server required.
 - Release artifacts are versioned by tag and target tuple.
 
 Release naming contract:
@@ -164,10 +190,13 @@ Release naming contract:
 
 ```text
 Pulse/
-├── cmd/server/            # server bootstrap + embedded static hosting
+├── cmd/pulse/             # canonical CLI/TUI entrypoint + embedded WebUI assets
 ├── internal/api/          # request validation + SSE HTTP handlers
 ├── internal/engine/       # concurrent HTTP execution
+├── internal/runconfig/    # shared request validation
+├── internal/server/       # reusable WebUI server startup
 ├── internal/stream/       # pub/sub hub for SSE fan-out
+├── internal/tui/          # terminal UI
 ├── internal/model/        # DTO contracts
 ├── web/                   # SolidJS frontend source
 └── .github/workflows/     # CI and release pipelines

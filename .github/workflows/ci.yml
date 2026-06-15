@@ -35,4 +35,4 @@ jobs:
         run: go test ./...
 
       - name: Build backend (verify embed)
-        run: go build -v ./cmd/server
+        run: go build -v ./cmd/pulse

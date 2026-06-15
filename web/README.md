@@ -2,7 +2,7 @@
 
 This directory contains the Pulse frontend application built with SolidJS + Vite + Tailwind v4.
 
-The backend serves compiled assets from the embedded static output, so this app is not deployed separately in production.
+The `pulse web` command serves compiled assets from the embedded static output, so this app is not deployed separately in production.
 
 For backend endpoint contracts and execution semantics, see [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
@@ -56,8 +56,8 @@ The expected result event schema is defined in [../ARCHITECTURE.md](../ARCHITECT
 Production build flow:
 
 1. Build frontend (`bun run build`) in `web/`.
-2. Copy or output build assets into server embedded static location.
-3. Build Go server binary.
+2. Output build assets into `../cmd/pulse/static`.
+3. Build the Go `pulse` binary.
 
 CI and release workflows execute this order automatically to keep embed assets valid.
 

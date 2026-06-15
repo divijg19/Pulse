@@ -12,7 +12,7 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: "../cmd/server/static",
+		outDir: "../cmd/pulse/static",
 		emptyOutDir: true,
 	},
 });

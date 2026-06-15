@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/divijg19/Pulse/internal/engine"
 	"github.com/divijg19/Pulse/internal/model"
+	"github.com/divijg19/Pulse/internal/runconfig"
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
@@ -44,30 +44,22 @@ func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.Concurrency <= 0 || req.Concurrency > 100 {
-		http.Error(w, "Concurrency must be between 1 and 100", http.StatusBadRequest)
-		return
-	}
-	if req.URL == "" {
-		http.Error(w, "URL is required", http.StatusBadRequest)
-		return
-	}
-
-	if _, err := url.ParseRequestURI(req.URL); err != nil {
-		http.Error(w, "Invalid URL", http.StatusBadRequest)
+	validatedReq, err := runconfig.Validate(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(req); err != nil {
+	if err := json.NewEncoder(w).Encode(validatedReq); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Printf("Received run request: %+v\n", req)
+	fmt.Printf("Received run request: %+v\n", validatedReq)
 
-	engine.ExecuteConcurrent(r.Context(), req, h.Hub)
-	fmt.Printf("Finished executing %d requests to %s with method %s\n", req.Concurrency, req.URL, req.Method)
+	engine.ExecuteConcurrent(r.Context(), validatedReq, h.Hub)
+	fmt.Printf("Finished executing %d requests to %s with method %s\n", validatedReq.Concurrency, validatedReq.URL, validatedReq.Method)
 }
