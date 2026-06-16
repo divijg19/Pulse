@@ -12,6 +12,8 @@ import (
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
+var sparklineChars = []rune("▁▂▃▄▅▆▇█")
+
 func (m Model) View() string {
 	if m.width == 0 {
 		return "Pulse is starting..."
@@ -28,12 +30,23 @@ func (m Model) View() string {
 		payload = m.renderPayload(innerWidth)
 	}
 
-	used := lipgloss.Height(header) + lipgloss.Height(command) + lipgloss.Height(metricStrip) + lipgloss.Height(payload) + 5
+	sparkline := m.renderSparkline(innerWidth)
+
+	used := lipgloss.Height(header) + lipgloss.Height(command) + lipgloss.Height(metricStrip) + lipgloss.Height(sparkline) + lipgloss.Height(payload) + 5
 	workspaceHeight := max(8, m.height-used)
 	workspace := m.renderWorkspace(innerWidth, workspaceHeight)
-	footer := footerStyle.Width(innerWidth).Render("tab focus  ctrl+r run  ctrl+x cancel  [/] tabs  enter inspect  q quit")
+	footerText := "tab/⇧tab focus  ctrl+r run  ctrl+x cancel  ctrl+a scroll  [/] tabs  ↑↓ select  enter inspect  esc back  q quit"
+	if !m.running && len(m.results) > 0 {
+		s := metrics.Compute(m.results, displayElapsed(m))
+		footerText = fmt.Sprintf("%s  |  %d results  p99 %s  %d errors",
+			footerText, s.Total, formatDuration(s.P99), s.Total-s.Successes)
+	}
+	footer := footerStyle.Width(innerWidth).Render(footerText)
 
 	parts := []string{header, command, metricStrip}
+	if sparkline != "" {
+		parts = append(parts, sparkline)
+	}
 	if payload != "" {
 		parts = append(parts, payload)
 	}
@@ -43,13 +56,25 @@ func (m Model) View() string {
 }
 
 func (m Model) renderHeader(width int) string {
-	state := mutedStyle.Render(m.status)
+	rightText := m.status
 	if m.running {
-		state = cyanStyle.Render(fmt.Sprintf("%.1fs ELAPSED", m.elapsed.Seconds()))
+		rps := 0.0
+		if m.elapsed > 0 {
+			rps = float64(len(m.results)) / m.elapsed.Seconds()
+		}
+		rightText = fmt.Sprintf("%.1fs ELAPSED  •  %.1f RPS", m.elapsed.Seconds(), rps)
+	}
+	state := mutedStyle.Render(rightText)
+	if m.running {
+		state = cyanStyle.Render(rightText)
 	}
 
+	dot := statusDotStyle.Render("●")
+	if m.running && m.dotGlow {
+		dot = statusDotGlowStyle.Render("●")
+	}
 	left := lipgloss.JoinHorizontal(lipgloss.Center,
-		statusDotStyle.Render("●"),
+		dot,
 		" ",
 		titleStyle.Render("Pulse"),
 		" ",
@@ -61,7 +86,7 @@ func (m Model) renderHeader(width int) string {
 }
 
 func (m Model) renderCommand(width int) string {
-	method := controlStyle(m.focus == focusMethod).Width(10).Render(runconfig.AllowedMethods[m.methodIndex])
+	method := methodStyle(runconfig.AllowedMethods()[m.methodIndex], m.focus == focusMethod).Width(10).Render(runconfig.AllowedMethods()[m.methodIndex])
 	url := inputStyle(m.focus == focusURL).Width(max(20, width-54)).Render(truncate(m.urlInput.Value(), max(18, width-56)))
 	cc := controlStyle(m.focus == focusConcurrency).Width(8).Render(fmt.Sprintf("CC %d", m.concurrency()))
 
@@ -82,13 +107,41 @@ func (m Model) renderCommand(width int) string {
 }
 
 func (m Model) renderMetrics(width int) string {
-	summary := metrics.Compute(m.results, displayElapsed(m))
+	summary := m.summary
 	segmentWidth := max(12, (width-6)/4)
-	requests := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("REQUESTS\n%d / %d", summary.Total, m.concurrency()))
-	success := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("SUCCESS\n%d%%", summary.SuccessRate))
-	latency := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("AVG LATENCY\n%s", formatDuration(summary.Average)))
-	rps := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("RPS\n%.1f", summary.RequestsPerS))
-	return lipgloss.JoinHorizontal(lipgloss.Top, requests, "  ", success, "  ", latency, "  ", rps)
+
+	target := m.concurrency()
+	barWidth := segmentWidth - 6
+	if barWidth < 2 {
+		barWidth = 2
+	}
+	filled := 0
+	if target > 0 {
+		filled = summary.Total * barWidth / target
+		if filled > barWidth {
+			filled = barWidth
+		}
+	}
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+	requests := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("REQUESTS\n%s %d/%d", bar, summary.Total, target))
+
+	successColor := colorAmber
+	if summary.SuccessRate >= 100 {
+		successColor = colorGreen
+	}
+	success := metricStyle.Foreground(lipgloss.Color(successColor)).Width(segmentWidth).Render(fmt.Sprintf("SUCCESS\n%d%%", summary.SuccessRate))
+
+	errors := summary.Total - summary.Successes
+	errColor := colorGreen
+	if errors > 0 {
+		errColor = colorRose
+	}
+	errSegment := metricStyle.Foreground(lipgloss.Color(errColor)).Width(segmentWidth).Render(fmt.Sprintf("ERRORS\n%d", errors))
+
+	pSegment := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("p50 %s  p90 %s\np99 %s",
+		formatDuration(summary.P50), formatDuration(summary.P90), formatDuration(summary.P99)))
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, requests, "  ", success, "  ", errSegment, "  ", pSegment)
 }
 
 func (m Model) renderPayload(width int) string {
@@ -158,7 +211,11 @@ func (m Model) renderWorkspace(width int, height int) string {
 func (m Model) renderTabs(width int) string {
 	timeline := tabStyle(m.activeTab == tabTimeline).Render("Timeline")
 	logs := tabStyle(m.activeTab == tabLogs).Render("Live Logs")
-	return lipgloss.PlaceHorizontal(width-2, lipgloss.Center, lipgloss.JoinHorizontal(lipgloss.Top, timeline, logs))
+	indicator := ""
+	if !m.autoScroll {
+		indicator = mutedStyle.Render("  MANUAL")
+	}
+	return lipgloss.PlaceHorizontal(width-2, lipgloss.Center, lipgloss.JoinHorizontal(lipgloss.Top, timeline, logs, indicator))
 }
 
 func (m Model) renderTimeline(width int, height int) string {
@@ -166,13 +223,12 @@ func (m Model) renderTimeline(width int, height int) string {
 		return emptyStyle.Width(width - 4).Height(height).Render("Awaiting execution...")
 	}
 
-	summary := metrics.Compute(m.results, displayElapsed(m))
 	lines := make([]string, 0, min(len(m.results), height))
 	start := max(0, len(m.results)-height)
 	for i := start; i < len(m.results); i++ {
 		result := m.results[i]
 		selected := m.focus == focusResults && i == m.selected
-		lines = append(lines, m.renderTimelineRow(i, result, summary.MaxLatency, width-4, selected))
+		lines = append(lines, m.renderTimelineRow(i, result, m.summary.MaxLatency, width-4, selected))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -187,7 +243,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 		filled = max(1, int(float64(result.Latency)/float64(maxLatency)*float64(barWidth)))
 	}
 	bar := strings.Repeat("#", filled) + strings.Repeat("-", max(0, barWidth-filled))
-	line := fmt.Sprintf("%s %3d %-10s [%s] %8s", rowCursor(selected), index+1, status, bar, latency)
+	line := fmt.Sprintf("%s %3d %-12s [%s] %8s", rowCursor(selected), index+1, status, bar, latency)
 	if result.Status >= 400 || result.Status == 0 {
 		return errorRowStyle(selected).Render(truncate(line, width))
 	}
@@ -205,7 +261,15 @@ func (m Model) renderLogs(width int, height int) string {
 		result := m.results[i]
 		selected := m.focus == focusResults && i == m.selected
 		status := resultStatus(result)
-		line := fmt.Sprintf("%s %3d %-7s %-8s %s", rowCursor(selected), i+1, status, formatDuration(result.Latency), truncate(m.urlInput.Value(), width-28))
+		method := result.RequestMethod
+		if method == "" {
+			method = runconfig.AllowedMethods()[m.methodIndex]
+		}
+		reqURL := result.RequestURL
+		if reqURL == "" {
+			reqURL = m.urlInput.Value()
+		}
+		line := fmt.Sprintf("%s %3d %-6s %-10s %-8s %s", rowCursor(selected), i+1, method, status, formatDuration(result.Latency), truncate(reqURL, width-33))
 		if result.Status >= 400 || result.Status == 0 {
 			lines = append(lines, errorRowStyle(selected).Render(truncate(line, width-4)))
 		} else {
@@ -263,17 +327,71 @@ func displayElapsed(m Model) time.Duration {
 	if m.running {
 		return m.elapsed
 	}
-	return m.elapsed
+	if m.elapsed > 0 {
+		return m.elapsed
+	}
+	return 0
+}
+
+func (m Model) renderSparkline(width int) string {
+	if m.latencyLen == 0 {
+		return ""
+	}
+	label := mutedStyle.Render(" LATENCY")
+	labelWidth := lipgloss.Width(label)
+	barWidth := width - labelWidth - 2
+	if barWidth < 4 {
+		barWidth = 4
+	}
+	count := m.latencyLen
+	if count > barWidth {
+		count = barWidth
+	}
+	maxLat := time.Duration(0)
+	for i := 0; i < count; i++ {
+		idx := (m.latencyHead - count + i + latencyRingSize) % latencyRingSize
+		if m.latencyRing[idx] > maxLat {
+			maxLat = m.latencyRing[idx]
+		}
+	}
+	var sb strings.Builder
+	for i := 0; i < count; i++ {
+		idx := (m.latencyHead - count + i + latencyRingSize) % latencyRingSize
+		level := 0
+		if maxLat > 0 {
+			level = int(float64(m.latencyRing[idx]) / float64(maxLat) * 7)
+			if level < 0 {
+				level = 0
+			} else if level > 7 {
+				level = 7
+			}
+		}
+		dotColor := colorGreen
+		if level >= 3 {
+			dotColor = colorAmber
+		}
+		if level >= 6 {
+			dotColor = colorRose
+		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(dotColor)).Render(string(sparklineChars[level])))
+	}
+	return fmt.Sprintf(" %s%s", sb.String(), label)
 }
 
 func resultStatus(result model.Result) string {
 	if result.Status == 0 {
 		return "ERR"
 	}
-	if result.Status >= 200 && result.Status < 400 {
+	switch {
+	case result.Status >= 200 && result.Status < 300:
 		return fmt.Sprintf("%d OK", result.Status)
+	case result.Status >= 300 && result.Status < 400:
+		return fmt.Sprintf("%d Redirect", result.Status)
+	case result.Status >= 400:
+		return fmt.Sprintf("%d", result.Status)
+	default:
+		return fmt.Sprintf("%d", result.Status)
 	}
-	return fmt.Sprintf("%d", result.Status)
 }
 
 func rowCursor(selected bool) string {
@@ -288,11 +406,12 @@ func truncate(value string, width int) string {
 		return ""
 	}
 	value = strings.ReplaceAll(value, "\n", " ")
-	if lipgloss.Width(value) <= width {
+	runes := []rune(value)
+	if len(runes) <= width {
 		return value
 	}
 	if width <= 1 {
-		return value[:width]
+		return string(runes[:width])
 	}
-	return value[:width-1] + "..."
+	return string(runes[:width-1]) + "..."
 }

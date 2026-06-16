@@ -3,11 +3,12 @@ package model
 import "time"
 
 type Result struct {
-	ID              string
-	Status          int
-	Latency         time.Duration
-	Timestamp       time.Time
-	Error           string
-	ResponseHeaders map[string]string
-	ResponseBody    string
+	Status          int               `json:"status"`
+	Latency         time.Duration     `json:"latencyNs"`
+	Timestamp       time.Time         `json:"timestamp"`
+	Error           string            `json:"error,omitempty"`
+	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
+	ResponseBody    string            `json:"responseBody,omitempty"`
+	RequestMethod   string            `json:"requestMethod,omitempty"`
+	RequestURL      string            `json:"requestUrl,omitempty"`
 }

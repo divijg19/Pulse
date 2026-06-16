@@ -1,15 +1,15 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 
 type Result = {
-	Status: number;
-	Latency: number;
-	Error: string;
+	status: number;
+	latencyNs: number;
+	error: string;
 
-	ResponseHeaders?: Record<string, string>;
-	ResponseBody?: string;
+	responseHeaders?: Record<string, string>;
+	responseBody?: string;
 
-	RequestMethod?: string;
-	RequestURL?: string;
+	requestMethod?: string;
+	requestUrl?: string;
 };
 
 export default function App() {
@@ -32,6 +32,7 @@ export default function App() {
 	const [selectedResult, setSelectedResult] = createSignal<Result | null>(null);
 	const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
 	const [activeRequestMethod, setActiveRequestMethod] = createSignal("GET");
+	const [activeRequestUrl, setActiveRequestUrl] = createSignal("");
 
 	// LIVE TIMER STATE
 	const [elapsedMs, setElapsedMs] = createSignal(0);
@@ -40,7 +41,7 @@ export default function App() {
 	const maxLatency = () => {
 		const res = results();
 		if (res.length === 0) return 0;
-		return Math.max(...res.map((r) => r.Latency));
+		return res.reduce((max, r) => Math.max(max, r.latencyNs), 0);
 	};
 
 	const totalReqs = () => results().length;
@@ -49,7 +50,7 @@ export default function App() {
 		const total = totalReqs();
 		if (total === 0) return "0%";
 		const successes = results().filter(
-			(r) => r.Status >= 200 && r.Status < 400,
+			(r) => r.status >= 200 && r.status < 400,
 		).length;
 		return `${Math.round((successes / total) * 100)}%`;
 	};
@@ -57,7 +58,7 @@ export default function App() {
 	const avgLatency = () => {
 		const total = totalReqs();
 		if (total === 0) return "0.00s";
-		const sum = results().reduce((acc, r) => acc + r.Latency, 0);
+		const sum = results().reduce((acc, r) => acc + r.latencyNs, 0);
 		return formatLatency(sum / total);
 	};
 
@@ -77,8 +78,8 @@ export default function App() {
 				...prev,
 				{
 					...data,
-					RequestMethod: activeRequestMethod(),
-					RequestURL: url(),
+					requestMethod: activeRequestMethod(),
+					requestUrl: activeRequestUrl(),
 				},
 			]);
 		});
@@ -122,6 +123,7 @@ export default function App() {
 		);
 
 		setActiveRequestMethod(method());
+		setActiveRequestUrl(url());
 
 		setIsRunning(true);
 		setResults([]);
@@ -144,7 +146,7 @@ export default function App() {
 					method: method(),
 					headers: parsedHeaders,
 					body: reqBody(),
-					concurrency: Number(concurrency()),
+					concurrency: concurrency(),
 				}),
 			});
 		} catch (e) {
@@ -422,9 +424,9 @@ export default function App() {
 
 								<For each={results()}>
 									{(res) => {
-										const isError = res.Status >= 400 || res.Status === 0;
+										const isError = res.status >= 400 || res.status === 0;
 										const width = Math.max(
-											(res.Latency / maxLatency()) * 100,
+											(res.latencyNs / maxLatency()) * 100,
 											1,
 										);
 										return (
@@ -442,12 +444,12 @@ export default function App() {
 												></div>
 												<div class="relative z-10 flex justify-between w-full text-xs font-mono">
 													<span class="text-zinc-400 group-hover:text-zinc-200">
-														{res.Status === 0 ? "FAILED" : `${res.Status} OK`}
+														{res.status === 0 ? "FAILED" : `${res.status} OK`}
 													</span>
 													<span
 														class={isError ? "text-rose-400" : "text-cyan-400"}
 													>
-														{formatLatency(res.Latency)}
+														{formatLatency(res.latencyNs)}
 													</span>
 												</div>
 											</button>
@@ -466,7 +468,7 @@ export default function App() {
 								)}
 								<For each={results()}>
 									{(res) => {
-										const isError = res.Status >= 400 || res.Status === 0;
+										const isError = res.status >= 400 || res.status === 0;
 										return (
 											<button
 												type="button"
@@ -483,20 +485,20 @@ export default function App() {
 															: "text-cyan-400 w-10"
 													}
 												>
-													{res.RequestMethod || method()}
+													{res.requestMethod || method()}
 												</span>
 												<span class="text-zinc-400 truncate flex-1 group-hover:text-zinc-200">
-													{res.RequestURL || url()}
+													{res.requestUrl || url()}
 												</span>
 												<span
 													class={`w-16 text-right font-bold ${isError ? "text-rose-500" : "text-cyan-400"}`}
 												>
-													{res.Status === 0 ? "ERR" : res.Status}
+													{res.status === 0 ? "ERR" : res.status}
 												</span>
 												<span
 													class={`w-16 text-right ${isError ? "text-rose-400/70" : "text-zinc-500"}`}
 												>
-													{formatLatency(res.Latency)}
+													{formatLatency(res.latencyNs)}
 												</span>
 											</button>
 										);
@@ -519,20 +521,20 @@ export default function App() {
 											Request
 										</span>
 										<span class="text-xs font-mono text-cyan-300 uppercase">
-											{selectedResult()?.RequestMethod || method()}
+											{selectedResult()?.requestMethod || method()}
 										</span>
 									</div>
 									<div class="text-xs text-zinc-400 font-mono truncate max-w-105">
-										{selectedResult()?.RequestURL || url()}
+										{selectedResult()?.requestUrl || url()}
 									</div>
 									<div class="flex items-center gap-3 text-xs font-mono">
 										<span
-											class={`${(selectedResult()?.Status || 0) >= 400 || (selectedResult()?.Status || 0) === 0 ? "text-rose-400" : "text-cyan-400"}`}
+											class={`${(selectedResult()?.status || 0) >= 400 || (selectedResult()?.status || 0) === 0 ? "text-rose-400" : "text-cyan-400"}`}
 										>
-											Status: {selectedResult()?.Status || 0}
+											Status: {selectedResult()?.status || 0}
 										</span>
 										<span class="text-zinc-500">
-											Latency: {formatLatency(selectedResult()?.Latency || 0)}
+											Latency: {formatLatency(selectedResult()?.latencyNs || 0)}
 										</span>
 									</div>
 								</div>
@@ -554,7 +556,7 @@ export default function App() {
 								<div class="rounded-xl border border-white/10 bg-black/30 divide-y divide-white/5">
 									<Show
 										when={
-											Object.keys(selectedResult()?.ResponseHeaders || {})
+											Object.keys(selectedResult()?.responseHeaders || {})
 												.length > 0
 										}
 										fallback={
@@ -565,7 +567,7 @@ export default function App() {
 									>
 										<For
 											each={Object.entries(
-												selectedResult()?.ResponseHeaders || {},
+												selectedResult()?.responseHeaders || {},
 											)}
 										>
 											{([key, value]) => (
@@ -583,9 +585,9 @@ export default function App() {
 								</div>
 							</div>
 
-							<Show when={selectedResult()?.Error}>
+							<Show when={selectedResult()?.error}>
 								<div class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-mono text-rose-300 break-all">
-									{selectedResult()?.Error}
+									{selectedResult()?.error}
 								</div>
 							</Show>
 
@@ -594,7 +596,7 @@ export default function App() {
 									Response Body
 								</h3>
 								<pre class="bg-black/50 p-4 rounded-xl border border-white/10 overflow-x-auto text-xs text-zinc-300 whitespace-pre-wrap wrap-break-word">
-									{selectedResult()?.ResponseBody || ""}
+									{selectedResult()?.responseBody || ""}
 								</pre>
 							</div>
 						</div>

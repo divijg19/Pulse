@@ -31,8 +31,14 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
+      - name: Vet backend
+        run: go vet ./...
+
       - name: Test backend
         run: go test ./...
+
+      - name: Race test backend
+        run: go test -race ./...
 
       - name: Build backend (verify embed)
         run: go build -v ./cmd/pulse

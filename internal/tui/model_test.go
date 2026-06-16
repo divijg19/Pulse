@@ -3,6 +3,7 @@ package tui
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,5 +126,71 @@ func TestResultSelectionAndInspector(t *testing.T) {
 	m = updated.(Model)
 	if m.inspector {
 		t.Fatal("inspector should close on esc")
+	}
+}
+
+func TestHeaderAddRemove(t *testing.T) {
+	m := NewModel()
+	m.showPayload = true
+	m.focus = focusHeaders
+
+	// handleHeaderKey auto-adds one header when the slice is empty,
+	// so after the first ctrl+n there will be 2.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+	m = updated.(Model)
+	if len(m.headers) != 2 {
+		t.Fatalf("after ctrl+n headers = %d (expected 2)", len(m.headers))
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = updated.(Model)
+	if len(m.headers) != 1 {
+		t.Fatalf("after ctrl+d headers = %d (expected 1)", len(m.headers))
+	}
+}
+
+func TestRejectsOversizedBody(t *testing.T) {
+	m := NewModel()
+	m.urlInput.SetValue("https://example.com/api")
+	m.setConcurrency(1)
+	m.bodyInput.CharLimit = maxTUIBodyBytes + 100
+	m.bodyInput.SetValue(strings.Repeat("x", maxTUIBodyBytes+1))
+
+	started, cmd := m.startRun()
+	if cmd != nil {
+		t.Fatal("startRun should return nil cmd when body too large")
+	}
+	if started.running {
+		t.Fatal("model should not be running with oversized body")
+	}
+	if started.status != "BODY TOO LARGE (MAX 1MB)" {
+		t.Fatalf("status = %q", started.status)
+	}
+}
+
+func TestAutoScrollToggle(t *testing.T) {
+	m := NewModel()
+	if !m.autoScroll {
+		t.Fatal("autoScroll should default to true")
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+	m = updated.(Model)
+	if m.autoScroll {
+		t.Fatal("autoScroll should toggle to false")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+	m = updated.(Model)
+	if !m.autoScroll {
+		t.Fatal("autoScroll should toggle back to true")
+	}
+
+	// autoScroll should reset to true on startRun
+	m.autoScroll = false
+	m.urlInput.SetValue("https://example.com/api")
+	m, _ = m.startRun()
+	if !m.autoScroll {
+		t.Fatal("autoScroll should reset to true on startRun")
 	}
 }

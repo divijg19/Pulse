@@ -3,8 +3,8 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/divijg19/Pulse/internal/engine"
@@ -58,8 +58,8 @@ func (h *RunHandler) HandleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Received run request: %+v\n", validatedReq)
+	log.Printf("Received run request: url=%s method=%s concurrency=%d", validatedReq.URL, validatedReq.Method, validatedReq.Concurrency)
 
 	engine.ExecuteConcurrent(r.Context(), validatedReq, h.Hub)
-	fmt.Printf("Finished executing %d requests to %s with method %s\n", validatedReq.Concurrency, validatedReq.URL, validatedReq.Method)
+	log.Printf("Finished executing %d requests to %s with method %s", validatedReq.Concurrency, validatedReq.URL, validatedReq.Method)
 }

@@ -62,10 +62,15 @@ jobs:
           go build -ldflags="-s -w" -o $FILE_NAME ./cmd/pulse
           echo "FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
 
+      - name: Generate checksum
+        run: sha256sum ${{ env.FILE_NAME }} > ${{ env.FILE_NAME }}.sha256
+
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.FILE_NAME }}
+          files: |
+            ${{ env.FILE_NAME }}
+            ${{ env.FILE_NAME }}.sha256
           # Ensure manual dispatches don't accidentally attach to an old tag
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         env:
