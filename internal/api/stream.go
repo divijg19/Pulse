@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/divijg19/Pulse/internal/model"
+	"github.com/divijg19/Pulse/internal/runconfig"
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
@@ -24,7 +25,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	clientChan := make(chan model.Event, 10)
+	clientChan := make(chan model.Event, runconfig.MaxConcurrency)
 	h.Hub.Add(clientChan)
 	defer h.Hub.Remove(clientChan)
 

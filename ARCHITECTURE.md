@@ -124,12 +124,14 @@ SSE event type: `result`
 
 Event payload fields:
 
-- `Status` HTTP status code.
-- `Latency` Go duration encoded in nanoseconds.
-- `Timestamp` request completion timestamp.
-- `Error` error string when execution/read fails.
-- `ResponseHeaders` flattened response header map.
-- `ResponseBody` truncated response body capture (10 KiB max).
+- `status` HTTP status code.
+- `latencyNs` request latency in nanoseconds.
+- `timestamp` request start timestamp.
+- `error` error string when execution/read fails.
+- `responseHeaders` flattened response header map.
+- `responseBody` truncated response body capture (10 KiB max).
+- `requestMethod` HTTP method of the request.
+- `requestUrl` URL of the request.
 
 Streaming semantics:
 

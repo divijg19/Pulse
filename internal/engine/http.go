@@ -24,7 +24,7 @@ func ExecuteSingle(ctx context.Context, url string, method string, headers map[s
 
 	req, err := http.NewRequestWithContext(ctx, method, url, requestBody)
 	if err != nil {
-		return model.Result{ID: "", Status: 0, Latency: 0, Timestamp: time.Now(), Error: err.Error()}
+		return model.Result{Status: 0, Latency: 0, Timestamp: start, Error: err.Error(), RequestMethod: method, RequestURL: url}
 	}
 	for key, value := range headers {
 		if key == "" {
@@ -35,27 +35,32 @@ func ExecuteSingle(ctx context.Context, url string, method string, headers map[s
 
 	resp, err := requestClient.Do(req)
 	if err != nil {
-		return model.Result{ID: "", Status: 0, Latency: 0, Timestamp: time.Now(), Error: err.Error()}
+		return model.Result{Status: 0, Latency: 0, Timestamp: start, Error: err.Error(), RequestMethod: method, RequestURL: url}
 	}
 	defer resp.Body.Close()
+	defer io.Copy(io.Discard, resp.Body)
 
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
 		return model.Result{
 			Status:          resp.StatusCode,
 			Latency:         time.Since(start),
-			Timestamp:       time.Now(),
+			Timestamp:       start,
 			Error:           err.Error(),
 			ResponseHeaders: flattenHeaders(resp.Header),
+			RequestMethod:   method,
+			RequestURL:      url,
 		}
 	}
 
 	return model.Result{
 		Status:          resp.StatusCode,
 		Latency:         time.Since(start),
-		Timestamp:       time.Now(),
+		Timestamp:       start,
 		ResponseHeaders: flattenHeaders(resp.Header),
 		ResponseBody:    string(bodyBytes),
+		RequestMethod:   method,
+		RequestURL:      url,
 	}
 }
 

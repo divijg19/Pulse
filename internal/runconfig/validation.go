@@ -17,7 +17,7 @@ const (
 	MaxConcurrency     = 100
 )
 
-var AllowedMethods = []string{
+var allowedMethods = []string{
 	http.MethodGet,
 	http.MethodPost,
 	http.MethodPut,
@@ -25,6 +25,14 @@ var AllowedMethods = []string{
 	http.MethodDelete,
 	http.MethodHead,
 	http.MethodOptions,
+}
+
+var allowedMethodsJoined = strings.Join(allowedMethods, ", ")
+
+func AllowedMethods() []string {
+	result := make([]string, len(allowedMethods))
+	copy(result, allowedMethods)
+	return result
 }
 
 func Validate(req model.RunRequest) (model.RunRequest, error) {
@@ -46,7 +54,7 @@ func Validate(req model.RunRequest) (model.RunRequest, error) {
 		req.Method = DefaultMethod
 	}
 	if !methodAllowed(req.Method) {
-		return model.RunRequest{}, fmt.Errorf("method must be one of: %s", strings.Join(AllowedMethods, ", "))
+		return model.RunRequest{}, fmt.Errorf("method must be one of: %s", allowedMethodsJoined)
 	}
 
 	if req.Concurrency < MinConcurrency || req.Concurrency > MaxConcurrency {
@@ -71,7 +79,7 @@ func ClampConcurrency(value int) int {
 }
 
 func methodAllowed(method string) bool {
-	for _, allowed := range AllowedMethods {
+	for _, allowed := range allowedMethods {
 		if method == allowed {
 			return true
 		}

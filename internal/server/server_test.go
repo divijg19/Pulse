@@ -24,6 +24,18 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestRunMethodNotAllowed(t *testing.T) {
+	handler := NewHandler(testStaticFS())
+	req := httptest.NewRequest(http.MethodGet, "/run", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d (expected 405)", rec.Code)
+	}
+}
+
 func TestRunRejectsInvalidPayload(t *testing.T) {
 	handler := NewHandler(testStaticFS())
 	req := httptest.NewRequest(http.MethodPost, "/run", strings.NewReader(`{"url":"","method":"GET","concurrency":1}`))

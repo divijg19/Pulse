@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/divijg19/Pulse/internal/engine"
+	"github.com/divijg19/Pulse/internal/metrics"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 	"github.com/divijg19/Pulse/internal/stream"
@@ -26,6 +27,14 @@ const (
 	focusHeaders
 	focusBody
 	focusResults
+)
+
+const (
+	subfocusKey      = 0
+	subfocusValue    = 1
+	latencyRingSize  = 40
+	defaultBodyWidth = 48
+	maxTUIBodyBytes  = 1 << 20
 )
 
 type resultTab int
@@ -55,17 +64,23 @@ type Model struct {
 	selectedHead   int
 	headerSubfocus int
 
-	activeTab resultTab
-	results   []model.Result
-	selected  int
-	inspector bool
+	activeTab  resultTab
+	results    []model.Result
+	selected   int
+	inspector  bool
+	dotGlow    bool
+	autoScroll bool
 
-	running   bool
-	startedAt time.Time
-	elapsed   time.Duration
-	cancel    context.CancelFunc
-	eventCh   <-chan model.Event
-	status    string
+	running     bool
+	startedAt   time.Time
+	elapsed     time.Duration
+	cancel      context.CancelFunc
+	eventCh     <-chan model.Event
+	status      string
+	summary     metrics.Summary
+	latencyRing [latencyRingSize]time.Duration
+	latencyHead int
+	latencyLen  int
 }
 
 type resultMsg struct {
@@ -95,7 +110,7 @@ func NewModel() Model {
 	body.Prompt = ""
 	body.CharLimit = 1 << 20
 	body.SetHeight(5)
-	body.SetWidth(48)
+	body.SetWidth(defaultBodyWidth)
 
 	return Model{
 		focus:       focusURL,
@@ -104,6 +119,7 @@ func NewModel() Model {
 		ccInput:     cc,
 		bodyInput:   body,
 		activeTab:   tabTimeline,
+		autoScroll:  true,
 		status:      "SYSTEM READY",
 	}
 }
@@ -123,10 +139,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.elapsed = time.Since(m.startedAt)
+		m.dotGlow = !m.dotGlow
 		return m, tickCmd()
 	case resultMsg:
-		m.results = append(m.results, msg.Result)
-		if m.selected >= len(m.results)-1 {
+		m.latencyRing[m.latencyHead] = msg.Result.Latency
+		m.latencyHead = (m.latencyHead + 1) % latencyRingSize
+		if m.latencyLen < latencyRingSize {
+			m.latencyLen++
+		}
+		if len(m.results) < 10000 {
+			m.results = append(m.results, msg.Result)
+		}
+		m.summary = metrics.Compute(m.results, m.elapsed)
+		if m.autoScroll && m.selected >= len(m.results)-1 {
 			m.selected = len(m.results) - 1
 		}
 		if m.running && m.eventCh != nil {
@@ -134,7 +159,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case runFinishedMsg:
+		m.elapsed = time.Since(m.startedAt)
 		m.running = false
+		if m.cancel != nil {
+			m.cancel()
+		}
 		m.cancel = nil
 		m.eventCh = nil
 		if m.status == "RUNNING" {
@@ -169,6 +198,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "]":
 		m.activeTab = tabLogs
 		return m, nil
+	case "ctrl+a":
+		m.autoScroll = !m.autoScroll
+		return m, nil
 	case "esc":
 		if m.inspector {
 			m.inspector = false
@@ -185,10 +217,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case focusMethod:
 		switch msg.String() {
 		case "left", "h", "up", "k":
-			m.methodIndex = (m.methodIndex + len(runconfig.AllowedMethods) - 1) % len(runconfig.AllowedMethods)
+			m.methodIndex = (m.methodIndex + len(runconfig.AllowedMethods()) - 1) % len(runconfig.AllowedMethods())
 			return m, nil
 		case "right", "l", "down", "j", "enter":
-			m.methodIndex = (m.methodIndex + 1) % len(runconfig.AllowedMethods)
+			m.methodIndex = (m.methodIndex + 1) % len(runconfig.AllowedMethods())
 			return m, nil
 		}
 	case focusConcurrency:
@@ -245,7 +277,7 @@ func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+n":
 		m.headers = append(m.headers, newHeaderRow())
 		m.selectedHead = len(m.headers) - 1
-		m.headerSubfocus = 0
+		m.headerSubfocus = subfocusKey
 		return m.syncFocus(), nil
 	case "ctrl+d":
 		if len(m.headers) > 0 {
@@ -269,10 +301,10 @@ func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.syncFocus(), nil
 	case "left", "h":
-		m.headerSubfocus = 0
+		m.headerSubfocus = subfocusKey
 		return m.syncFocus(), nil
 	case "right", "l":
-		m.headerSubfocus = 1
+		m.headerSubfocus = subfocusValue
 		return m.syncFocus(), nil
 	}
 
@@ -308,7 +340,7 @@ func (m Model) startRun() (Model, tea.Cmd) {
 
 	req := model.RunRequest{
 		URL:         m.urlInput.Value(),
-		Method:      runconfig.AllowedMethods[m.methodIndex],
+		Method:      runconfig.AllowedMethods()[m.methodIndex],
 		Headers:     m.headerMap(),
 		Body:        m.bodyInput.Value(),
 		Concurrency: m.concurrency(),
@@ -317,6 +349,11 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	validated, err := runconfig.Validate(req)
 	if err != nil {
 		m.status = strings.ToUpper(err.Error())
+		return m, nil
+	}
+
+	if len(validated.Body) > maxTUIBodyBytes {
+		m.status = "BODY TOO LARGE (MAX 1MB)"
 		return m, nil
 	}
 
@@ -334,10 +371,14 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.selected = 0
 	m.inspector = false
 	m.status = "RUNNING"
+	m.autoScroll = true
+	m.summary = metrics.Summary{}
+	m.latencyHead = 0
+	m.latencyLen = 0
 
 	go func() {
+		defer hub.Remove(eventCh)
 		engine.ExecuteConcurrent(ctx, validated, hub)
-		hub.Remove(eventCh)
 	}()
 
 	return m, tea.Batch(waitForEvent(eventCh), tickCmd())
@@ -408,7 +449,7 @@ func (m Model) syncFocus() Model {
 			if m.selectedHead >= len(m.headers) {
 				m.selectedHead = len(m.headers) - 1
 			}
-			if m.headerSubfocus == 0 {
+			if m.headerSubfocus == subfocusKey {
 				m.headers[m.selectedHead].Key.Focus()
 			} else {
 				m.headers[m.selectedHead].Value.Focus()

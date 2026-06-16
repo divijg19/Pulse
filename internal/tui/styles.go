@@ -28,6 +28,10 @@ var (
 	statusDotStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorCyan))
 
+	statusDotGlowStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#f4f4f5")).
+				Bold(true)
+
 	mutedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorMuted))
 
@@ -139,4 +143,34 @@ func errorRowStyle(selected bool) lipgloss.Style {
 		style = style.Background(lipgloss.Color("#2a1218")).Bold(true)
 	}
 	return style
+}
+
+func methodColor(name string) string {
+	switch name {
+	case "GET":
+		return colorCyan
+	case "POST":
+		return colorGreen
+	case "PUT":
+		return colorAmber
+	case "DELETE":
+		return colorRose
+	case "PATCH":
+		return colorFuchsia
+	default:
+		return colorMuted // HEAD, OPTIONS
+	}
+}
+
+func methodStyle(name string, focused bool) lipgloss.Style {
+	s := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorBorder)).
+		Padding(0, 1)
+	if focused {
+		s = s.BorderForeground(lipgloss.Color(colorCyan)).Foreground(lipgloss.Color(methodColor(name)))
+	} else {
+		s = s.Foreground(lipgloss.Color(methodColor(name)))
+	}
+	return s
 }
