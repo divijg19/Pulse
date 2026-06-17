@@ -3,17 +3,18 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 const (
-	colorBg       = "#09090b"
-	colorPanel    = "#111113"
-	colorElevated = "#18181b"
-	colorBorder   = "#27272a"
-	colorText     = "#d4d4d8"
-	colorMuted    = "#71717a"
-	colorCyan     = "#22d3ee"
-	colorGreen    = "#34d399"
-	colorAmber    = "#fbbf24"
-	colorRose     = "#fb7185"
-	colorFuchsia  = "#e879f9"
+	colorBg         = "#09090b"
+	colorPanel      = "#111113"
+	colorElevated   = "#1c1c1e"
+	colorBorder     = "#3f3f46"
+	colorText       = "#d4d4d8"
+	colorMuted      = "#71717a"
+	colorCyan       = "#22d3ee"
+	colorCyanStrong = "#06b6d4"
+	colorGreen      = "#34d399"
+	colorAmber      = "#fbbf24"
+	colorRose       = "#fb7185"
+	colorFuchsia    = "#e879f9"
 )
 
 var (
@@ -30,7 +31,7 @@ var (
 			Foreground(lipgloss.Color(colorCyan))
 
 	statusDotGlowStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#f4f4f5")).
+				Foreground(lipgloss.Color(colorCyanStrong)).
 				Bold(true)
 
 	mutedStyle = lipgloss.NewStyle().
@@ -57,8 +58,8 @@ var (
 			Foreground(lipgloss.Color(colorMuted))
 
 	metricValueStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorText)).
-			Bold(true)
+				Foreground(lipgloss.Color(colorText)).
+				Bold(true)
 
 	emptyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorMuted)).

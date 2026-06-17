@@ -287,7 +287,15 @@ func (m Model) renderTabs(width int) string {
 
 func (m Model) renderTimeline(width int, height int) string {
 	if len(m.results) == 0 {
-		return emptyStyle.Width(width).Height(height).Render("Awaiting execution...")
+		msg := "Waiting for results..."
+		if !m.running {
+			if strings.TrimSpace(m.urlInput.Value()) == "" {
+				msg = "Enter a URL to begin"
+			} else {
+				msg = "Ctrl+R to run"
+			}
+		}
+		return emptyStyle.Width(width).Height(height).Render(msg)
 	}
 
 	maxStart := max(0, len(m.results)-height)
@@ -335,7 +343,15 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 
 func (m Model) renderLogs(width int, height int) string {
 	if len(m.results) == 0 {
-		return emptyStyle.Width(width).Height(height).Render("No logs yet.")
+		msg := "No results yet..."
+		if !m.running {
+			if strings.TrimSpace(m.urlInput.Value()) == "" {
+				msg = "Enter a URL to begin"
+			} else {
+				msg = "Ctrl+R to run"
+			}
+		}
+		return emptyStyle.Width(width).Height(height).Render(msg)
 	}
 
 	maxStart := max(0, len(m.results)-height)
@@ -460,16 +476,11 @@ func (m Model) renderSparkline(width int) string {
 		return ""
 	}
 
-	label := labelStyle.Render(" LATENCY SPARKLINE")
-	labelWidth := lipgloss.Width(label)
-	barWidth := width - labelWidth - 2
-	if barWidth < 4 {
-		barWidth = 4
-	}
+	label := lipgloss.PlaceHorizontal(width, lipgloss.Right, labelStyle.Render("LATENCY SPARKLINE"))
 
 	count := m.latencyLen
-	if count > barWidth {
-		count = barWidth
+	if count > width {
+		count = width
 	}
 
 	maxLat := time.Duration(0)
@@ -502,9 +513,9 @@ func (m Model) renderSparkline(width int) string {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(dotColor)).Render(string(sparklineChars[level])))
 	}
 
+	bars := lipgloss.NewStyle().Width(width).MaxWidth(width).Render(sb.String())
 	separator := separatorBorder.Render(strings.Repeat("─", width))
-	row := fmt.Sprintf("%s%s", sb.String(), label)
-	return lipgloss.JoinVertical(lipgloss.Left, row, separator)
+	return lipgloss.JoinVertical(lipgloss.Left, label, bars, separator)
 }
 
 func resultStatus(result model.Result) string {

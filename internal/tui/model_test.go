@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/divijg19/Pulse/internal/model"
+	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
 func TestFocusMovement(t *testing.T) {
@@ -461,5 +462,257 @@ func TestClamp(t *testing.T) {
 	}
 	if got := clamp(15, 0, 10); got != 10 {
 		t.Fatalf("clamp(15, 0, 10) = %d", got)
+	}
+}
+
+func TestMoveFocus_NoPayload(t *testing.T) {
+	m := NewModel()
+	m.showPayload = false
+	m.focus = focusMethod
+
+	expected := []focusTarget{focusMethod, focusURL, focusConcurrency, focusPayload, focusResults}
+	for i, want := range expected {
+		if m.focus != want {
+			t.Fatalf("step %d: expected focus %v, got %v", i, want, m.focus)
+		}
+		if want == focusResults {
+			break
+		}
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = updated.(Model)
+	}
+}
+
+func TestMoveFocus_ShiftTabWrap(t *testing.T) {
+	m := NewModel()
+	m.focus = focusMethod
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.focus != focusResults {
+		t.Fatalf("shift+tab from method should wrap to results, got %v", m.focus)
+	}
+}
+
+func TestMoveFocus_WithPayload(t *testing.T) {
+	m := NewModel()
+	m.showPayload = true
+	m.headers = append(m.headers, newHeaderRow())
+	m.focus = focusMethod
+
+	expected := []focusTarget{
+		focusMethod, focusURL, focusConcurrency, focusPayload,
+		focusHeaders, focusBody, focusResults,
+	}
+
+	for i, want := range expected {
+		if m.focus != want {
+			t.Fatalf("step %d: expected focus %v, got %v", i, want, m.focus)
+		}
+		if want == focusResults {
+			break
+		}
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = updated.(Model)
+	}
+}
+
+func TestUpdateFocusedInput_NonInputState(t *testing.T) {
+	m := NewModel()
+
+	m.focus = focusMethod
+	updated, cmd := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Fatal("updateFocusedInput should return nil cmd for focusMethod")
+	}
+	if m2.focus != focusMethod {
+		t.Fatal("focus should remain unchanged")
+	}
+
+	m.focus = focusPayload
+	_, cmd2 := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if cmd2 != nil {
+		t.Fatal("updateFocusedInput should return nil cmd for focusPayload")
+	}
+
+	m.focus = focusResults
+	_, cmd3 := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if cmd3 != nil {
+		t.Fatal("updateFocusedInput should return nil cmd for focusResults")
+	}
+}
+
+func TestFocusMethod_WrapAtBoundaries(t *testing.T) {
+	m := NewModel()
+	m.focus = focusMethod
+	methods := runconfig.AllowedMethods()
+	last := len(methods) - 1
+
+	m.methodIndex = 0
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(Model)
+	if m.methodIndex != last {
+		t.Fatalf("left at index 0 should wrap to %d, got %d", last, m.methodIndex)
+	}
+
+	m.methodIndex = last
+	updated2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated2.(Model)
+	if m.methodIndex != 0 {
+		t.Fatalf("right at last index should wrap to 0, got %d", m.methodIndex)
+	}
+}
+
+func TestConcurrency_MinMaxEdges(t *testing.T) {
+	m := NewModel()
+	m.focus = focusConcurrency
+
+	m.setConcurrency(1)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(Model)
+	if got := m.concurrency(); got != 1 {
+		t.Fatalf("left at min should stay 1, got %d", got)
+	}
+
+	m.setConcurrency(100)
+	updated2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated2.(Model)
+	if got := m.concurrency(); got != 100 {
+		t.Fatalf("right at max should stay 100, got %d", got)
+	}
+}
+
+func TestCtrlX_NotRunning(t *testing.T) {
+	m := NewModel()
+	m.status = "SYSTEM READY"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	m = updated.(Model)
+
+	if cmd != nil {
+		t.Fatal("ctrl+x when not running should return nil cmd")
+	}
+	if m.status != "SYSTEM READY" {
+		t.Fatalf("status should remain 'SYSTEM READY', got %q", m.status)
+	}
+}
+
+func TestMouseMsg_NoCrash(t *testing.T) {
+	m := NewModel()
+	updated, cmd := m.Update(tea.MouseMsg{})
+	_ = updated.(Model)
+	if cmd != nil {
+		t.Fatal("MouseMsg should return nil cmd")
+	}
+}
+
+func TestStartRun_AlreadyRunning(t *testing.T) {
+	m := NewModel()
+	m.running = true
+	m.urlInput.SetValue("https://example.com/api")
+	m.setConcurrency(1)
+
+	started, cmd := m.startRun()
+	if cmd != nil {
+		t.Fatal("startRun when already running should return nil cmd")
+	}
+	if !started.running {
+		t.Fatal("should remain running")
+	}
+}
+
+func TestCancelRun_NotRunning(t *testing.T) {
+	m := NewModel()
+	m.status = "IDLE"
+
+	result := m.cancelRun()
+	if result.status != "IDLE" {
+		t.Fatalf("status should remain 'IDLE', got %q", result.status)
+	}
+}
+
+func TestMultipleRunLifecycle(t *testing.T) {
+	m := NewModel()
+	m.urlInput.SetValue("https://example.com/api")
+	m.setConcurrency(1)
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+	}
+	m.elapsed = 5 * time.Second
+
+	started, _ := m.startRun()
+	if !started.running {
+		t.Fatal("should be running after startRun")
+	}
+	if len(started.results) != 0 {
+		t.Fatal("results should be reset on startRun")
+	}
+	if started.elapsed != 0 {
+		t.Fatal("elapsed should be reset on startRun")
+	}
+
+	cancelled := started.cancelRun()
+	if cancelled.status != "CANCELLED" {
+		t.Fatalf("status after cancel = %q, want 'CANCELLED'", cancelled.status)
+	}
+
+	// cancelRun only cancels the context; running goes false when the
+	// goroutine closes the event channel, which we simulate here.
+	finished, _ := cancelled.Update(runFinishedMsg{})
+	m2 := finished.(Model)
+	if m2.running {
+		t.Fatal("should not be running after runFinishedMsg")
+	}
+	if m2.status != "CANCELLED" {
+		t.Fatalf("status after cancel+finish = %q, want 'CANCELLED'", m2.status)
+	}
+
+	restarted, cmd := m2.startRun()
+	if cmd == nil {
+		t.Fatal("startRun after cancel+finish should return a command")
+	}
+	if !restarted.running {
+		t.Fatal("should be running after restart")
+	}
+}
+
+func TestEsc_FromInspectorWithResults(t *testing.T) {
+	m := NewModel()
+	m.inspector = true
+	m.focus = focusResults
+	m.results = []model.Result{
+		{Status: 200},
+	}
+	m.selected = 0
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+
+	if m.inspector {
+		t.Fatal("esc should close inspector")
+	}
+	if m.focus != focusResults {
+		t.Fatalf("focus should remain focusResults, got %v", m.focus)
+	}
+}
+
+func TestResultMsg_NoEventChannel(t *testing.T) {
+	m := NewModel()
+	m.running = false
+	m.eventCh = nil
+
+	msg := resultMsg{Result: model.Result{Status: 200, Latency: 10 * time.Millisecond}}
+	updated, cmd := m.Update(msg)
+	m2 := updated.(Model)
+
+	if cmd != nil {
+		t.Fatal("resultMsg with no event channel should return nil cmd")
+	}
+	if len(m2.results) != 1 {
+		t.Fatalf("result should be added, got %d results", len(m2.results))
+	}
+	if m2.summary.Total != 1 {
+		t.Fatalf("summary should reflect 1 result, got %d", m2.summary.Total)
 	}
 }
