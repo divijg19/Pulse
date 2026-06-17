@@ -12,6 +12,8 @@ import (
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
+var testClient = &http.Client{Timeout: 30 * time.Second}
+
 func TestExecuteSingle_Happy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -19,7 +21,7 @@ func TestExecuteSingle_Happy(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result := ExecuteSingle(context.Background(), srv.URL, "GET", nil, "")
+	result := ExecuteSingle(context.Background(), testClient, srv.URL, "GET", nil, "")
 	if result.Status != http.StatusOK {
 		t.Fatalf("status = %d", result.Status)
 	}
@@ -43,7 +45,7 @@ func TestExecuteSingle_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 
-	result := ExecuteSingle(ctx, srv.URL, "GET", nil, "")
+	result := ExecuteSingle(ctx, testClient, srv.URL, "GET", nil, "")
 	if result.Status != 0 {
 		t.Fatalf("status = %d", result.Status)
 	}
@@ -53,7 +55,7 @@ func TestExecuteSingle_Timeout(t *testing.T) {
 }
 
 func TestExecuteSingle_Error(t *testing.T) {
-	result := ExecuteSingle(context.Background(), "http://127.0.0.1:1", "GET", nil, "")
+	result := ExecuteSingle(context.Background(), testClient, "http://127.0.0.1:1", "GET", nil, "")
 	if result.Status != 0 {
 		t.Fatalf("status = %d", result.Status)
 	}
@@ -79,7 +81,7 @@ func TestExecuteSingle_WithHeadersAndBody(t *testing.T) {
 	defer srv.Close()
 
 	headers := map[string]string{"X-Custom": "test-value"}
-	result := ExecuteSingle(context.Background(), srv.URL, "POST", headers, `{"key":"value"}`)
+	result := ExecuteSingle(context.Background(), testClient, srv.URL, "POST", headers, `{"key":"value"}`)
 	if result.Status != http.StatusOK {
 		t.Fatalf("status = %d", result.Status)
 	}
@@ -97,7 +99,7 @@ func TestExecuteSingle_RequestMethodURL_OnTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 
-	result := ExecuteSingle(ctx, srv.URL, "POST", nil, "")
+	result := ExecuteSingle(ctx, testClient, srv.URL, "POST", nil, "")
 	if result.RequestMethod != "POST" {
 		t.Fatalf("RequestMethod = %q", result.RequestMethod)
 	}
@@ -107,7 +109,7 @@ func TestExecuteSingle_RequestMethodURL_OnTimeout(t *testing.T) {
 }
 
 func TestExecuteSingle_RequestMethodURL_OnConnectError(t *testing.T) {
-	result := ExecuteSingle(context.Background(), "http://127.0.0.1:1", "DELETE", nil, "")
+	result := ExecuteSingle(context.Background(), testClient, "http://127.0.0.1:1", "DELETE", nil, "")
 	if result.RequestMethod != "DELETE" {
 		t.Fatalf("RequestMethod = %q", result.RequestMethod)
 	}

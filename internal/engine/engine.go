@@ -31,7 +31,7 @@ func ExecuteConcurrent(ctx context.Context, runReq model.RunRequest, hub *stream
 			}
 
 			// 1. Make the HTTP call
-			res := ExecuteSingle(ctx, runReq.URL, runReq.Method, runReq.Headers, runReq.Body)
+			res := ExecuteSingle(ctx, defaultClient, runReq.URL, runReq.Method, runReq.Headers, runReq.Body)
 			if ctx.Err() != nil {
 				return
 			}
