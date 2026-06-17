@@ -3,16 +3,17 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 const (
-	colorBg      = "#09090b"
-	colorPanel   = "#111113"
-	colorBorder  = "#27272a"
-	colorText    = "#d4d4d8"
-	colorMuted   = "#71717a"
-	colorCyan    = "#22d3ee"
-	colorGreen   = "#34d399"
-	colorAmber   = "#fbbf24"
-	colorRose    = "#fb7185"
-	colorFuchsia = "#e879f9"
+	colorBg       = "#09090b"
+	colorPanel    = "#111113"
+	colorElevated = "#18181b"
+	colorBorder   = "#27272a"
+	colorText     = "#d4d4d8"
+	colorMuted    = "#71717a"
+	colorCyan     = "#22d3ee"
+	colorGreen    = "#34d399"
+	colorAmber    = "#fbbf24"
+	colorRose     = "#fb7185"
+	colorFuchsia  = "#e879f9"
 )
 
 var (
@@ -35,10 +36,6 @@ var (
 	mutedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorMuted))
 
-	monoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorMuted)).
-			Bold(true)
-
 	cyanStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorCyan)).
 			Bold(true)
@@ -49,18 +46,19 @@ var (
 			Background(lipgloss.Color(colorPanel)).
 			Padding(1, 2)
 
-	metricStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color(colorBorder)).
-			Foreground(lipgloss.Color(colorText)).
-			PaddingLeft(1)
-
 	sectionTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorCyan)).
 				Bold(true)
 
-	footerStyle = lipgloss.NewStyle().
+	separatorBorder = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorBorder))
+
+	labelStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorMuted))
+
+	metricValueStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorText)).
+			Bold(true)
 
 	emptyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorMuted)).
@@ -119,20 +117,23 @@ func runButtonStyle(running bool) lipgloss.Style {
 		Align(lipgloss.Center)
 }
 
-func tabStyle(active bool) lipgloss.Style {
-	style := lipgloss.NewStyle().
+func pillStyle(active bool) lipgloss.Style {
+	if active {
+		return lipgloss.NewStyle().
+			Padding(0, 3).
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(lipgloss.Color(colorBorder)).
+			Bold(true)
+	}
+	return lipgloss.NewStyle().
 		Padding(0, 3).
 		Foreground(lipgloss.Color(colorMuted))
-	if active {
-		style = style.Foreground(lipgloss.Color("#ffffff")).Background(lipgloss.Color("#27272a")).Bold(true)
-	}
-	return style
 }
 
 func rowStyle(selected bool) lipgloss.Style {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText))
 	if selected {
-		style = style.Foreground(lipgloss.Color(colorCyan)).Background(lipgloss.Color("#18181b"))
+		style = style.Foreground(lipgloss.Color(colorCyan)).Background(lipgloss.Color(colorElevated))
 	}
 	return style
 }
@@ -158,7 +159,7 @@ func methodColor(name string) string {
 	case "PATCH":
 		return colorFuchsia
 	default:
-		return colorMuted // HEAD, OPTIONS
+		return colorMuted
 	}
 }
 
@@ -173,4 +174,20 @@ func methodStyle(name string, focused bool) lipgloss.Style {
 		s = s.Foreground(lipgloss.Color(methodColor(name)))
 	}
 	return s
+}
+
+func statusColor(status int) string {
+	if status == 0 {
+		return colorRose
+	}
+	if status >= 200 && status < 300 {
+		return colorGreen
+	}
+	if status >= 300 && status < 400 {
+		return colorCyan
+	}
+	if status >= 400 {
+		return colorRose
+	}
+	return colorMuted
 }
