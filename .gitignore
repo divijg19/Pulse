@@ -11,6 +11,7 @@ dist
 
 # code coverage
 coverage
+coverage.out
 *.lcov
 
 # logs

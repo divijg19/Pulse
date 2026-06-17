@@ -70,6 +70,21 @@ func TestRunAcceptsValidPayload(t *testing.T) {
 	}
 }
 
+func TestPanicRecovery(t *testing.T) {
+	panicking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("test panic")
+	})
+	handler := recoveryMiddleware(panicking)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d (expected 500)", rec.Code)
+	}
+}
+
 func testStaticFS() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html": {Data: []byte("<html></html>")},

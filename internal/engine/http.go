@@ -12,9 +12,9 @@ import (
 
 const maxResponseBodyBytes int64 = 10 * 1024
 
-var requestClient = &http.Client{Timeout: 30 * time.Second}
+var defaultClient = &http.Client{Timeout: 30 * time.Second}
 
-func ExecuteSingle(ctx context.Context, url string, method string, headers map[string]string, body string) model.Result {
+func ExecuteSingle(ctx context.Context, cli *http.Client, url string, method string, headers map[string]string, body string) model.Result {
 	start := time.Now()
 
 	var requestBody io.Reader
@@ -33,7 +33,7 @@ func ExecuteSingle(ctx context.Context, url string, method string, headers map[s
 		req.Header.Add(key, value)
 	}
 
-	resp, err := requestClient.Do(req)
+	resp, err := cli.Do(req)
 	if err != nil {
 		return model.Result{Status: 0, Latency: 0, Timestamp: start, Error: err.Error(), RequestMethod: method, RequestURL: url}
 	}
