@@ -7,7 +7,7 @@ import (
 )
 
 func Run() error {
-	program := tea.NewProgram(NewModel(), tea.WithAltScreen())
+	program := tea.NewProgram(NewModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := program.Run(); err != nil {
 		return fmt.Errorf("run tui: %w", err)
 	}

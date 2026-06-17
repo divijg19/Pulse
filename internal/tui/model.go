@@ -173,6 +173,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		return m, nil
 	}
 
 	return m.updateFocusedInput(msg)
@@ -190,9 +192,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+x":
 		return m.cancelRun(), nil
 	case "tab":
-		return m.moveFocus(1), nil
+		return m.moveFocus(1)
 	case "shift+tab":
-		return m.moveFocus(-1), nil
+		return m.moveFocus(-1)
 	case "[":
 		m.activeTab = tabTimeline
 		return m, nil
@@ -209,7 +211,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.focus == focusBody {
 			m.focus = focusHeaders
-			return m.syncFocus(), nil
+			return m.syncFocus()
 		}
 		return m, nil
 	}
@@ -279,7 +281,7 @@ func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.headers = append(m.headers, newHeaderRow())
 		m.selectedHead = len(m.headers) - 1
 		m.headerSubfocus = subfocusKey
-		return m.syncFocus(), nil
+		return m.syncFocus()
 	case "ctrl+d":
 		if len(m.headers) > 0 {
 			m.headers = append(m.headers[:m.selectedHead], m.headers[m.selectedHead+1:]...)
@@ -290,23 +292,23 @@ func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.selectedHead = 0
 			}
 		}
-		return m.syncFocus(), nil
+		return m.syncFocus()
 	case "up", "k":
 		if m.selectedHead > 0 {
 			m.selectedHead--
 		}
-		return m.syncFocus(), nil
+		return m.syncFocus()
 	case "down", "j":
 		if m.selectedHead < len(m.headers)-1 {
 			m.selectedHead++
 		}
-		return m.syncFocus(), nil
+		return m.syncFocus()
 	case "left", "h":
 		m.headerSubfocus = subfocusKey
-		return m.syncFocus(), nil
+		return m.syncFocus()
 	case "right", "l":
 		m.headerSubfocus = subfocusValue
-		return m.syncFocus(), nil
+		return m.syncFocus()
 	}
 
 	return m.updateFocusedInput(msg)
@@ -330,6 +332,8 @@ func (m Model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case focusBody:
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
+	default:
+		return m, nil
 	}
 	return m, cmd
 }
@@ -413,7 +417,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func (m Model) moveFocus(delta int) Model {
+func (m Model) moveFocus(delta int) (Model, tea.Cmd) {
 	targets := []focusTarget{focusMethod, focusURL, focusConcurrency, focusPayload, focusResults}
 	if m.showPayload {
 		targets = []focusTarget{focusMethod, focusURL, focusConcurrency, focusPayload, focusHeaders, focusBody, focusResults}
@@ -431,7 +435,7 @@ func (m Model) moveFocus(delta int) Model {
 	return m.syncFocus()
 }
 
-func (m Model) syncFocus() Model {
+func (m Model) syncFocus() (Model, tea.Cmd) {
 	m.urlInput.Blur()
 	m.ccInput.Blur()
 	m.bodyInput.Blur()
@@ -440,26 +444,27 @@ func (m Model) syncFocus() Model {
 		m.headers[i].Value.Blur()
 	}
 
+	var cmds []tea.Cmd
 	switch m.focus {
 	case focusURL:
-		m.urlInput.Focus()
+		cmds = append(cmds, m.urlInput.Focus())
 	case focusConcurrency:
-		m.ccInput.Focus()
+		cmds = append(cmds, m.ccInput.Focus())
 	case focusHeaders:
 		if len(m.headers) > 0 {
 			if m.selectedHead >= len(m.headers) {
 				m.selectedHead = len(m.headers) - 1
 			}
 			if m.headerSubfocus == subfocusKey {
-				m.headers[m.selectedHead].Key.Focus()
+				cmds = append(cmds, m.headers[m.selectedHead].Key.Focus())
 			} else {
-				m.headers[m.selectedHead].Value.Focus()
+				cmds = append(cmds, m.headers[m.selectedHead].Value.Focus())
 			}
 		}
 	case focusBody:
-		m.bodyInput.Focus()
+		cmds = append(cmds, m.bodyInput.Focus())
 	}
-	return m
+	return m, tea.Batch(cmds...)
 }
 
 func (m Model) concurrency() int {

@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestMethodColor(t *testing.T) {
@@ -162,5 +164,124 @@ func TestStatusColor(t *testing.T) {
 		if got != tc.color {
 			t.Errorf("statusColor(%d) = %q (expected %q)", tc.status, got, tc.color)
 		}
+	}
+}
+
+func TestColorConstants(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"colorBg", colorBg, "#09090b"},
+		{"colorPanel", colorPanel, "#111113"},
+		{"colorElevated", colorElevated, "#1c1c1e"},
+		{"colorBorder", colorBorder, "#3f3f46"},
+		{"colorText", colorText, "#d4d4d8"},
+		{"colorMuted", colorMuted, "#71717a"},
+		{"colorCyan", colorCyan, "#22d3ee"},
+		{"colorCyanStrong", colorCyanStrong, "#06b6d4"},
+		{"colorGreen", colorGreen, "#34d399"},
+		{"colorAmber", colorAmber, "#fbbf24"},
+		{"colorRose", colorRose, "#fb7185"},
+		{"colorFuchsia", colorFuchsia, "#e879f9"},
+	}
+	for _, tc := range tests {
+		if tc.got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestStatusDotGlow_VisualFeedback(t *testing.T) {
+	if got := statusDotStyle.GetForeground(); got != lipgloss.Color(colorCyan) {
+		t.Errorf("statusDotStyle foreground = %q, want %q", got, colorCyan)
+	}
+	if got := statusDotGlowStyle.GetForeground(); got != lipgloss.Color(colorCyanStrong) {
+		t.Errorf("statusDotGlowStyle foreground = %q, want %q", got, colorCyanStrong)
+	}
+	if got := statusDotGlowStyle.GetBold(); !got {
+		t.Error("statusDotGlowStyle should be bold")
+	}
+	if got := statusDotStyle.GetBold(); got {
+		t.Error("statusDotStyle should not be bold")
+	}
+}
+
+func TestControlStyle_FocusVisualFeedback(t *testing.T) {
+	focused := controlStyle(true)
+	unfocused := controlStyle(false)
+
+	if got := focused.GetForeground(); got != lipgloss.Color(colorCyan) {
+		t.Errorf("focused controlStyle text fg = %q, want %q", got, colorCyan)
+	}
+	if got := unfocused.GetForeground(); got != lipgloss.Color(colorText) {
+		t.Errorf("unfocused controlStyle text fg = %q, want %q", got, colorText)
+	}
+}
+
+func TestInputStyle_FocusVisualFeedback(t *testing.T) {
+	focused := inputStyle(true)
+	unfocused := inputStyle(false)
+
+	if got := focused.GetForeground(); got != lipgloss.Color(colorCyan) {
+		t.Errorf("focused inputStyle text fg = %q, want %q", got, colorCyan)
+	}
+	if got := unfocused.GetForeground(); got != lipgloss.Color("#e4e4e7") {
+		t.Errorf("unfocused inputStyle text fg = %q, want %q", got, "#e4e4e7")
+	}
+}
+
+func TestErrorRowStyle_SelectedVisualFeedback(t *testing.T) {
+	selected := errorRowStyle(true)
+	normal := errorRowStyle(false)
+
+	if got := selected.GetForeground(); got != lipgloss.Color(colorRose) {
+		t.Errorf("selected errorRowStyle fg = %q, want %q", got, colorRose)
+	}
+	if got := normal.GetForeground(); got != lipgloss.Color(colorRose) {
+		t.Errorf("normal errorRowStyle fg = %q, want %q", got, colorRose)
+	}
+	if got := selected.GetBackground(); got == nil {
+		t.Error("selected errorRowStyle should have background")
+	}
+	if got := selected.GetBold(); !got {
+		t.Error("selected errorRowStyle should be bold")
+	}
+}
+
+func TestPillStyle_ActiveVisualFeedback(t *testing.T) {
+	active := pillStyle(true)
+	inactive := pillStyle(false)
+
+	if got := active.GetForeground(); got != lipgloss.Color("#ffffff") {
+		t.Errorf("active pillStyle fg = %q, want %q", got, "#ffffff")
+	}
+	if got := active.GetBackground(); got != lipgloss.Color(colorBorder) {
+		t.Errorf("active pillStyle bg = %q, want %q", got, colorBorder)
+	}
+	if got := active.GetBold(); !got {
+		t.Error("active pillStyle should be bold")
+	}
+	if got := inactive.GetForeground(); got != lipgloss.Color(colorMuted) {
+		t.Errorf("inactive pillStyle fg = %q, want %q", got, colorMuted)
+	}
+	if got := inactive.GetBold(); got {
+		t.Error("inactive pillStyle should not be bold")
+	}
+}
+
+func TestMethodStyle_AppliesMethodColor(t *testing.T) {
+	sGet := methodStyle("GET", false)
+	if got := sGet.GetForeground(); got != lipgloss.Color(colorCyan) {
+		t.Errorf("GET methodStyle fg = %q, want %q", got, colorCyan)
+	}
+	sPost := methodStyle("POST", false)
+	if got := sPost.GetForeground(); got != lipgloss.Color(colorGreen) {
+		t.Errorf("POST methodStyle fg = %q, want %q", got, colorGreen)
+	}
+	sDelete := methodStyle("DELETE", false)
+	if got := sDelete.GetForeground(); got != lipgloss.Color(colorRose) {
+		t.Errorf("DELETE methodStyle fg = %q, want %q", got, colorRose)
 	}
 }
