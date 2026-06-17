@@ -19,31 +19,37 @@ func (m Model) View() string {
 		return "Pulse is starting..."
 	}
 
-	width := clamp(m.width, 72, 140)
+	width := max(72, m.width)
 	innerWidth := width - 4
 
 	header := m.renderHeader(innerWidth)
 	command := m.renderCommand(innerWidth)
-	metricStrip := m.renderMetrics(innerWidth)
+	metricsStrip := m.renderMetrics(innerWidth)
+	sparkline := m.renderSparkline(innerWidth)
+
 	payload := ""
 	if m.showPayload {
 		payload = m.renderPayload(innerWidth)
 	}
 
-	sparkline := m.renderSparkline(innerWidth)
-
-	used := lipgloss.Height(header) + lipgloss.Height(command) + lipgloss.Height(metricStrip) + lipgloss.Height(sparkline) + lipgloss.Height(payload) + 5
-	workspaceHeight := max(8, m.height-used)
-	workspace := m.renderWorkspace(innerWidth, workspaceHeight)
-	footerText := "tab/⇧tab focus  ctrl+r run  ctrl+x cancel  ctrl+a scroll  [/] tabs  ↑↓ select  enter inspect  esc back  q quit"
-	if !m.running && len(m.results) > 0 {
-		s := metrics.Compute(m.results, displayElapsed(m))
-		footerText = fmt.Sprintf("%s  |  %d results  p99 %s  %d errors",
-			footerText, s.Total, formatDuration(s.P99), s.Total-s.Successes)
+	fixed := lipgloss.Height(header)
+	fixed += lipgloss.Height(command)
+	fixed += lipgloss.Height(metricsStrip)
+	if sparkline != "" {
+		fixed += lipgloss.Height(sparkline)
 	}
-	footer := footerStyle.Width(innerWidth).Render(footerText)
+	if payload != "" {
+		fixed += lipgloss.Height(payload)
+	}
 
-	parts := []string{header, command, metricStrip}
+	footer := m.renderFooter(innerWidth)
+	footerHeight := lipgloss.Height(footer)
+
+	available := m.height - 2 - fixed - footerHeight - 4
+	workspaceHeight := max(8, available)
+	workspace := m.renderWorkspace(innerWidth, workspaceHeight)
+
+	parts := []string{header, command, metricsStrip}
 	if sparkline != "" {
 		parts = append(parts, sparkline)
 	}
@@ -73,75 +79,130 @@ func (m Model) renderHeader(width int) string {
 	if m.running && m.dotGlow {
 		dot = statusDotGlowStyle.Render("●")
 	}
+
 	left := lipgloss.JoinHorizontal(lipgloss.Center,
-		dot,
-		" ",
+		dot, " ",
 		titleStyle.Render("Pulse"),
 		" ",
 		mutedStyle.Render("terminal"),
 	)
-	right := monoStyle.Render(state)
-	gap := strings.Repeat(" ", max(1, width-lipgloss.Width(left)-lipgloss.Width(right)))
-	return lipgloss.JoinHorizontal(lipgloss.Center, left, gap, right)
+
+	line := lipgloss.JoinHorizontal(lipgloss.Center,
+		left,
+		lipgloss.NewStyle().Width(width-lipgloss.Width(left)-lipgloss.Width(state)).Render(""),
+		state,
+	)
+
+	separator := separatorBorder.Render(strings.Repeat("─", width))
+	return lipgloss.JoinVertical(lipgloss.Left, line, separator)
 }
 
 func (m Model) renderCommand(width int) string {
-	method := methodStyle(runconfig.AllowedMethods()[m.methodIndex], m.focus == focusMethod).Width(10).Render(runconfig.AllowedMethods()[m.methodIndex])
-	url := inputStyle(m.focus == focusURL).Width(max(20, width-54)).Render(truncate(m.urlInput.Value(), max(18, width-56)))
-	cc := controlStyle(m.focus == focusConcurrency).Width(8).Render(fmt.Sprintf("CC %d", m.concurrency()))
+	methodName := runconfig.AllowedMethods()[m.methodIndex]
+	method := methodStyle(methodName, m.focus == focusMethod).Render(methodName)
+	methodBox := lipgloss.NewStyle().Width(10).Render(method)
 
-	payloadLabel := "PAYLOAD OFF"
+	urlBox := inputStyle(m.focus == focusURL).
+		Width(max(20, width-56)).
+		Render(truncate(m.urlInput.Value(), max(18, width-58)))
+
+	ccBox := controlStyle(m.focus == focusConcurrency).
+		Width(8).
+		Render(fmt.Sprintf("CC %d", m.concurrency()))
+
+	payloadLabel := "PAYLOAD"
 	if m.showPayload {
-		payloadLabel = "PAYLOAD ON"
+		payloadLabel = "PAYLOAD·ON"
 	}
-	payload := controlStyle(m.focus == focusPayload).Width(13).Render(payloadLabel)
+	payloadBox := controlStyle(m.focus == focusPayload).
+		Width(11).
+		Render(payloadLabel)
 
-	runLabel := "RUN"
+	runLabel := "▶ RUN"
 	if m.running {
-		runLabel = "CANCEL"
+		runLabel = "◼ CANCEL"
 	}
-	run := runButtonStyle(m.running).Width(8).Render(runLabel)
+	runBox := runButtonStyle(m.running).Width(10).Render(runLabel)
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, method, " ", url, " ", cc, " ", payload, " ", run)
+	divider := separatorBorder.Render("│")
+
+	row := lipgloss.JoinHorizontal(lipgloss.Center,
+		methodBox, " ", divider, " ",
+		urlBox, " ", divider, " ",
+		ccBox, " ", divider, " ",
+		payloadBox, " ", divider, " ",
+		runBox,
+	)
+
 	return panelStyle.Width(width).Render(row)
 }
 
 func (m Model) renderMetrics(width int) string {
 	summary := m.summary
-	segmentWidth := max(12, (width-6)/4)
+	segWidth := max(14, (width-6)/4)
 
 	target := m.concurrency()
-	barWidth := segmentWidth - 6
-	if barWidth < 2 {
-		barWidth = 2
-	}
-	filled := 0
+	barWidth := max(4, segWidth-8)
+	var bar string
 	if target > 0 {
-		filled = summary.Total * barWidth / target
+		filled := summary.Total * barWidth / target
 		if filled > barWidth {
 			filled = barWidth
 		}
+		bar = strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		bar += fmt.Sprintf(" %d/%d", summary.Total, target)
+	} else {
+		bar = fmt.Sprintf("%d", summary.Total)
 	}
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-	requests := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("REQUESTS\n%s %d/%d", bar, summary.Total, target))
+	requests := lipgloss.JoinVertical(lipgloss.Left,
+		labelStyle.Render("REQUESTS"),
+		metricValueStyle.Render(bar),
+	)
 
 	successColor := colorAmber
 	if summary.SuccessRate >= 100 {
 		successColor = colorGreen
 	}
-	success := metricStyle.Foreground(lipgloss.Color(successColor)).Width(segmentWidth).Render(fmt.Sprintf("SUCCESS\n%d%%", summary.SuccessRate))
+	success := lipgloss.JoinVertical(lipgloss.Left,
+		labelStyle.Render("SUCCESS"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(successColor)).Bold(true).Render(fmt.Sprintf("%d%%", summary.SuccessRate)),
+	)
 
 	errors := summary.Total - summary.Successes
 	errColor := colorGreen
 	if errors > 0 {
 		errColor = colorRose
 	}
-	errSegment := metricStyle.Foreground(lipgloss.Color(errColor)).Width(segmentWidth).Render(fmt.Sprintf("ERRORS\n%d", errors))
+	rps := 0.0
+	if m.elapsed > 0 {
+		rps = float64(summary.Total) / m.elapsed.Seconds()
+	}
+	errorsRPS := lipgloss.JoinVertical(lipgloss.Left,
+		labelStyle.Render("ERRORS"),
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			lipgloss.NewStyle().Foreground(lipgloss.Color(errColor)).Bold(true).Render(fmt.Sprintf("%d", errors)),
+			" ",
+			mutedStyle.Render(fmt.Sprintf("%.1f/s", rps)),
+		),
+	)
 
-	pSegment := metricStyle.Width(segmentWidth).Render(fmt.Sprintf("p50 %s  p90 %s\np99 %s",
-		formatDuration(summary.P50), formatDuration(summary.P90), formatDuration(summary.P99)))
+	lat := lipgloss.JoinVertical(lipgloss.Left,
+		labelStyle.Render("LATENCY"),
+		metricValueStyle.Render(fmt.Sprintf("%s/%s",
+			formatDuration(summary.P50),
+			formatDuration(summary.P99),
+		)),
+	)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, requests, "  ", success, "  ", errSegment, "  ", pSegment)
+	row := lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(segWidth).Render(requests), "  ",
+		lipgloss.NewStyle().Width(segWidth).Render(success), "  ",
+		lipgloss.NewStyle().Width(segWidth).Render(errorsRPS), "  ",
+		lipgloss.NewStyle().Width(segWidth).Render(lat),
+	)
+
+	separator := separatorBorder.Render(strings.Repeat("─", width))
+	return lipgloss.JoinVertical(lipgloss.Left, row, separator)
 }
 
 func (m Model) renderPayload(width int) string {
@@ -155,7 +216,7 @@ func (m Model) renderPayload(width int) string {
 		for i, header := range m.headers {
 			prefix := "  "
 			if m.focus == focusHeaders && i == m.selectedHead {
-				prefix = "> "
+				prefix = "▸ "
 			}
 			key := truncate(header.Key.Value(), leftWidth/2-4)
 			value := truncate(header.Value.Value(), leftWidth/2-4)
@@ -181,14 +242,16 @@ func (m Model) renderPayload(width int) string {
 }
 
 func (m Model) renderWorkspace(width int, height int) string {
-	tabs := m.renderTabs(width)
-	bodyHeight := max(4, height-lipgloss.Height(tabs)-2)
+	contentWidth := width - 6
+	tabs := m.renderTabs(contentWidth)
+	tabsHeight := lipgloss.Height(tabs)
+	bodyHeight := max(4, height-4-tabsHeight)
 
-	resultsWidth := width
+	resultsWidth := contentWidth
 	inspector := ""
-	if m.inspector && width >= 108 {
-		resultsWidth = width*58/100 - 1
-		inspector = m.renderInspector(width-resultsWidth-1, bodyHeight)
+	if m.inspector && contentWidth >= 108 {
+		resultsWidth = contentWidth*58/100 - 1
+		inspector = m.renderInspector(contentWidth-resultsWidth-1, bodyHeight)
 	}
 
 	var results string
@@ -202,33 +265,39 @@ func (m Model) renderWorkspace(width int, height int) string {
 	if inspector != "" {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, results, " ", inspector)
 	} else if m.inspector {
-		body = lipgloss.JoinVertical(lipgloss.Left, results, m.renderInspector(width, max(6, bodyHeight/2)))
+		body = lipgloss.JoinVertical(lipgloss.Left, results, m.renderInspector(contentWidth, max(6, bodyHeight/2)))
 	}
 
-	return panelStyle.Width(width).Height(height).Render(lipgloss.JoinVertical(lipgloss.Left, tabs, body))
+	return panelStyle.Width(width).Height(height).Render(
+		lipgloss.JoinVertical(lipgloss.Left, tabs, body),
+	)
 }
 
 func (m Model) renderTabs(width int) string {
-	timeline := tabStyle(m.activeTab == tabTimeline).Render("Timeline")
-	logs := tabStyle(m.activeTab == tabLogs).Render("Live Logs")
+	timeline := pillStyle(m.activeTab == tabTimeline).Render("Timeline")
+	logs := pillStyle(m.activeTab == tabLogs).Render("Live Logs")
 	indicator := ""
 	if !m.autoScroll {
 		indicator = mutedStyle.Render("  MANUAL")
 	}
-	return lipgloss.PlaceHorizontal(width-2, lipgloss.Center, lipgloss.JoinHorizontal(lipgloss.Top, timeline, logs, indicator))
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center,
+		lipgloss.JoinHorizontal(lipgloss.Top, timeline, " ", logs, indicator),
+	)
 }
 
 func (m Model) renderTimeline(width int, height int) string {
 	if len(m.results) == 0 {
-		return emptyStyle.Width(width - 4).Height(height).Render("Awaiting execution...")
+		return emptyStyle.Width(width).Height(height).Render("Awaiting execution...")
 	}
 
-	lines := make([]string, 0, min(len(m.results), height))
-	start := max(0, len(m.results)-height)
-	for i := start; i < len(m.results); i++ {
+	maxStart := max(0, len(m.results)-height)
+	start := max(0, min(m.selected-height/2, maxStart))
+
+	lines := make([]string, 0, min(len(m.results)-start, height))
+	for i := start; i < len(m.results) && len(lines) < height; i++ {
 		result := m.results[i]
-		selected := m.focus == focusResults && i == m.selected
-		lines = append(lines, m.renderTimelineRow(i, result, m.summary.MaxLatency, width-4, selected))
+		sel := m.focus == focusResults && i == m.selected
+		lines = append(lines, m.renderTimelineRow(i, result, m.summary.MaxLatency, width, sel))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -236,30 +305,46 @@ func (m Model) renderTimeline(width int, height int) string {
 func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time.Duration, width int, selected bool) string {
 	status := resultStatus(result)
 	latency := formatDuration(result.Latency)
-	labelWidth := 18
-	barWidth := max(8, width-labelWidth-len(latency)-6)
-	filled := 1
+	method := result.RequestMethod
+	if method == "" {
+		method = runconfig.AllowedMethods()[m.methodIndex]
+	}
+
+	barWidth := max(6, width-38)
+	filled := 0
 	if maxLatency > 0 {
-		filled = max(1, int(float64(result.Latency)/float64(maxLatency)*float64(barWidth)))
+		filled = int(float64(result.Latency) / float64(maxLatency) * float64(barWidth))
+		if filled > barWidth {
+			filled = barWidth
+		}
 	}
-	bar := strings.Repeat("#", filled) + strings.Repeat("-", max(0, barWidth-filled))
-	line := fmt.Sprintf("%s %3d %-12s [%s] %8s", rowCursor(selected), index+1, status, bar, latency)
+
+	barColor := statusColor(result.Status)
+	bar := lipgloss.NewStyle().Foreground(lipgloss.Color(barColor)).Render(
+		strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled),
+	)
+
+	line := fmt.Sprintf("%s %3d %-4s %-12s %s %s",
+		rowCursor(selected), index+1, method, status, bar, latency)
+
 	if result.Status >= 400 || result.Status == 0 {
-		return errorRowStyle(selected).Render(truncate(line, width))
+		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
 	}
-	return rowStyle(selected).Render(truncate(line, width))
+	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
 }
 
 func (m Model) renderLogs(width int, height int) string {
 	if len(m.results) == 0 {
-		return emptyStyle.Width(width - 4).Height(height).Render("No logs yet.")
+		return emptyStyle.Width(width).Height(height).Render("No logs yet.")
 	}
 
-	lines := make([]string, 0, min(len(m.results), height))
-	start := max(0, len(m.results)-height)
-	for i := start; i < len(m.results); i++ {
+	maxStart := max(0, len(m.results)-height)
+	start := max(0, min(m.selected-height/2, maxStart))
+
+	lines := make([]string, 0, min(len(m.results)-start, height))
+	for i := start; i < len(m.results) && len(lines) < height; i++ {
 		result := m.results[i]
-		selected := m.focus == focusResults && i == m.selected
+		sel := m.focus == focusResults && i == m.selected
 		status := resultStatus(result)
 		method := result.RequestMethod
 		if method == "" {
@@ -269,11 +354,12 @@ func (m Model) renderLogs(width int, height int) string {
 		if reqURL == "" {
 			reqURL = m.urlInput.Value()
 		}
-		line := fmt.Sprintf("%s %3d %-6s %-10s %-8s %s", rowCursor(selected), i+1, method, status, formatDuration(result.Latency), truncate(reqURL, width-33))
+		line := fmt.Sprintf("%s %3d %-4s %-10s %-8s %s",
+			rowCursor(sel), i+1, method, status, formatDuration(result.Latency), truncate(reqURL, width-33))
 		if result.Status >= 400 || result.Status == 0 {
-			lines = append(lines, errorRowStyle(selected).Render(truncate(line, width-4)))
+			lines = append(lines, strings.TrimSpace(errorRowStyle(sel).Render(truncate(line, width))))
 		} else {
-			lines = append(lines, rowStyle(selected).Render(truncate(line, width-4)))
+			lines = append(lines, strings.TrimSpace(rowStyle(sel).Render(truncate(line, width))))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -285,8 +371,19 @@ func (m Model) renderInspector(width int, height int) string {
 	}
 
 	result := m.results[m.selected]
+	method := result.RequestMethod
+	if method == "" {
+		method = runconfig.AllowedMethods()[m.methodIndex]
+	}
+	reqURL := result.RequestURL
+	if reqURL == "" {
+		reqURL = m.urlInput.Value()
+	}
+
 	lines := []string{
 		sectionTitleStyle.Render("INSPECTOR"),
+		fmt.Sprintf("  %s %s", methodStyle(method, false).Render(method), truncate(reqURL, width-12)),
+		"",
 		fmt.Sprintf("Status:  %s", resultStatus(result)),
 		fmt.Sprintf("Latency: %s", formatDuration(result.Latency)),
 	}
@@ -313,21 +410,46 @@ func (m Model) renderInspector(width int, height int) string {
 	if body == "" {
 		body = mutedStyle.Render("No body captured.")
 	}
-	for _, line := range strings.Split(body, "\n") {
-		lines = append(lines, truncate(line, width-4))
+	bodyLines := strings.Split(body, "\n")
+	for i, bline := range bodyLines {
 		if len(lines) >= height-2 {
+			if i < len(bodyLines)-1 {
+				lines = append(lines, mutedStyle.Render("... (truncated)"))
+			}
 			break
 		}
+		lines = append(lines, truncate(bline, width-4))
 	}
 
 	return panelStyle.Width(width).Height(height).Render(strings.Join(lines, "\n"))
 }
 
-func displayElapsed(m Model) time.Duration {
-	if m.running {
-		return m.elapsed
+func (m Model) renderFooter(width int) string {
+	left := "tab/⇧tab focus  ctrl+r run  ctrl+x cancel  ctrl+a scroll  [/] tabs  ↑↓ select  enter inspect  esc back  q quit"
+
+	right := ""
+	if !m.running && len(m.results) > 0 {
+		s := metrics.Compute(m.results, m.elapsed)
+		right = fmt.Sprintf("%d results  p99 %s  %d errors",
+			s.Total, formatDuration(s.P99), s.Total-s.Successes)
 	}
-	if m.elapsed > 0 {
+
+	var line string
+	if right != "" {
+		leftWidth := max(40, width-lipgloss.Width(mutedStyle.Render(right))-4)
+		line = lipgloss.JoinHorizontal(lipgloss.Center,
+			mutedStyle.Width(leftWidth).Render(truncate(left, leftWidth)),
+			mutedStyle.Render(right),
+		)
+	} else {
+		line = mutedStyle.Render(truncate(left, width))
+	}
+
+	return separatorBorder.Render(strings.Repeat("─", width)) + "\n" + line
+}
+
+func displayElapsed(m Model) time.Duration {
+	if m.running || m.elapsed > 0 {
 		return m.elapsed
 	}
 	return 0
@@ -337,16 +459,19 @@ func (m Model) renderSparkline(width int) string {
 	if m.latencyLen == 0 {
 		return ""
 	}
-	label := mutedStyle.Render(" LATENCY")
+
+	label := labelStyle.Render(" LATENCY SPARKLINE")
 	labelWidth := lipgloss.Width(label)
 	barWidth := width - labelWidth - 2
 	if barWidth < 4 {
 		barWidth = 4
 	}
+
 	count := m.latencyLen
 	if count > barWidth {
 		count = barWidth
 	}
+
 	maxLat := time.Duration(0)
 	for i := 0; i < count; i++ {
 		idx := (m.latencyHead - count + i + latencyRingSize) % latencyRingSize
@@ -354,6 +479,7 @@ func (m Model) renderSparkline(width int) string {
 			maxLat = m.latencyRing[idx]
 		}
 	}
+
 	var sb strings.Builder
 	for i := 0; i < count; i++ {
 		idx := (m.latencyHead - count + i + latencyRingSize) % latencyRingSize
@@ -375,7 +501,10 @@ func (m Model) renderSparkline(width int) string {
 		}
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(dotColor)).Render(string(sparklineChars[level])))
 	}
-	return fmt.Sprintf(" %s%s", sb.String(), label)
+
+	separator := separatorBorder.Render(strings.Repeat("─", width))
+	row := fmt.Sprintf("%s%s", sb.String(), label)
+	return lipgloss.JoinVertical(lipgloss.Left, row, separator)
 }
 
 func resultStatus(result model.Result) string {
@@ -383,6 +512,8 @@ func resultStatus(result model.Result) string {
 		return "ERR"
 	}
 	switch {
+	case result.Status >= 100 && result.Status < 200:
+		return fmt.Sprintf("%d Info", result.Status)
 	case result.Status >= 200 && result.Status < 300:
 		return fmt.Sprintf("%d OK", result.Status)
 	case result.Status >= 300 && result.Status < 400:
@@ -396,7 +527,7 @@ func resultStatus(result model.Result) string {
 
 func rowCursor(selected bool) string {
 	if selected {
-		return ">"
+		return "▸"
 	}
 	return " "
 }
@@ -413,5 +544,5 @@ func truncate(value string, width int) string {
 	if width <= 1 {
 		return string(runes[:width])
 	}
-	return string(runes[:width-1]) + "..."
+	return string(runes[:width-1]) + "…"
 }

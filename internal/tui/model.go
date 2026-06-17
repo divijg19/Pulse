@@ -32,7 +32,7 @@ const (
 const (
 	subfocusKey      = 0
 	subfocusValue    = 1
-	latencyRingSize  = 40
+	latencyRingSize  = 200
 	defaultBodyWidth = 48
 	maxTUIBodyBytes  = 1 << 20
 )
@@ -147,11 +147,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.latencyLen < latencyRingSize {
 			m.latencyLen++
 		}
+		before := len(m.results)
 		if len(m.results) < 10000 {
 			m.results = append(m.results, msg.Result)
 		}
 		m.summary = metrics.Compute(m.results, m.elapsed)
-		if m.autoScroll && m.selected >= len(m.results)-1 {
+		if m.autoScroll && m.selected >= before-1 {
 			m.selected = len(m.results) - 1
 		}
 		if m.running && m.eventCh != nil {
@@ -505,5 +506,11 @@ func formatDuration(duration time.Duration) string {
 	if duration <= 0 {
 		return "0.00s"
 	}
-	return fmt.Sprintf("%.2fs", duration.Seconds())
+	secs := duration.Seconds()
+	if secs >= 60 {
+		mins := int(secs) / 60
+		left := secs - float64(mins*60)
+		return fmt.Sprintf("%dm %.0fs", mins, left)
+	}
+	return fmt.Sprintf("%.2fs", secs)
 }
