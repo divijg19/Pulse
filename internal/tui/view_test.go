@@ -64,19 +64,6 @@ func TestRenderTopBar_Normal(t *testing.T) {
 	}
 }
 
-func TestRenderTopBar_EditURL(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.focus = focusURL
-	out := m.renderTopBar(100)
-	if !contains(t, out, "GET") {
-		t.Fatal("top bar should contain method")
-	}
-	if !contains(t, out, "httpbin") {
-		t.Fatal("top bar should contain URL value when URL is focused")
-	}
-}
-
 func TestRenderTopBar_Running(t *testing.T) {
 	m := NewModel()
 	m.width = 100
@@ -150,7 +137,7 @@ func TestRenderTopBar_IdleDefault(t *testing.T) {
 func TestRenderTopBar_Inspecting(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.inspector = true
+	m.mode = modeInspect
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
@@ -164,43 +151,10 @@ func TestRenderTopBar_Inspecting(t *testing.T) {
 func TestRenderTopBar_QuitConfirm(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.confirmQuit = true
+	m.dialog = dialogConfirmQuit
 	out := m.renderTopBar(100)
 	if !contains(t, out, "QUIT?") {
 		t.Fatal("top bar should show QUIT? confirmation")
-	}
-}
-
-func TestRenderTopBar_EditCC(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.focus = focusConcurrency
-	out := m.renderTopBar(100)
-	if !contains(t, out, "CC") {
-		t.Fatal("edit CC top bar should contain 'CC' label")
-	}
-	if !contains(t, out, "IDLE") {
-		t.Fatal("edit CC top bar should show IDLE state")
-	}
-}
-
-func TestRenderTopBar_URLFocus(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.focus = focusURL
-	out := m.renderTopBar(100)
-	if !contains(t, out, "[httpbin.org/delay/1]") {
-		t.Fatal("URL focus top bar should show bracketed URL")
-	}
-}
-
-func TestRenderTopBar_CCFocus(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.focus = focusConcurrency
-	out := m.renderTopBar(100)
-	if !contains(t, out, "[10]") {
-		t.Fatal("CC focus top bar should show bracketed concurrency")
 	}
 }
 
@@ -355,19 +309,6 @@ func TestRenderTabs(t *testing.T) {
 	}
 }
 
-func TestRenderTabs_NoManualIndicator(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.autoScroll = false
-	out := m.renderTabStrip(100)
-	if contains(t, out, "MANUAL") {
-		t.Fatal("tab strip should not show 'MANUAL' indicator")
-	}
-	if !contains(t, out, "Timeline") {
-		t.Fatal("tab strip should still show tabs when autoScroll is off")
-	}
-}
-
 func TestRenderTabs_ActiveMarker(t *testing.T) {
 	m := NewModel()
 	m.width = 100
@@ -379,7 +320,7 @@ func TestRenderTabs_ActiveMarker(t *testing.T) {
 		t.Fatal("tab strip should show inactive Logs tab without marker")
 	}
 
-	m.activeTab = tabLogs
+	m.view = viewLogs
 	out = m.renderTabStrip(100)
 	if !contains(t, out, "▶ Logs") {
 		t.Fatal("tab strip should show ▶ marker on active Logs tab")
@@ -392,13 +333,9 @@ func TestRenderTabs_ActiveMarker(t *testing.T) {
 func TestRenderStatusBar_Normal(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.focus = focusResults
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "NORMAL") {
-		t.Fatal("status bar should show 'NORMAL' mode")
-	}
-	if !contains(t, out, "TAB focus") {
-		t.Fatal("status bar should show tab hint")
+	if !contains(t, out, "OBSERVE") {
+		t.Fatal("status bar should show 'OBSERVE' mode")
 	}
 }
 
@@ -412,20 +349,30 @@ func TestRenderStatusBar_Running(t *testing.T) {
 	}
 }
 
-func TestRenderStatusBar_EditURL(t *testing.T) {
+func TestRenderStatusBar_EndpointDialog(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.focus = focusURL
+	m.dialog = dialogEndpoint
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "EDIT URL") {
-		t.Fatal("status bar should show 'EDIT URL' mode")
+	if !contains(t, out, "ENDPOINT") {
+		t.Fatal("status bar should show 'ENDPOINT' mode")
+	}
+}
+
+func TestRenderStatusBar_CCDialog(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogConcurrency
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "CONCURRENCY") {
+		t.Fatal("status bar should show 'CONCURRENCY' mode")
 	}
 }
 
 func TestRenderStatusBar_Inspecting(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.inspector = true
+	m.mode = modeInspect
 	out := m.renderStatusBar(100)
 	if !contains(t, out, "INSPECTING") {
 		t.Fatal("status bar should show 'INSPECTING' mode")
@@ -435,7 +382,7 @@ func TestRenderStatusBar_Inspecting(t *testing.T) {
 func TestRenderStatusBar_QuitConfirm(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.confirmQuit = true
+	m.dialog = dialogConfirmQuit
 	out := m.renderStatusBar(100)
 	if !contains(t, out, "PRESS Q AGAIN TO QUIT") {
 		t.Fatal("status bar should show quit confirmation")
@@ -459,7 +406,6 @@ func TestRenderTimeline_Rows(t *testing.T) {
 		{Status: 404, Latency: 50 * time.Millisecond},
 	}
 	m.summary.MaxLatency = 100 * time.Millisecond
-	m.focus = focusResults
 	m.selected = 0
 
 	out := m.renderTimeline(94, 20)
@@ -492,7 +438,6 @@ func TestRenderLogs_Rows(t *testing.T) {
 		{Status: 500, Latency: 50 * time.Millisecond, RequestMethod: "POST", RequestURL: "https://example.com/error"},
 	}
 	m.summary.MaxLatency = 100 * time.Millisecond
-	m.focus = focusResults
 	m.selected = 0
 
 	out := m.renderLogs(94, 20)
@@ -513,16 +458,16 @@ func TestRenderLogs_Rows(t *testing.T) {
 	}
 }
 
-func TestRenderInspector_NoSelection(t *testing.T) {
+func TestRenderInspect_NoSelection(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderInspector(40, 20)
+	out := m.renderInspect(40, 20)
 	if !contains(t, out, "No result selected.") {
 		t.Fatal("inspector with no selection should show 'No result selected.'")
 	}
 }
 
-func TestRenderInspector_WithResult(t *testing.T) {
+func TestRenderInspect_WithResult(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.selected = 0
@@ -537,7 +482,7 @@ func TestRenderInspector_WithResult(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspector(40, 20)
+	out := m.renderInspect(40, 20)
 	if !contains(t, out, "INSPECTOR") {
 		t.Fatal("inspector should show 'INSPECTOR'")
 	}
@@ -706,7 +651,7 @@ func TestRenderLogs_IdleWithURL(t *testing.T) {
 	}
 }
 
-func TestRenderInspector_WithError(t *testing.T) {
+func TestRenderInspect_WithError(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.selected = 0
@@ -718,7 +663,7 @@ func TestRenderInspector_WithError(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspector(40, 20)
+	out := m.renderInspect(40, 20)
 	if !contains(t, out, "INSPECTOR") {
 		t.Fatal("inspector should show 'INSPECTOR'")
 	}
@@ -730,7 +675,7 @@ func TestRenderInspector_WithError(t *testing.T) {
 	}
 }
 
-func TestRenderInspector_NoHeaders(t *testing.T) {
+func TestRenderInspect_NoHeaders(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.selected = 0
@@ -741,13 +686,13 @@ func TestRenderInspector_NoHeaders(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspector(40, 20)
+	out := m.renderInspect(40, 20)
 	if !contains(t, out, "No headers captured.") {
 		t.Fatal("inspector should show 'No headers captured.' when no response headers")
 	}
 }
 
-func TestRenderInspector_NoBody(t *testing.T) {
+func TestRenderInspect_NoBody(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.selected = 0
@@ -761,7 +706,7 @@ func TestRenderInspector_NoBody(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspector(40, 20)
+	out := m.renderInspect(40, 20)
 	if !contains(t, out, "No body captured.") {
 		t.Fatal("inspector should show 'No body captured.' when no response body")
 	}
@@ -785,21 +730,21 @@ func TestView_PayloadNotShown(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.height = 30
-	m.showPayload = false
 
 	out := m.View()
 	if contains(t, out, "HEADERS") {
-		t.Fatal("View should not contain HEADERS when payload is hidden")
+		t.Fatal("View should not contain HEADERS when payload dialog is closed")
 	}
 	if contains(t, out, "BODY") {
-		t.Fatal("View should not contain BODY when payload is hidden")
+		t.Fatal("View should not contain BODY when payload dialog is closed")
 	}
 }
 
 func TestRenderPayload_Open(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.showPayload = true
+	m.dialog = dialogPayload
+	m.selectedHead = 0
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
@@ -822,7 +767,8 @@ func TestRenderPayload_Open(t *testing.T) {
 func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.showPayload = true
+	m.dialog = dialogPayload
+	m.selectedHead = 0
 
 	out := m.renderPayload(96)
 	if !contains(t, out, "No headers configured.") {
@@ -833,8 +779,8 @@ func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
 func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.showPayload = true
-	m.focus = focusHeaders
+	m.dialog = dialogPayload
+	m.selectedHead = 0
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
@@ -849,14 +795,13 @@ func TestRenderWorkspace_InspectorStacked(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.height = 30
-	m.inspector = true
+	m.mode = modeInspect
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond,
 			ResponseHeaders: map[string]string{"Content-Type": "application/json"},
 			ResponseBody:    `{"ok": true}`},
 	}
 	m.selected = 0
-	m.focus = focusResults
 
 	out := m.View()
 	if !contains(t, out, "INSPECTOR") {
@@ -903,7 +848,6 @@ func TestRenderTimeline_Rows_Selected(t *testing.T) {
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
 	m.summary.MaxLatency = 100 * time.Millisecond
-	m.focus = focusResults
 	m.selected = 0
 
 	row := m.renderTimelineRow(0, m.results[0], m.summary.MaxLatency, 94, true)

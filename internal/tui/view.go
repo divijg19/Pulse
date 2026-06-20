@@ -18,9 +18,10 @@ func (m Model) View() string {
 
 	width := max(72, m.width)
 
+	payloadOpen := m.dialog == dialogPayload
 	fixed := 5
 	var payloadHeight int
-	if m.showPayload {
+	if payloadOpen {
 		payloadHeight = lipgloss.Height(m.renderPayload(width))
 		fixed += payloadHeight
 	}
@@ -42,38 +43,39 @@ func (m Model) View() string {
 	}
 	sb.WriteString(m.renderTabStrip(width))
 	sb.WriteString("\n")
-	if m.showPayload {
+	if payloadOpen {
 		sb.WriteString(m.renderPayload(width))
 		sb.WriteString("\n")
 	}
 
-	switch m.activeTab {
-	case tabTimeline:
-		if m.inspector && width >= 86 {
+	inspecting := m.mode == modeInspect
+	switch m.view {
+	case viewTimeline:
+		if inspecting && width >= 86 {
 			resultsWidth := width * 58 / 100
 			inspWidth := width - resultsWidth - 1
 			sb.WriteString(m.renderTimeline(resultsWidth, workspaceHeight))
 			sb.WriteString(" ")
-			sb.WriteString(m.renderInspector(inspWidth, workspaceHeight))
+			sb.WriteString(m.renderInspect(inspWidth, workspaceHeight))
 		} else {
 			sb.WriteString(m.renderTimeline(width, workspaceHeight))
-			if m.inspector {
+			if inspecting {
 				sb.WriteString("\n")
-				sb.WriteString(m.renderInspector(width, max(6, workspaceHeight/2)))
+				sb.WriteString(m.renderInspect(width, max(6, workspaceHeight/2)))
 			}
 		}
 	default:
-		if m.inspector && width >= 86 {
+		if inspecting && width >= 86 {
 			resultsWidth := width * 58 / 100
 			inspWidth := width - resultsWidth - 1
 			sb.WriteString(m.renderLogs(resultsWidth, workspaceHeight))
 			sb.WriteString(" ")
-			sb.WriteString(m.renderInspector(inspWidth, workspaceHeight))
+			sb.WriteString(m.renderInspect(inspWidth, workspaceHeight))
 		} else {
 			sb.WriteString(m.renderLogs(width, workspaceHeight))
-			if m.inspector {
+			if inspecting {
 				sb.WriteString("\n")
-				sb.WriteString(m.renderInspector(width, max(6, workspaceHeight/2)))
+				sb.WriteString(m.renderInspect(width, max(6, workspaceHeight/2)))
 			}
 		}
 	}
@@ -89,16 +91,13 @@ func (m Model) View() string {
 func (m Model) renderTopBar(width int) string {
 	method := runconfig.AllowedMethods()[m.methodIndex]
 	url := truncateURL(m.urlInput.Value(), 40)
-	if m.focus == focusURL {
-		url = "[" + url + "]"
-	}
 	left := method + " " + url
 
 	var state string
 	switch {
-	case m.confirmQuit:
+	case m.dialog == dialogConfirmQuit:
 		state = "● QUIT?"
-	case m.inspector:
+	case m.mode == modeInspect:
 		state = "● INSPECTING"
 	case m.running:
 		state = fmt.Sprintf("%d req    ● RUNNING %.1fs", len(m.results), m.elapsed.Seconds())
@@ -106,19 +105,13 @@ func (m Model) renderTopBar(width int) string {
 		state = fmt.Sprintf("%d req    ● COMPLETED %.1fs", len(m.results), m.elapsed.Seconds())
 	case m.status != "" && m.status != "SYSTEM READY":
 		cc := strings.TrimSpace(m.ccInput.Value())
-		if m.focus == focusConcurrency {
-			cc = "[" + cc + "]"
-		}
 		state = fmt.Sprintf("CC %s    %s", cc, m.renderTopBarStatus())
 	default:
 		cc := strings.TrimSpace(m.ccInput.Value())
-		if m.focus == focusConcurrency {
-			cc = "[" + cc + "]"
-		}
 		state = fmt.Sprintf("CC %s    ● IDLE", cc)
 	}
 
-	rightStyled := renderRightStyled(m.running, m.status, m.confirmQuit, state)
+	rightStyled := renderRightStyled(m.running, m.status, m.dialog == dialogConfirmQuit, state)
 
 	maxLeft := width - lipgloss.Width(rightStyled) - 3
 	if maxLeft < 16 {
@@ -167,7 +160,7 @@ func (m Model) renderMetrics(width int) string {
 
 func (m Model) renderTabStrip(width int) string {
 	var timeline, logs string
-	if m.activeTab == tabTimeline {
+	if m.view == viewTimeline {
 		timeline = StyleBase.Copy().Foreground(lipgloss.Color(colorAccent)).Render("▶ Timeline")
 		logs = StyleBase.Copy().Foreground(lipgloss.Color(colorMuted)).Render("  Logs")
 	} else {
@@ -182,7 +175,7 @@ func (m Model) renderPayload(width int) string {
 	var b strings.Builder
 
 	headersColor := colorMuted
-	if m.focus == focusHeaders {
+	if m.selectedHead != bodyFocus {
 		headersColor = colorAccent
 	}
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(headersColor)).Render("HEADERS  ctrl+n add  ctrl+d remove"))
@@ -207,7 +200,7 @@ func (m Model) renderPayload(width int) string {
 	b.WriteString("\n")
 
 	bodyColor := colorMuted
-	if m.focus == focusBody {
+	if m.selectedHead == bodyFocus {
 		bodyColor = colorAccent
 	}
 	bodyLen := len(m.bodyInput.Value())
@@ -231,24 +224,27 @@ func (m Model) renderStatusBar(width int) string {
 	var mode, hints string
 
 	switch {
-	case m.confirmQuit:
+	case m.dialog == dialogConfirmQuit:
 		mode = ""
 		hints = "PRESS Q AGAIN TO QUIT • any other key cancels"
-	case m.inspector:
+	case m.dialog == dialogEndpoint:
+		mode = "ENDPOINT"
+		hints = "• ESC back • Enter done"
+	case m.dialog == dialogConcurrency:
+		mode = "CONCURRENCY"
+		hints = "• ↑↓ adjust • ESC back"
+	case m.dialog == dialogPayload:
+		mode = "PAYLOAD"
+		hints = "• ESC back"
+	case m.mode == modeInspect:
 		mode = "INSPECTING"
 		hints = "• ↑↓ scroll • ESC back • Q quit"
 	case m.running:
 		mode = "RUNNING"
-		hints = "• TAB focus • ENTER inspect • ^X cancel • Q quit"
-	case m.focus == focusURL:
-		mode = "EDIT URL"
-		hints = "• TAB next • ESC cancel"
-	case m.focus == focusConcurrency:
-		mode = "EDIT CC"
-		hints = "• TAB next • ESC cancel"
+		hints = "• ↑↓ results • ENTER inspect • ^X cancel • Q quit"
 	default:
-		mode = "NORMAL"
-		hints = "• TAB focus • ENTER inspect • ^R run • ^X cancel • Q quit"
+		mode = "OBSERVE"
+		hints = "• ↑↓ results • ENTER inspect • [ ] views • e endpoint • c cc • p payload • ^R run • Q quit"
 	}
 
 	if mode == "" {
@@ -273,7 +269,7 @@ func (m Model) renderTimeline(width int, height int) string {
 	lines := make([]string, 0, min(len(m.results)-start, height))
 	for i := start; i < len(m.results) && len(lines) < height; i++ {
 		result := m.results[i]
-		sel := m.focus == focusResults && i == m.selected
+		sel := i == m.selected
 		lines = append(lines, m.renderTimelineRow(i, result, m.summary.MaxLatency, width, sel))
 	}
 	return strings.Join(lines, "\n")
@@ -322,7 +318,7 @@ func (m Model) renderLogs(width int, height int) string {
 	lines := make([]string, 0, min(len(m.results)-start, height))
 	for i := start; i < len(m.results) && len(lines) < height; i++ {
 		result := m.results[i]
-		sel := m.focus == focusResults && i == m.selected
+		sel := i == m.selected
 		status := resultStatus(result)
 		method := result.RequestMethod
 		if method == "" {
@@ -343,7 +339,7 @@ func (m Model) renderLogs(width int, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) renderInspector(width int, height int) string {
+func (m Model) renderInspect(width int, height int) string {
 	if len(m.results) == 0 || m.selected < 0 || m.selected >= len(m.results) {
 		return StyleBase.Copy().Width(width).Height(height).Render(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("No result selected."))
 	}

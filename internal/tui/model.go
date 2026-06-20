@@ -17,31 +17,37 @@ import (
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
-type focusTarget int
-
-const (
-	focusMethod focusTarget = iota
-	focusURL
-	focusConcurrency
-	focusPayload
-	focusHeaders
-	focusBody
-	focusResults
-)
-
 const (
 	subfocusKey      = 0
 	subfocusValue    = 1
+	bodyFocus        = -1
 	latencyRingSize  = 200
 	defaultBodyWidth = 48
 	maxTUIBodyBytes  = 1 << 20
 )
 
-type resultTab int
+type mode int
 
 const (
-	tabTimeline resultTab = iota
-	tabLogs
+	modeObserve mode = iota
+	modeInspect
+)
+
+type dialog int
+
+const (
+	dialogNone dialog = iota
+	dialogEndpoint
+	dialogConcurrency
+	dialogPayload
+	dialogConfirmQuit
+)
+
+type view int
+
+const (
+	viewTimeline view = iota
+	viewLogs
 )
 
 type headerRow struct {
@@ -53,33 +59,32 @@ type Model struct {
 	width  int
 	height int
 
-	focus       focusTarget
+	mode   mode
+	dialog dialog
+	view   view
+
 	methodIndex int
 	urlInput    textinput.Model
 	ccInput     textinput.Model
 	bodyInput   textarea.Model
 
-	showPayload    bool
 	headers        []headerRow
 	selectedHead   int
 	headerSubfocus int
 
-	activeTab  resultTab
-	results    []model.Result
-	selected   int
-	inspector  bool
-	autoScroll bool
+	results  []model.Result
+	selected int
 
-	running     bool
-	startedAt   time.Time
-	elapsed     time.Duration
-	cancel      context.CancelFunc
-	eventCh     <-chan model.Event
-	status      string
-	errMsg      string
-	confirmQuit bool
-	capped      bool
-	summary     metrics.Summary
+	running   bool
+	startedAt time.Time
+	elapsed   time.Duration
+	cancel    context.CancelFunc
+	eventCh   <-chan model.Event
+	status    string
+	errMsg    string
+	capped    bool
+	summary   metrics.Summary
+
 	latencyRing [latencyRingSize]time.Duration
 	latencyHead int
 	latencyLen  int
@@ -105,7 +110,6 @@ func NewModel() Model {
 	url.SetValue("https://httpbin.org/delay/1")
 	url.Prompt = ""
 	url.CharLimit = 2048
-	url.Focus()
 
 	cc := textinput.New()
 	cc.SetValue(strconv.Itoa(runconfig.DefaultConcurrency))
@@ -121,13 +125,13 @@ func NewModel() Model {
 	body.SetWidth(defaultBodyWidth)
 
 	return Model{
-		focus:       focusURL,
+		mode:        modeObserve,
+		dialog:      dialogNone,
+		view:        viewTimeline,
 		methodIndex: 0,
 		urlInput:    url,
 		ccInput:     cc,
 		bodyInput:   body,
-		activeTab:   tabTimeline,
-		autoScroll:  true,
 		status:      "SYSTEM READY",
 	}
 }
@@ -168,14 +172,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.latencyLen < latencyRingSize {
 			m.latencyLen++
 		}
-		before := len(m.results)
+		following := m.isFollowingTail()
 		if len(m.results) < 10000 {
 			m.results = append(m.results, msg.Result)
 		} else {
 			m.capped = true
 		}
 		m.summary = metrics.Compute(m.results, m.elapsed)
-		if m.autoScroll && m.selected >= before-1 {
+		if following {
 			m.selected = len(m.results) - 1
 		}
 		if m.running && m.eventCh != nil {
@@ -205,131 +209,131 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m.updateFocusedInput(msg)
+	return m, nil
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.errMsg = ""
 
-	if m.confirmQuit {
-		m.confirmQuit = false
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
-			if m.running && m.cancel != nil {
-				m.cancel()
-			}
-			return m, tea.Quit
+	switch m.mode {
+	case modeObserve:
+		switch m.dialog {
+		case dialogEndpoint:
+			return m.handleEndpointKey(msg)
+		case dialogConcurrency:
+			return m.handleCCKey(msg)
+		case dialogPayload:
+			return m.handlePayloadKey(msg)
+		case dialogConfirmQuit:
+			return m.handleConfirmQuitKey(msg)
+		case dialogNone:
+			return m.handleObserveKey(msg)
 		}
-		return m, nil
+	case modeInspect:
+		switch m.dialog {
+		case dialogConfirmQuit:
+			return m.handleConfirmQuitKey(msg)
+		case dialogNone:
+			return m.handleInspectKey(msg)
+		}
 	}
+	return m, nil
+}
 
+func (m Model) handleConfirmQuitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.dialog = dialogNone
 	switch msg.String() {
-	case "ctrl+c", "q":
-		if m.running {
-			m.confirmQuit = true
-			return m, nil
+	case "ctrl+c", "q", "enter":
+		if m.running && m.cancel != nil {
+			m.cancel()
 		}
 		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m Model) handleEndpointKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "enter":
+		m.dialog = dialogNone
+		m.urlInput.Blur()
+		return m, nil
 	case "ctrl+r":
 		return m.startRun()
 	case "ctrl+x":
 		return m.cancelRun(), nil
-	case "tab":
-		return m.moveFocus(1)
-	case "shift+tab":
-		return m.moveFocus(-1)
-	case "[":
-		m.activeTab = tabTimeline
-		return m, nil
-	case "]":
-		m.activeTab = tabLogs
-		return m, nil
-	case "ctrl+a":
-		m.autoScroll = !m.autoScroll
-		return m, nil
-	case "esc":
-		if m.inspector {
-			m.inspector = false
-			return m, nil
-		}
-		if m.focus == focusBody {
-			m.focus = focusHeaders
-			return m.syncFocus()
-		}
-		if m.focus == focusResults {
-			m.focus = focusURL
-			return m.syncFocus()
-		}
-		return m, nil
 	}
-
-	switch m.focus {
-	case focusMethod:
-		switch msg.String() {
-		case "left", "h", "up", "k":
-			m.methodIndex = (m.methodIndex + len(runconfig.AllowedMethods()) - 1) % len(runconfig.AllowedMethods())
-			return m, nil
-		case "right", "l", "down", "j", "enter":
-			m.methodIndex = (m.methodIndex + 1) % len(runconfig.AllowedMethods())
-			return m, nil
-		}
-	case focusConcurrency:
-		switch msg.String() {
-		case "left", "h", "down", "j":
-			m.setConcurrency(m.concurrency() - 1)
-			return m, nil
-		case "right", "l", "up", "k":
-			m.setConcurrency(m.concurrency() + 1)
-			return m, nil
-		}
-	case focusPayload:
-		if msg.String() == "enter" || msg.String() == " " {
-			m.showPayload = !m.showPayload
-			if m.showPayload && len(m.headers) == 0 {
-				m.headers = append(m.headers, newHeaderRow())
-			}
-			return m, nil
-		}
-	case focusHeaders:
-		return m.handleHeaderKey(msg)
-	case focusResults:
-		switch msg.String() {
-		case "up", "k":
-			if m.selected > 0 {
-				m.selected--
-			}
-			return m, nil
-		case "down", "j":
-			if m.selected < len(m.results)-1 {
-				m.selected++
-			}
-			return m, nil
-		case "pgup":
-			if len(m.results) > 0 {
-				pageSize := max(5, m.height/2)
-				m.selected = max(0, m.selected-pageSize)
-			}
-			return m, nil
-		case "pgdown":
-			if len(m.results) > 0 {
-				pageSize := max(5, m.height/2)
-				m.selected = min(len(m.results)-1, m.selected+pageSize)
-			}
-			return m, nil
-		case "enter":
-			if len(m.results) > 0 {
-				m.inspector = true
-			}
-			return m, nil
-		}
-	}
-
-	return m.updateFocusedInput(msg)
+	var cmd tea.Cmd
+	m.urlInput, cmd = m.urlInput.Update(msg)
+	return m, cmd
 }
 
-func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if !m.showPayload {
+func (m Model) handleCCKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "enter":
+		m.dialog = dialogNone
+		m.ccInput.Blur()
 		return m, nil
+	case "up", "k":
+		m.setConcurrency(m.concurrency() + 1)
+		return m, nil
+	case "down", "j":
+		m.setConcurrency(m.concurrency() - 1)
+		return m, nil
+	case "ctrl+r":
+		return m.startRun()
+	case "ctrl+x":
+		return m.cancelRun(), nil
 	}
+	var cmd tea.Cmd
+	m.ccInput, cmd = m.ccInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.dialog = dialogNone
+		m.urlInput.Blur()
+		m.ccInput.Blur()
+		m.bodyInput.Blur()
+		for i := range m.headers {
+			m.headers[i].Key.Blur()
+			m.headers[i].Value.Blur()
+		}
+		return m, nil
+	case "ctrl+r":
+		return m.startRun()
+	case "ctrl+x":
+		return m.cancelRun(), nil
+	}
+
+	if m.selectedHead == bodyFocus {
+		switch msg.String() {
+		case "tab":
+			m.selectedHead = 0
+			if len(m.headers) == 0 {
+				m.headers = append(m.headers, newHeaderRow())
+			}
+			m.urlInput.Blur()
+			m.ccInput.Blur()
+			m.bodyInput.Blur()
+			for i := range m.headers {
+				m.headers[i].Key.Blur()
+				m.headers[i].Value.Blur()
+			}
+			if m.headerSubfocus == subfocusKey {
+				m.headers[m.selectedHead].Key.Focus()
+			} else {
+				m.headers[m.selectedHead].Value.Focus()
+			}
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.bodyInput, cmd = m.bodyInput.Update(msg)
+		return m, cmd
+	}
+
 	if len(m.headers) == 0 {
 		m.headers = append(m.headers, newHeaderRow())
 	}
@@ -339,7 +343,15 @@ func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.headers = append(m.headers, newHeaderRow())
 		m.selectedHead = len(m.headers) - 1
 		m.headerSubfocus = subfocusKey
-		return m.syncFocus()
+		m.urlInput.Blur()
+		m.ccInput.Blur()
+		m.bodyInput.Blur()
+		for i := range m.headers {
+			m.headers[i].Key.Blur()
+			m.headers[i].Value.Blur()
+		}
+		m.headers[m.selectedHead].Key.Focus()
+		return m, nil
 	case "ctrl+d":
 		if len(m.headers) > 0 {
 			m.headers = append(m.headers[:m.selectedHead], m.headers[m.selectedHead+1:]...)
@@ -350,50 +362,158 @@ func (m Model) handleHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.selectedHead = 0
 			}
 		}
-		return m.syncFocus()
+		return m, nil
 	case "up", "k":
 		if m.selectedHead > 0 {
 			m.selectedHead--
 		}
-		return m.syncFocus()
+		return m, nil
 	case "down", "j":
 		if m.selectedHead < len(m.headers)-1 {
 			m.selectedHead++
 		}
-		return m.syncFocus()
+		return m, nil
 	case "left", "h":
 		m.headerSubfocus = subfocusKey
-		return m.syncFocus()
+		m.urlInput.Blur()
+		m.ccInput.Blur()
+		m.bodyInput.Blur()
+		for i := range m.headers {
+			m.headers[i].Key.Blur()
+			m.headers[i].Value.Blur()
+		}
+		m.headers[m.selectedHead].Key.Focus()
+		return m, nil
 	case "right", "l":
 		m.headerSubfocus = subfocusValue
-		return m.syncFocus()
+		m.urlInput.Blur()
+		m.ccInput.Blur()
+		m.bodyInput.Blur()
+		for i := range m.headers {
+			m.headers[i].Key.Blur()
+			m.headers[i].Value.Blur()
+		}
+		m.headers[m.selectedHead].Value.Focus()
+		return m, nil
+	case "tab":
+		m.selectedHead = bodyFocus
+		m.urlInput.Blur()
+		m.ccInput.Blur()
+		m.bodyInput.Blur()
+		for i := range m.headers {
+			m.headers[i].Key.Blur()
+			m.headers[i].Value.Blur()
+		}
+		m.bodyInput.Focus()
+		return m, nil
+	default:
+		if m.selectedHead >= 0 && m.selectedHead < len(m.headers) {
+			var cmd tea.Cmd
+			if m.headerSubfocus == subfocusKey {
+				m.headers[m.selectedHead].Key, cmd = m.headers[m.selectedHead].Key.Update(msg)
+			} else {
+				m.headers[m.selectedHead].Value, cmd = m.headers[m.selectedHead].Value.Update(msg)
+			}
+			return m, cmd
+		}
 	}
 
-	return m.updateFocusedInput(msg)
+	return m, nil
 }
 
-func (m Model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	switch m.focus {
-	case focusURL:
-		m.urlInput, cmd = m.urlInput.Update(msg)
-	case focusConcurrency:
-		m.ccInput, cmd = m.ccInput.Update(msg)
-	case focusHeaders:
+func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.selected > 0 {
+			m.selected--
+		}
+		return m, nil
+	case "down", "j":
+		if m.selected < len(m.results)-1 {
+			m.selected++
+		}
+		return m, nil
+	case "pgup":
+		if len(m.results) > 0 {
+			pageSize := max(5, m.height/2)
+			m.selected = max(0, m.selected-pageSize)
+		}
+		return m, nil
+	case "pgdown":
+		if len(m.results) > 0 {
+			pageSize := max(5, m.height/2)
+			m.selected = min(len(m.results)-1, m.selected+pageSize)
+		}
+		return m, nil
+	case "enter":
+		if len(m.results) > 0 {
+			m.mode = modeInspect
+		}
+		return m, nil
+	case "[":
+		m.view = viewTimeline
+		return m, nil
+	case "]":
+		m.view = viewLogs
+		return m, nil
+	case "e":
+		m.dialog = dialogEndpoint
+		m.urlInput.Focus()
+		return m, nil
+	case "c":
+		m.dialog = dialogConcurrency
+		m.ccInput.Focus()
+		return m, nil
+	case "p":
+		m.dialog = dialogPayload
+		m.selectedHead = 0
+		m.headerSubfocus = subfocusKey
 		if len(m.headers) == 0 {
-			break
+			m.headers = append(m.headers, newHeaderRow())
 		}
-		if m.headerSubfocus == 0 {
-			m.headers[m.selectedHead].Key, cmd = m.headers[m.selectedHead].Key.Update(msg)
-		} else {
-			m.headers[m.selectedHead].Value, cmd = m.headers[m.selectedHead].Value.Update(msg)
+		m.urlInput.Blur()
+		m.ccInput.Blur()
+		m.bodyInput.Blur()
+		for i := range m.headers {
+			m.headers[i].Key.Blur()
+			m.headers[i].Value.Blur()
 		}
-	case focusBody:
-		m.bodyInput, cmd = m.bodyInput.Update(msg)
-	default:
+		m.headers[m.selectedHead].Key.Focus()
+		return m, nil
+	case "ctrl+r":
+		return m.startRun()
+	case "ctrl+x":
+		return m.cancelRun(), nil
+	case "q", "ctrl+c":
+		if m.running {
+			m.dialog = dialogConfirmQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeObserve
+		return m, nil
+	case "up", "k":
+		if m.selected > 0 {
+			m.selected--
+		}
+		return m, nil
+	case "down", "j":
+		if m.selected < len(m.results)-1 {
+			m.selected++
+		}
+		return m, nil
+	case "q", "ctrl+c":
+		m.dialog = dialogConfirmQuit
 		return m, nil
 	}
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) startRun() (Model, tea.Cmd) {
@@ -427,6 +547,8 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	eventCh := make(chan model.Event, runconfig.MaxConcurrency)
 	hub.Add(eventCh)
 
+	m.mode = modeObserve
+	m.dialog = dialogNone
 	m.running = true
 	m.cancel = cancel
 	m.eventCh = eventCh
@@ -434,12 +556,9 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.elapsed = 0
 	m.results = nil
 	m.selected = 0
-	m.inspector = false
-	m.confirmQuit = false
 	m.capped = false
 	m.errMsg = ""
 	m.status = "RUNNING"
-	m.autoScroll = true
 	m.summary = metrics.Summary{}
 	m.latencyHead = 0
 	m.latencyLen = 0
@@ -450,6 +569,10 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	}()
 
 	return m, tea.Batch(waitForEvent(eventCh), tickCmd())
+}
+
+func (m Model) isFollowingTail() bool {
+	return len(m.results) == 0 || m.selected >= len(m.results)-1
 }
 
 func (m Model) cancelRun() Model {
@@ -485,56 +608,6 @@ func startupTimeout() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 		return startupMsg{}
 	})
-}
-
-func (m Model) moveFocus(delta int) (Model, tea.Cmd) {
-	targets := []focusTarget{focusMethod, focusURL, focusConcurrency, focusPayload, focusResults}
-	if m.showPayload {
-		targets = []focusTarget{focusMethod, focusURL, focusConcurrency, focusPayload, focusHeaders, focusBody, focusResults}
-	}
-
-	current := 0
-	for i, target := range targets {
-		if target == m.focus {
-			current = i
-			break
-		}
-	}
-	next := (current + delta + len(targets)) % len(targets)
-	m.focus = targets[next]
-	return m.syncFocus()
-}
-
-func (m Model) syncFocus() (Model, tea.Cmd) {
-	m.urlInput.Blur()
-	m.ccInput.Blur()
-	m.bodyInput.Blur()
-	for i := range m.headers {
-		m.headers[i].Key.Blur()
-		m.headers[i].Value.Blur()
-	}
-
-	var cmds []tea.Cmd
-	switch m.focus {
-	case focusURL:
-		cmds = append(cmds, m.urlInput.Focus())
-	case focusConcurrency:
-		cmds = append(cmds, m.ccInput.Focus())
-	case focusHeaders:
-		if len(m.headers) > 0 {
-			if m.selectedHead >= len(m.headers) {
-				m.selectedHead = len(m.headers) - 1
-			}
-			if m.headerSubfocus == subfocusKey {
-				cmds = append(cmds, m.headers[m.selectedHead].Key.Focus())
-			} else {
-				cmds = append(cmds, m.headers[m.selectedHead].Value.Focus())
-			}
-		}
-	case focusBody:
-		cmds = append(cmds, m.bodyInput.Focus())
-	}
-	return m, tea.Batch(cmds...)
 }
 
 func (m Model) concurrency() int {

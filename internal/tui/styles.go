@@ -14,11 +14,11 @@ const (
 )
 
 var (
-	StyleBase      = lipgloss.NewStyle().Background(lipgloss.Color(colorBg)).Foreground(lipgloss.Color(colorText))
-	StyleTopBar    = StyleBase.Copy().Bold(true)
-	StyleStatusBar = StyleBase.Copy().Background(lipgloss.Color(colorDark))
+	StyleBase       = lipgloss.NewStyle().Background(lipgloss.Color(colorBg)).Foreground(lipgloss.Color(colorText))
+	StyleTopBar     = StyleBase.Copy().Bold(true)
+	StyleStatusBar  = StyleBase.Copy().Background(lipgloss.Color(colorDark))
 	StyleStatusMode = lipgloss.NewStyle().Background(lipgloss.Color(colorAccent)).Foreground(lipgloss.Color(colorBg)).Bold(true)
-	StyleSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	StyleSeparator  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 )
 
 func statusColor(status int) string {
