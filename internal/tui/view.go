@@ -7,12 +7,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/divijg19/Pulse/internal/metrics"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
-
-var sparklineChars = []rune("▁▂▃▄▅▆▇█")
 
 func (m Model) View() string {
 	if m.width == 0 {
@@ -20,282 +17,254 @@ func (m Model) View() string {
 	}
 
 	width := max(72, m.width)
-	innerWidth := width - 4
 
-	header := m.renderHeader(innerWidth)
-	command := m.renderCommand(innerWidth)
-	metricsStrip := m.renderMetrics(innerWidth)
-	sparkline := m.renderSparkline(innerWidth)
-
-	payload := ""
+	fixed := 5
+	var payloadHeight int
 	if m.showPayload {
-		payload = m.renderPayload(innerWidth)
+		payloadHeight = lipgloss.Height(m.renderPayload(width))
+		fixed += payloadHeight
 	}
 
-	fixed := lipgloss.Height(header)
-	fixed += lipgloss.Height(command)
-	fixed += lipgloss.Height(metricsStrip)
-	if sparkline != "" {
-		fixed += lipgloss.Height(sparkline)
+	metricsStr := m.renderMetrics(width)
+	if metricsStr != "" {
+		fixed++
 	}
-	if payload != "" {
-		fixed += lipgloss.Height(payload)
+	workspaceHeight := max(1, m.height-fixed)
+
+	var sb strings.Builder
+	sb.WriteString(m.renderTopBar(width))
+	sb.WriteString("\n")
+	sb.WriteString(StyleSeparator.Render(strings.Repeat("─", width)))
+	sb.WriteString("\n")
+	if metricsStr != "" {
+		sb.WriteString(metricsStr)
+		sb.WriteString("\n")
+	}
+	sb.WriteString(m.renderTabStrip(width))
+	sb.WriteString("\n")
+	if m.showPayload {
+		sb.WriteString(m.renderPayload(width))
+		sb.WriteString("\n")
 	}
 
-	footer := m.renderFooter(innerWidth)
-	footerHeight := lipgloss.Height(footer)
-
-	available := m.height - 2 - fixed - footerHeight - 4
-	workspaceHeight := max(8, available)
-	workspace := m.renderWorkspace(innerWidth, workspaceHeight)
-
-	parts := []string{header, command, metricsStrip}
-	if sparkline != "" {
-		parts = append(parts, sparkline)
-	}
-	if payload != "" {
-		parts = append(parts, payload)
-	}
-	parts = append(parts, workspace, footer)
-
-	return appStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
-}
-
-func (m Model) renderHeader(width int) string {
-	rightText := m.status
-	if m.running {
-		rps := 0.0
-		if m.elapsed > 0 {
-			rps = float64(len(m.results)) / m.elapsed.Seconds()
+	switch m.activeTab {
+	case tabTimeline:
+		if m.inspector && width >= 86 {
+			resultsWidth := width * 58 / 100
+			inspWidth := width - resultsWidth - 1
+			sb.WriteString(m.renderTimeline(resultsWidth, workspaceHeight))
+			sb.WriteString(" ")
+			sb.WriteString(m.renderInspector(inspWidth, workspaceHeight))
+		} else {
+			sb.WriteString(m.renderTimeline(width, workspaceHeight))
+			if m.inspector {
+				sb.WriteString("\n")
+				sb.WriteString(m.renderInspector(width, max(6, workspaceHeight/2)))
+			}
 		}
-		rightText = fmt.Sprintf("%.1fs ELAPSED  •  %.1f RPS", m.elapsed.Seconds(), rps)
+	default:
+		if m.inspector && width >= 86 {
+			resultsWidth := width * 58 / 100
+			inspWidth := width - resultsWidth - 1
+			sb.WriteString(m.renderLogs(resultsWidth, workspaceHeight))
+			sb.WriteString(" ")
+			sb.WriteString(m.renderInspector(inspWidth, workspaceHeight))
+		} else {
+			sb.WriteString(m.renderLogs(width, workspaceHeight))
+			if m.inspector {
+				sb.WriteString("\n")
+				sb.WriteString(m.renderInspector(width, max(6, workspaceHeight/2)))
+			}
+		}
 	}
-	state := mutedStyle.Render(rightText)
-	if m.running {
-		state = cyanStyle.Render(rightText)
-	}
 
-	dot := statusDotStyle.Render("●")
-	if m.running && m.dotGlow {
-		dot = statusDotGlowStyle.Render("●")
-	}
+	sb.WriteString("\n")
+	sb.WriteString(StyleSeparator.Render(strings.Repeat("─", width)))
+	sb.WriteString("\n")
+	sb.WriteString(m.renderStatusBar(width))
 
-	left := lipgloss.JoinHorizontal(lipgloss.Center,
-		dot, " ",
-		titleStyle.Render("Pulse"),
-		" ",
-		mutedStyle.Render("terminal"),
-	)
-
-	line := lipgloss.JoinHorizontal(lipgloss.Center,
-		left,
-		lipgloss.NewStyle().Width(width-lipgloss.Width(left)-lipgloss.Width(state)).Render(""),
-		state,
-	)
-
-	separator := separatorBorder.Render(strings.Repeat("─", width))
-	return lipgloss.JoinVertical(lipgloss.Left, line, separator)
+	return StyleBase.Width(width).Height(m.height).Render(sb.String())
 }
 
-func (m Model) renderCommand(width int) string {
-	methodName := runconfig.AllowedMethods()[m.methodIndex]
-	method := methodStyle(methodName, m.focus == focusMethod).Render(methodName)
-	methodBox := lipgloss.NewStyle().Width(10).Render(method)
-
-	urlBox := inputStyle(m.focus == focusURL).
-		Width(max(20, width-56)).
-		Render(truncate(m.urlInput.Value(), max(18, width-58)))
-
-	ccBox := controlStyle(m.focus == focusConcurrency).
-		Width(8).
-		Render(fmt.Sprintf("CC %d", m.concurrency()))
-
-	payloadLabel := "PAYLOAD"
-	if m.showPayload {
-		payloadLabel = "PAYLOAD·ON"
+func (m Model) renderTopBar(width int) string {
+	method := runconfig.AllowedMethods()[m.methodIndex]
+	url := truncateURL(m.urlInput.Value(), 40)
+	if m.focus == focusURL {
+		url = "[" + url + "]"
 	}
-	payloadBox := controlStyle(m.focus == focusPayload).
-		Width(11).
-		Render(payloadLabel)
+	left := method + " " + url
 
-	runLabel := "▶ RUN"
-	if m.running {
-		runLabel = "◼ CANCEL"
+	var state string
+	switch {
+	case m.confirmQuit:
+		state = "● QUIT?"
+	case m.inspector:
+		state = "● INSPECTING"
+	case m.running:
+		state = fmt.Sprintf("%d req    ● RUNNING %.1fs", len(m.results), m.elapsed.Seconds())
+	case m.status == "COMPLETE":
+		state = fmt.Sprintf("%d req    ● COMPLETED %.1fs", len(m.results), m.elapsed.Seconds())
+	case m.status != "" && m.status != "SYSTEM READY":
+		cc := strings.TrimSpace(m.ccInput.Value())
+		if m.focus == focusConcurrency {
+			cc = "[" + cc + "]"
+		}
+		state = fmt.Sprintf("CC %s    %s", cc, m.renderTopBarStatus())
+	default:
+		cc := strings.TrimSpace(m.ccInput.Value())
+		if m.focus == focusConcurrency {
+			cc = "[" + cc + "]"
+		}
+		state = fmt.Sprintf("CC %s    ● IDLE", cc)
 	}
-	runBox := runButtonStyle(m.running).Width(10).Render(runLabel)
 
-	divider := separatorBorder.Render("│")
+	rightStyled := renderRightStyled(m.running, m.status, m.confirmQuit, state)
 
-	row := lipgloss.JoinHorizontal(lipgloss.Center,
-		methodBox, " ", divider, " ",
-		urlBox, " ", divider, " ",
-		ccBox, " ", divider, " ",
-		payloadBox, " ", divider, " ",
-		runBox,
-	)
+	maxLeft := width - lipgloss.Width(rightStyled) - 3
+	if maxLeft < 16 {
+		maxLeft = 16
+	}
+	leftTruncated := truncate(left, maxLeft)
+	padding := width - lipgloss.Width(leftTruncated) - lipgloss.Width(rightStyled)
+	if padding < 1 {
+		padding = 1
+	}
 
-	return panelStyle.Width(width).Render(row)
+	line := leftTruncated + strings.Repeat(" ", padding) + rightStyled
+	return StyleTopBar.Width(width).Render(line)
+}
+
+func (m Model) renderTopBarStatus() string {
+	return "● " + m.status
+}
+
+func renderRightStyled(running bool, status string, confirmQuit bool, right string) string {
+	if running || confirmQuit || status != "" && status != "SYSTEM READY" {
+		return StyleBase.Copy().Foreground(lipgloss.Color(colorAccent)).Render(right)
+	}
+	return StyleBase.Copy().Foreground(lipgloss.Color(colorMuted)).Render(right)
 }
 
 func (m Model) renderMetrics(width int) string {
-	summary := m.summary
-	segWidth := max(14, (width-6)/4)
-
-	target := m.concurrency()
-	barWidth := max(4, segWidth-8)
-	var bar string
-	if target > 0 {
-		filled := summary.Total * barWidth / target
-		if filled > barWidth {
-			filled = barWidth
-		}
-		bar = strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-		bar += fmt.Sprintf(" %d/%d", summary.Total, target)
-	} else {
-		bar = fmt.Sprintf("%d", summary.Total)
+	if !m.running && len(m.results) == 0 {
+		return ""
 	}
-	requests := lipgloss.JoinVertical(lipgloss.Left,
-		labelStyle.Render("REQUESTS"),
-		metricValueStyle.Render(bar),
-	)
+	s := m.summary
+	sep := StyleBase.Copy().Foreground(lipgloss.Color(colorMuted)).Render(" • ")
 
-	successColor := colorAmber
-	if summary.SuccessRate >= 100 {
-		successColor = colorGreen
-	}
-	success := lipgloss.JoinVertical(lipgloss.Left,
-		labelStyle.Render("SUCCESS"),
-		lipgloss.NewStyle().Foreground(lipgloss.Color(successColor)).Bold(true).Render(fmt.Sprintf("%d%%", summary.SuccessRate)),
-	)
-
-	errors := summary.Total - summary.Successes
-	errColor := colorGreen
-	if errors > 0 {
-		errColor = colorRose
-	}
 	rps := 0.0
 	if m.elapsed > 0 {
-		rps = float64(summary.Total) / m.elapsed.Seconds()
+		rps = float64(s.Total) / m.elapsed.Seconds()
 	}
-	errorsRPS := lipgloss.JoinVertical(lipgloss.Left,
-		labelStyle.Render("ERRORS"),
-		lipgloss.JoinHorizontal(lipgloss.Left,
-			lipgloss.NewStyle().Foreground(lipgloss.Color(errColor)).Bold(true).Render(fmt.Sprintf("%d", errors)),
-			" ",
-			mutedStyle.Render(fmt.Sprintf("%.1f/s", rps)),
-		),
-	)
 
-	lat := lipgloss.JoinVertical(lipgloss.Left,
-		labelStyle.Render("LATENCY"),
-		metricValueStyle.Render(fmt.Sprintf("%s/%s",
-			formatDuration(summary.P50),
-			formatDuration(summary.P99),
-		)),
-	)
+	okStr := fmt.Sprintf("%d%% ok", s.SuccessRate)
+	rpsStr := fmt.Sprintf("%.1f r/s", rps)
+	p90Str := fmt.Sprintf("p90 %s", formatDuration(s.P90))
+	p99Str := fmt.Sprintf("p99 %s", formatDuration(s.P99))
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(segWidth).Render(requests), "  ",
-		lipgloss.NewStyle().Width(segWidth).Render(success), "  ",
-		lipgloss.NewStyle().Width(segWidth).Render(errorsRPS), "  ",
-		lipgloss.NewStyle().Width(segWidth).Render(lat),
-	)
+	return StyleBase.Copy().Width(width).Render(okStr + sep + rpsStr + sep + p90Str + sep + p99Str)
+}
 
-	separator := separatorBorder.Render(strings.Repeat("─", width))
-	return lipgloss.JoinVertical(lipgloss.Left, row, separator)
+func (m Model) renderTabStrip(width int) string {
+	var timeline, logs string
+	if m.activeTab == tabTimeline {
+		timeline = StyleBase.Copy().Foreground(lipgloss.Color(colorAccent)).Render("▶ Timeline")
+		logs = StyleBase.Copy().Foreground(lipgloss.Color(colorMuted)).Render("  Logs")
+	} else {
+		timeline = StyleBase.Copy().Foreground(lipgloss.Color(colorMuted)).Render("  Timeline")
+		logs = StyleBase.Copy().Foreground(lipgloss.Color(colorAccent)).Render("▶ Logs")
+	}
+	sep := StyleBase.Copy().Foreground(lipgloss.Color(colorMuted)).Render(" • ")
+	return StyleBase.Copy().Width(width).Render(timeline + " " + sep + " " + logs)
 }
 
 func (m Model) renderPayload(width int) string {
-	leftWidth := max(28, width/2-2)
-	rightWidth := max(28, width-leftWidth-3)
+	var b strings.Builder
 
-	headers := []string{sectionTitleStyle.Render("HEADERS  ctrl+n add  ctrl+d remove")}
+	headersColor := colorMuted
+	if m.focus == focusHeaders {
+		headersColor = colorAccent
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(headersColor)).Render("HEADERS  ctrl+n add  ctrl+d remove"))
+	b.WriteString("\n")
+
 	if len(m.headers) == 0 {
-		headers = append(headers, mutedStyle.Render("No headers configured."))
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("  No headers configured."))
 	} else {
-		for i, header := range m.headers {
-			prefix := "  "
-			if m.focus == focusHeaders && i == m.selectedHead {
-				prefix = "▸ "
-			}
-			key := truncate(header.Key.Value(), leftWidth/2-4)
-			value := truncate(header.Value.Value(), leftWidth/2-4)
+		for _, header := range m.headers {
+			key := header.Key.Value()
+			value := header.Value.Value()
 			if key == "" {
-				key = mutedStyle.Render("Header")
+				key = "Header"
 			}
 			if value == "" {
-				value = mutedStyle.Render("Value")
+				value = "Value"
 			}
-			line := fmt.Sprintf("%s%-*s %s", prefix, leftWidth/2-2, key, value)
-			headers = append(headers, line)
+			b.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
 		}
 	}
 
-	bodyPreview := m.bodyInput.View()
-	if strings.TrimSpace(m.bodyInput.Value()) == "" && m.focus != focusBody {
-		bodyPreview = mutedStyle.Render(`{"name":"pulse"}`)
-	}
+	b.WriteString("\n")
 
-	left := panelStyle.Width(leftWidth).Render(strings.Join(headers, "\n"))
-	right := panelStyle.Width(rightWidth).Render(sectionTitleStyle.Render("BODY") + "\n" + bodyStyle(m.focus == focusBody).Width(rightWidth-4).Render(bodyPreview))
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	bodyColor := colorMuted
+	if m.focus == focusBody {
+		bodyColor = colorAccent
+	}
+	bodyLen := len(m.bodyInput.Value())
+	bodyLabel := "BODY"
+	if bodyLen > 0 {
+		bodyLabel = fmt.Sprintf("BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(bodyColor)).Render(bodyLabel))
+	b.WriteString("\n")
+
+	bodyPreview := m.bodyInput.Value()
+	if strings.TrimSpace(bodyPreview) == "" {
+		bodyPreview = `{"name":"pulse"}`
+	}
+	b.WriteString(bodyPreview)
+
+	return b.String()
 }
 
-func (m Model) renderWorkspace(width int, height int) string {
-	contentWidth := width - 6
-	tabs := m.renderTabs(contentWidth)
-	tabsHeight := lipgloss.Height(tabs)
-	bodyHeight := max(4, height-4-tabsHeight)
+func (m Model) renderStatusBar(width int) string {
+	var mode, hints string
 
-	resultsWidth := contentWidth
-	inspector := ""
-	if m.inspector && contentWidth >= 108 {
-		resultsWidth = contentWidth*58/100 - 1
-		inspector = m.renderInspector(contentWidth-resultsWidth-1, bodyHeight)
+	switch {
+	case m.confirmQuit:
+		mode = ""
+		hints = "PRESS Q AGAIN TO QUIT • any other key cancels"
+	case m.inspector:
+		mode = "INSPECTING"
+		hints = "• ↑↓ scroll • ESC back • Q quit"
+	case m.running:
+		mode = "RUNNING"
+		hints = "• TAB focus • ENTER inspect • ^X cancel • Q quit"
+	case m.focus == focusURL:
+		mode = "EDIT URL"
+		hints = "• TAB next • ESC cancel"
+	case m.focus == focusConcurrency:
+		mode = "EDIT CC"
+		hints = "• TAB next • ESC cancel"
+	default:
+		mode = "NORMAL"
+		hints = "• TAB focus • ENTER inspect • ^R run • ^X cancel • Q quit"
 	}
 
-	var results string
-	if m.activeTab == tabTimeline {
-		results = m.renderTimeline(resultsWidth, bodyHeight)
-	} else {
-		results = m.renderLogs(resultsWidth, bodyHeight)
+	if mode == "" {
+		return StyleStatusBar.Width(width).Render(hints)
 	}
 
-	body := results
-	if inspector != "" {
-		body = lipgloss.JoinHorizontal(lipgloss.Top, results, " ", inspector)
-	} else if m.inspector {
-		body = lipgloss.JoinVertical(lipgloss.Left, results, m.renderInspector(contentWidth, max(6, bodyHeight/2)))
-	}
-
-	return panelStyle.Width(width).Height(height).Render(
-		lipgloss.JoinVertical(lipgloss.Left, tabs, body),
-	)
-}
-
-func (m Model) renderTabs(width int) string {
-	timeline := pillStyle(m.activeTab == tabTimeline).Render("Timeline")
-	logs := pillStyle(m.activeTab == tabLogs).Render("Live Logs")
-	indicator := ""
-	if !m.autoScroll {
-		indicator = mutedStyle.Render("  MANUAL")
-	}
-	return lipgloss.PlaceHorizontal(width, lipgloss.Center,
-		lipgloss.JoinHorizontal(lipgloss.Top, timeline, " ", logs, indicator),
-	)
+	modeStyled := StyleStatusMode.Render(" " + mode + " ")
+	hintsStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render(hints)
+	line := modeStyled + " " + hintsStyled
+	return StyleStatusBar.Width(width).Render(line)
 }
 
 func (m Model) renderTimeline(width int, height int) string {
 	if len(m.results) == 0 {
-		msg := "Waiting for results..."
-		if !m.running {
-			if strings.TrimSpace(m.urlInput.Value()) == "" {
-				msg = "Enter a URL to begin"
-			} else {
-				msg = "Ctrl+R to run"
-			}
-		}
-		return emptyStyle.Width(width).Height(height).Render(msg)
+		msg := m.renderEmptyState("⏳  Waiting for results...")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Width(width).Height(height).Render(msg)
 	}
 
 	maxStart := max(0, len(m.results)-height)
@@ -343,15 +312,8 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 
 func (m Model) renderLogs(width int, height int) string {
 	if len(m.results) == 0 {
-		msg := "No results yet..."
-		if !m.running {
-			if strings.TrimSpace(m.urlInput.Value()) == "" {
-				msg = "Enter a URL to begin"
-			} else {
-				msg = "Ctrl+R to run"
-			}
-		}
-		return emptyStyle.Width(width).Height(height).Render(msg)
+		msg := m.renderEmptyState("📭  No results yet...")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Width(width).Height(height).Render(msg)
 	}
 
 	maxStart := max(0, len(m.results)-height)
@@ -383,7 +345,7 @@ func (m Model) renderLogs(width int, height int) string {
 
 func (m Model) renderInspector(width int, height int) string {
 	if len(m.results) == 0 || m.selected < 0 || m.selected >= len(m.results) {
-		return panelStyle.Width(width).Height(height).Render(mutedStyle.Render("No result selected."))
+		return StyleBase.Copy().Width(width).Height(height).Render(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("No result selected."))
 	}
 
 	result := m.results[m.selected]
@@ -396,20 +358,24 @@ func (m Model) renderInspector(width int, height int) string {
 		reqURL = m.urlInput.Value()
 	}
 
+	sectionHeader := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent))
+	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	errorText := lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
+
 	lines := []string{
-		sectionTitleStyle.Render("INSPECTOR"),
-		fmt.Sprintf("  %s %s", methodStyle(method, false).Render(method), truncate(reqURL, width-12)),
+		sectionHeader.Render("INSPECTOR"),
+		fmt.Sprintf("  %s %s", method, truncate(reqURL, width-12)),
 		"",
-		fmt.Sprintf("Status:  %s", resultStatus(result)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor(result.Status))).Render("Status:  " + resultStatus(result)),
 		fmt.Sprintf("Latency: %s", formatDuration(result.Latency)),
 	}
 	if result.Error != "" {
-		lines = append(lines, errorTextStyle.Render("Error: "+result.Error))
+		lines = append(lines, errorText.Render("Error: "+result.Error))
 	}
-	lines = append(lines, "", sectionTitleStyle.Render("HEADERS"))
+	lines = append(lines, "", sectionHeader.Render("HEADERS"))
 
 	if len(result.ResponseHeaders) == 0 {
-		lines = append(lines, mutedStyle.Render("No headers captured."))
+		lines = append(lines, muted.Render("No headers captured."))
 	} else {
 		keys := make([]string, 0, len(result.ResponseHeaders))
 		for key := range result.ResponseHeaders {
@@ -421,101 +387,23 @@ func (m Model) renderInspector(width int, height int) string {
 		}
 	}
 
-	lines = append(lines, "", sectionTitleStyle.Render("BODY"))
+	lines = append(lines, "", sectionHeader.Render("BODY"))
 	body := result.ResponseBody
 	if body == "" {
-		body = mutedStyle.Render("No body captured.")
+		body = muted.Render("No body captured.")
 	}
 	bodyLines := strings.Split(body, "\n")
 	for i, bline := range bodyLines {
 		if len(lines) >= height-2 {
 			if i < len(bodyLines)-1 {
-				lines = append(lines, mutedStyle.Render("... (truncated)"))
+				lines = append(lines, muted.Render("... (truncated)"))
 			}
 			break
 		}
 		lines = append(lines, truncate(bline, width-4))
 	}
 
-	return panelStyle.Width(width).Height(height).Render(strings.Join(lines, "\n"))
-}
-
-func (m Model) renderFooter(width int) string {
-	left := "tab/⇧tab focus  ctrl+r run  ctrl+x cancel  ctrl+a scroll  [/] tabs  ↑↓ select  enter inspect  esc back  q quit"
-
-	right := ""
-	if !m.running && len(m.results) > 0 {
-		s := metrics.Compute(m.results, m.elapsed)
-		right = fmt.Sprintf("%d results  p99 %s  %d errors",
-			s.Total, formatDuration(s.P99), s.Total-s.Successes)
-	}
-
-	var line string
-	if right != "" {
-		leftWidth := max(40, width-lipgloss.Width(mutedStyle.Render(right))-4)
-		line = lipgloss.JoinHorizontal(lipgloss.Center,
-			mutedStyle.Width(leftWidth).Render(truncate(left, leftWidth)),
-			mutedStyle.Render(right),
-		)
-	} else {
-		line = mutedStyle.Render(truncate(left, width))
-	}
-
-	return separatorBorder.Render(strings.Repeat("─", width)) + "\n" + line
-}
-
-func displayElapsed(m Model) time.Duration {
-	if m.running || m.elapsed > 0 {
-		return m.elapsed
-	}
-	return 0
-}
-
-func (m Model) renderSparkline(width int) string {
-	if m.latencyLen == 0 {
-		return ""
-	}
-
-	label := lipgloss.PlaceHorizontal(width, lipgloss.Right, labelStyle.Render("LATENCY SPARKLINE"))
-
-	count := m.latencyLen
-	if count > width {
-		count = width
-	}
-
-	maxLat := time.Duration(0)
-	for i := 0; i < count; i++ {
-		idx := (m.latencyHead - count + i + latencyRingSize) % latencyRingSize
-		if m.latencyRing[idx] > maxLat {
-			maxLat = m.latencyRing[idx]
-		}
-	}
-
-	var sb strings.Builder
-	for i := 0; i < count; i++ {
-		idx := (m.latencyHead - count + i + latencyRingSize) % latencyRingSize
-		level := 0
-		if maxLat > 0 {
-			level = int(float64(m.latencyRing[idx]) / float64(maxLat) * 7)
-			if level < 0 {
-				level = 0
-			} else if level > 7 {
-				level = 7
-			}
-		}
-		dotColor := colorGreen
-		if level >= 3 {
-			dotColor = colorAmber
-		}
-		if level >= 6 {
-			dotColor = colorRose
-		}
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(dotColor)).Render(string(sparklineChars[level])))
-	}
-
-	bars := lipgloss.NewStyle().Width(width).MaxWidth(width).Render(sb.String())
-	separator := separatorBorder.Render(strings.Repeat("─", width))
-	return lipgloss.JoinVertical(lipgloss.Left, label, bars, separator)
+	return StyleBase.Copy().Width(width).Height(height).Render(strings.Join(lines, "\n"))
 }
 
 func resultStatus(result model.Result) string {
@@ -538,9 +426,34 @@ func resultStatus(result model.Result) string {
 
 func rowCursor(selected bool) string {
 	if selected {
-		return "▸"
+		return "▶"
 	}
 	return " "
+}
+
+func (m Model) renderEmptyState(runningMsg string) string {
+	if !m.running {
+		if strings.TrimSpace(m.urlInput.Value()) == "" {
+			return "Enter a URL to begin"
+		}
+		return "▶  Ctrl+R to run"
+	}
+	return runningMsg
+}
+
+func truncateURL(rawURL string, width int) string {
+	if width <= 0 || rawURL == "" {
+		return rawURL
+	}
+	u := strings.TrimPrefix(rawURL, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	if idx := strings.Index(u, "?"); idx >= 0 {
+		u = u[:idx]
+	}
+	if len([]rune(u)) <= width {
+		return u
+	}
+	return truncate(u, width)
 }
 
 func truncate(value string, width int) string {
