@@ -103,6 +103,30 @@ func TestTabSwitching(t *testing.T) {
 	}
 }
 
+func TestResultSelection_PageUpDown(t *testing.T) {
+	m := NewModel()
+	m.focus = focusResults
+	m.height = 30
+	for i := 0; i < 50; i++ {
+		m.results = append(m.results, model.Result{Status: 200})
+	}
+	m.selected = 25
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	m = updated.(Model)
+	expected := 25 + max(5, 30/2)
+	if m.selected != expected {
+		t.Fatalf("pgdown: selected = %d, want %d", m.selected, expected)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	m = updated.(Model)
+	expected = 25
+	if m.selected != expected {
+		t.Fatalf("pgup: selected = %d, want %d", m.selected, expected)
+	}
+}
+
 func TestResultSelectionAndInspector(t *testing.T) {
 	m := NewModel()
 	m.focus = focusResults
@@ -240,10 +264,14 @@ func TestAutoScrollDoesNotAdvanceWhenScrolledAway(t *testing.T) {
 
 func TestWindowSizeMsg(t *testing.T) {
 	m := NewModel()
+	initialWidth := m.bodyInput.Width()
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
 	if m.width != 120 || m.height != 40 {
 		t.Fatalf("width/height = %d/%d", m.width, m.height)
+	}
+	if got := m.bodyInput.Width(); got <= initialWidth {
+		t.Fatalf("bodyInput.Width() = %d after resize to 120, expected > initial %d", got, initialWidth)
 	}
 }
 
@@ -315,11 +343,23 @@ func TestCtrlC_WhileRunning(t *testing.T) {
 	m.running = true
 	m.cancel = func() {}
 
+	// First ctrl+c shows confirmation, does not quit
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	m = updated.(Model)
 
+	if cmd != nil {
+		t.Fatal("first ctrl+c while running should return nil cmd (confirmation)")
+	}
+	if !m.confirmQuit {
+		t.Fatal("confirmQuit should be set after first ctrl+c")
+	}
+
+	// Second ctrl+c confirms quit
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_ = updated.(Model)
+
 	if cmd == nil {
-		t.Fatal("ctrl+c should return a quit command")
+		t.Fatal("second ctrl+c should return a quit command")
 	}
 }
 
@@ -359,6 +399,9 @@ func TestCtrlX_Cancel(t *testing.T) {
 	if m.status != "CANCELLED" {
 		t.Fatalf("status = %q (expected CANCELLED)", m.status)
 	}
+	if m.running {
+		t.Fatal("running should be false after cancelRun")
+	}
 }
 
 func TestEsc_FromBodyFocus(t *testing.T) {
@@ -392,6 +435,29 @@ func TestInit(t *testing.T) {
 	cmd := m.Init()
 	if cmd == nil {
 		t.Fatal("Init should return a non-nil command")
+	}
+}
+
+func TestStartupMsg_SetsDefaults(t *testing.T) {
+	m := NewModel()
+	updated, _ := m.Update(startupMsg{})
+	m = updated.(Model)
+	if m.width != 80 {
+		t.Fatalf("width = %d, want 80", m.width)
+	}
+	if m.height != 24 {
+		t.Fatalf("height = %d, want 24", m.height)
+	}
+}
+
+func TestStartupMsg_AfterWindowSize(t *testing.T) {
+	m := NewModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	updated, _ = m.Update(startupMsg{})
+	m = updated.(Model)
+	if m.width != 120 {
+		t.Fatal("startupMsg should not override existing width")
 	}
 }
 
@@ -450,18 +516,6 @@ func TestHeaderMap(t *testing.T) {
 	}
 	if hm["Content-Type"] != "application/json" {
 		t.Fatalf("Content-Type = %q", hm["Content-Type"])
-	}
-}
-
-func TestClamp(t *testing.T) {
-	if got := clamp(5, 0, 10); got != 5 {
-		t.Fatalf("clamp(5, 0, 10) = %d", got)
-	}
-	if got := clamp(-5, 0, 10); got != 0 {
-		t.Fatalf("clamp(-5, 0, 10) = %d", got)
-	}
-	if got := clamp(15, 0, 10); got != 10 {
-		t.Fatalf("clamp(15, 0, 10) = %d", got)
 	}
 }
 
@@ -656,9 +710,12 @@ func TestMultipleRunLifecycle(t *testing.T) {
 	if cancelled.status != "CANCELLED" {
 		t.Fatalf("status after cancel = %q, want 'CANCELLED'", cancelled.status)
 	}
+	if cancelled.running {
+		t.Fatal("running should be false after cancelRun")
+	}
 
-	// cancelRun only cancels the context; running goes false when the
-	// goroutine closes the event channel, which we simulate here.
+	// cancelRun sets running=false and status=CANCELLED; runFinishedMsg
+	// should not override the status when arriving afterwards.
 	finished, _ := cancelled.Update(runFinishedMsg{})
 	m2 := finished.(Model)
 	if m2.running {
@@ -674,6 +731,18 @@ func TestMultipleRunLifecycle(t *testing.T) {
 	}
 	if !restarted.running {
 		t.Fatal("should be running after restart")
+	}
+}
+
+func TestEsc_FromResultsNavigatesToURL(t *testing.T) {
+	m := NewModel()
+	m.focus = focusResults
+	m.results = []model.Result{{Status: 200}}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.focus != focusURL {
+		t.Fatalf("esc from results should go to URL, got %v", m.focus)
 	}
 }
 
@@ -714,5 +783,138 @@ func TestResultMsg_NoEventChannel(t *testing.T) {
 	}
 	if m2.summary.Total != 1 {
 		t.Fatalf("summary should reflect 1 result, got %d", m2.summary.Total)
+	}
+}
+
+func TestHeaderNavigation_UpDown(t *testing.T) {
+	m := NewModel()
+	m.showPayload = true
+	m.focus = focusHeaders
+	m.headers = append(m.headers, newHeaderRow(), newHeaderRow())
+
+	if len(m.headers) != 2 {
+		t.Fatalf("expected 2 headers, got %d", len(m.headers))
+	}
+
+	m.selectedHead = 0
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.selectedHead != 1 {
+		t.Fatalf("down from index 0 should go to 1, got %d", m.selectedHead)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.selectedHead != 0 {
+		t.Fatalf("up from index 1 should go to 0, got %d", m.selectedHead)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.selectedHead != 0 {
+		t.Fatalf("up at index 0 should stay 0, got %d", m.selectedHead)
+	}
+
+	m.selectedHead = 1
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.selectedHead != 1 {
+		t.Fatalf("down at last index should stay at last, got %d", m.selectedHead)
+	}
+}
+
+func TestHeaderNavigation_LeftRight(t *testing.T) {
+	m := NewModel()
+	m.showPayload = true
+	m.focus = focusHeaders
+	m.headers = append(m.headers, newHeaderRow())
+	m.headerSubfocus = subfocusValue
+	m, _ = m.syncFocus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m2 := updated.(Model)
+	if m2.headerSubfocus != subfocusKey {
+		t.Fatalf("left should set headerSubfocus to subfocusKey, got %d", m2.headerSubfocus)
+	}
+
+	updated, _ = m2.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m3 := updated.(Model)
+	if m3.headerSubfocus != subfocusValue {
+		t.Fatalf("right should set headerSubfocus to subfocusValue, got %d", m3.headerSubfocus)
+	}
+}
+
+func TestHeaderNavigation_LeftRightAliases(t *testing.T) {
+	m := NewModel()
+	m.showPayload = true
+	m.focus = focusHeaders
+	m.headers = append(m.headers, newHeaderRow())
+	m.headerSubfocus = subfocusValue
+	m, _ = m.syncFocus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	m2 := updated.(Model)
+	if m2.headerSubfocus != subfocusKey {
+		t.Fatalf("'h' should set headerSubfocus to subfocusKey, got %d", m2.headerSubfocus)
+	}
+
+	updated, _ = m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	m3 := updated.(Model)
+	if m3.headerSubfocus != subfocusValue {
+		t.Fatalf("'l' should set headerSubfocus to subfocusValue, got %d", m3.headerSubfocus)
+	}
+}
+
+func TestUpdateFocusedInput_Headers(t *testing.T) {
+	m := NewModel()
+	m.showPayload = true
+	m.focus = focusHeaders
+	m.headers = append(m.headers, newHeaderRow())
+	m, _ = m.syncFocus()
+
+	updated, _ := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m2 := updated.(Model)
+
+	if m2.headers[0].Key.Value() != "a" {
+		t.Fatal("header key input should contain typed character")
+	}
+}
+
+func TestUpdateFocusedInput_Body(t *testing.T) {
+	m := NewModel()
+	m.focus = focusBody
+	m, _ = m.syncFocus()
+
+	updated, _ := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m2 := updated.(Model)
+
+	if m2.bodyInput.Value() != "x" {
+		t.Fatal("body input should contain typed character")
+	}
+}
+
+func TestUpdateFocusedInput_URL(t *testing.T) {
+	m := NewModel()
+	m.focus = focusURL
+	m, _ = m.syncFocus()
+
+	updated, _ := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m2 := updated.(Model)
+
+	if !strings.Contains(m2.urlInput.Value(), "/") {
+		t.Fatal("URL input should contain typed character")
+	}
+}
+
+func TestUpdateFocusedInput_CC(t *testing.T) {
+	m := NewModel()
+	m.focus = focusConcurrency
+	m, _ = m.syncFocus()
+
+	updated, _ := m.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	m2 := updated.(Model)
+
+	if !strings.Contains(m2.ccInput.Value(), "0") {
+		t.Fatal("CC input should contain typed character")
 	}
 }
