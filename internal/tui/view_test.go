@@ -1,13 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/divijg19/Pulse/internal/model"
-	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
 func contains(t *testing.T, s, substr string) bool {
@@ -20,14 +18,14 @@ func TestView_Idle(t *testing.T) {
 	m.width = 100
 	m.height = 30
 	out := m.View()
-	if !contains(t, out, "Pulse") {
-		t.Fatal("View should contain 'Pulse'")
+	if !contains(t, out, "GET") {
+		t.Fatal("View should contain method")
 	}
-	if !contains(t, out, "SYSTEM READY") {
-		t.Fatal("View should contain 'SYSTEM READY'")
+	if !contains(t, out, "IDLE") {
+		t.Fatal("View should contain 'IDLE'")
 	}
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("View should contain 'Ctrl+R to run'")
+	if !contains(t, out, "▶  Ctrl+R to run") {
+		t.Fatal("View should contain '▶  Ctrl+R to run'")
 	}
 }
 
@@ -43,144 +41,404 @@ func TestView_Running(t *testing.T) {
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
 	out := m.View()
-	if !contains(t, out, "ELAPSED") {
-		t.Fatal("running view should show elapsed time")
+	if !contains(t, out, "RUNNING") {
+		t.Fatal("running view should show running indicator")
 	}
-	if !contains(t, out, "RPS") {
-		t.Fatal("running view should show RPS")
-	}
-}
-
-func TestView_EmptyState(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.height = 30
-	out := m.View()
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("empty view should show 'Ctrl+R to run'")
+	if !contains(t, out, "r/s") {
+		t.Fatal("running view should show requests per second")
 	}
 }
 
-func TestRenderCommand(t *testing.T) {
+func TestRenderTopBar_Normal(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderCommand(96)
+	out := m.renderTopBar(100)
 	if !contains(t, out, "GET") {
-		t.Fatal("command should contain 'GET'")
+		t.Fatal("top bar should contain method")
 	}
-	if !contains(t, out, "CC") {
-		t.Fatal("command should contain 'CC'")
+	if !contains(t, out, "httpbin") {
+		t.Fatal("top bar should contain URL")
 	}
-	if !contains(t, out, "RUN") {
-		t.Fatal("command should contain 'RUN'")
-	}
-	if !contains(t, out, "PAYLOAD") {
-		t.Fatal("command should contain 'PAYLOAD'")
+	if !contains(t, out, "IDLE") {
+		t.Fatal("top bar should contain state")
 	}
 }
 
-func TestRenderCommand_Running(t *testing.T) {
+func TestRenderTopBar_EditURL(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.focus = focusURL
+	out := m.renderTopBar(100)
+	if !contains(t, out, "GET") {
+		t.Fatal("top bar should contain method")
+	}
+	if !contains(t, out, "httpbin") {
+		t.Fatal("top bar should contain URL value when URL is focused")
+	}
+}
+
+func TestRenderTopBar_Running(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.running = true
-	out := m.renderCommand(96)
-	if !contains(t, out, "CANCEL") {
-		t.Fatal("running command should contain 'CANCEL'")
+	m.elapsed = 2 * time.Second
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	out := m.renderTopBar(100)
+	if !contains(t, out, "RUNNING") {
+		t.Fatal("top bar should show RUNNING state")
+	}
+	if !contains(t, out, "1 req") {
+		t.Fatal("top bar should show request count")
 	}
 }
 
-func TestRenderCommand_Dividers(t *testing.T) {
+func TestRenderTopBar_Completed(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderCommand(96)
-	count := strings.Count(out, "│")
-	if count < 3 {
-		t.Fatalf("command should have at least 3 vertical dividers, got %d", count)
+	m.status = "COMPLETE"
+	m.elapsed = 5 * time.Second
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	out := m.renderTopBar(100)
+	if !contains(t, out, "COMPLETED") {
+		t.Fatal("top bar should show COMPLETED state")
+	}
+	if !contains(t, out, "1 req") {
+		t.Fatal("top bar should show request count on completion")
+	}
+}
+
+func TestRenderTopBar_Cancelled(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.status = "CANCELLED"
+	out := m.renderTopBar(100)
+	if !contains(t, out, "CANCELLED") {
+		t.Fatal("top bar should show CANCELLED state via renderTopBarStatus")
+	}
+	if !contains(t, out, "CC") {
+		t.Fatal("top bar should show CC when status is CANCELLED")
+	}
+}
+
+func TestRenderTopBar_StatusError(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.status = "ERROR: connection refused"
+	out := m.renderTopBar(100)
+	if !contains(t, out, "ERROR") {
+		t.Fatal("top bar should show ERROR status via renderTopBarStatus")
+	}
+}
+
+func TestRenderTopBar_IdleDefault(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.status = "SYSTEM READY"
+	out := m.renderTopBar(100)
+	if !contains(t, out, "IDLE") {
+		t.Fatal("top bar should show IDLE when status is SYSTEM READY")
+	}
+	if !contains(t, out, "CC") {
+		t.Fatal("top bar should show CC when idle")
+	}
+}
+
+func TestRenderTopBar_Inspecting(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.inspector = true
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	m.selected = 0
+	out := m.renderTopBar(100)
+	if !contains(t, out, "INSPECTING") {
+		t.Fatal("top bar should show INSPECTING state")
+	}
+}
+
+func TestRenderTopBar_QuitConfirm(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.confirmQuit = true
+	out := m.renderTopBar(100)
+	if !contains(t, out, "QUIT?") {
+		t.Fatal("top bar should show QUIT? confirmation")
+	}
+}
+
+func TestRenderTopBar_EditCC(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.focus = focusConcurrency
+	out := m.renderTopBar(100)
+	if !contains(t, out, "CC") {
+		t.Fatal("edit CC top bar should contain 'CC' label")
+	}
+	if !contains(t, out, "IDLE") {
+		t.Fatal("edit CC top bar should show IDLE state")
+	}
+}
+
+func TestRenderTopBar_URLFocus(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.focus = focusURL
+	out := m.renderTopBar(100)
+	if !contains(t, out, "[httpbin.org/delay/1]") {
+		t.Fatal("URL focus top bar should show bracketed URL")
+	}
+}
+
+func TestRenderTopBar_CCFocus(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.focus = focusConcurrency
+	out := m.renderTopBar(100)
+	if !contains(t, out, "[10]") {
+		t.Fatal("CC focus top bar should show bracketed concurrency")
+	}
+}
+
+func TestRenderTopBar_QueryTruncation(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.urlInput.SetValue("https://api.example.com/users?page=1")
+	out := m.renderTopBar(100)
+	if contains(t, out, "?page=1") {
+		t.Fatal("top bar should truncate query string from URL")
+	}
+	if !contains(t, out, "api.example.com/users") {
+		t.Fatal("top bar should show truncated URL without query")
 	}
 }
 
 func TestRenderMetrics(t *testing.T) {
 	m := NewModel()
 	m.width = 100
+	m.running = true
 	m.summary.Total = 50
 	m.summary.Successes = 45
 	m.summary.SuccessRate = 90
-	m.summary.P50 = 100 * time.Millisecond
+	m.summary.P90 = 100 * time.Millisecond
 	m.summary.P99 = 500 * time.Millisecond
+	m.summary.MaxLatency = 500 * time.Millisecond
 	m.elapsed = 5 * time.Second
 
-	out := m.renderMetrics(96)
-	if !contains(t, out, "REQUESTS") {
-		t.Fatal("metrics should contain 'REQUESTS'")
+	out := m.renderMetrics(100)
+	if !contains(t, out, "90% ok") {
+		t.Fatal("metrics should show success rate")
 	}
-	if !contains(t, out, "SUCCESS") {
-		t.Fatal("metrics should contain 'SUCCESS'")
+	if !contains(t, out, "r/s") {
+		t.Fatal("metrics should show requests per second")
 	}
-	if !contains(t, out, "ERRORS") {
-		t.Fatal("metrics should contain 'ERRORS'")
+	if !contains(t, out, "p90") {
+		t.Fatal("metrics should show p90 latency")
 	}
-	if !contains(t, out, "LATENCY") {
-		t.Fatal("metrics should contain 'LATENCY'")
+	if !contains(t, out, "p99") {
+		t.Fatal("metrics should show p99 latency")
 	}
-	if !contains(t, out, "90%") {
-		t.Fatal("metrics should show '90%' success rate")
+	if contains(t, out, "p50") {
+		t.Fatal("metrics should not show p50 latency")
 	}
-	if !contains(t, out, "0.10s") {
-		t.Fatal("metrics should show p50 latency")
+	if contains(t, out, "req") {
+		t.Fatal("metrics should not show request count")
 	}
 }
 
 func TestRenderMetrics_Zero(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderMetrics(96)
-	if !contains(t, out, "REQUESTS") {
-		t.Fatal("zero metrics should still show 'REQUESTS'")
+	out := m.renderMetrics(100)
+	if out != "" {
+		t.Fatal("idle metrics with no results should be empty")
 	}
 }
 
-func TestRenderPayload_Open(t *testing.T) {
+func TestRenderMetrics_HiddenWhenIdle(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.showPayload = true
-	m.headers = append(m.headers, newHeaderRow())
-	m.headers[0].Key.SetValue("Content-Type")
-	m.headers[0].Value.SetValue("application/json")
+	m.running = false
+	m.summary.Total = 0
+	m.summary.SuccessRate = 0
+	m.elapsed = 0
 
-	out := m.renderPayload(96)
-	if !contains(t, out, "HEADERS") {
-		t.Fatal("payload should contain 'HEADERS'")
+	out := m.renderMetrics(100)
+	if out != "" {
+		t.Fatal("metrics should be hidden when idle with no results")
 	}
-	if !contains(t, out, "BODY") {
-		t.Fatal("payload should contain 'BODY'")
+
+	m.running = true
+	out = m.renderMetrics(100)
+	if out == "" {
+		t.Fatal("metrics should appear when running even with no results")
 	}
-	if !contains(t, out, "Content-Type") {
-		t.Fatal("payload should contain header key")
+}
+
+func TestRenderMetrics_ErrorColor(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.running = true
+	m.summary.Total = 10
+	m.summary.Successes = 10
+	m.summary.SuccessRate = 100
+	m.elapsed = 5 * time.Second
+
+	outNoErrors := m.renderMetrics(100)
+	if !contains(t, outNoErrors, "100% ok") {
+		t.Fatal("metrics should show 100% ok")
 	}
-	if !contains(t, out, "application/json") {
-		t.Fatal("payload should contain header value")
+
+	m.summary.Successes = 7
+	m.summary.SuccessRate = 70
+	outWithErrors := m.renderMetrics(100)
+	if !contains(t, outWithErrors, "70% ok") {
+		t.Fatal("metrics with errors should show 70% ok")
+	}
+
+	if outNoErrors == outWithErrors {
+		t.Fatal("different success rates should produce different output")
+	}
+}
+
+func TestRenderMetrics_RunningRPS(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.running = true
+	m.elapsed = 2 * time.Second
+	m.summary.Total = 100
+	m.summary.Successes = 95
+	m.summary.SuccessRate = 95
+	m.summary.P90 = 100 * time.Millisecond
+	m.summary.P99 = 500 * time.Millisecond
+	m.summary.MaxLatency = 500 * time.Millisecond
+
+	out := m.renderMetrics(100)
+	if !contains(t, out, "95% ok") {
+		t.Fatal("metrics should show success rate")
+	}
+}
+
+func TestRenderMetrics_RunningEmpty(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.running = true
+	m.elapsed = 100 * time.Millisecond
+	m.summary.Total = 0
+	m.summary.SuccessRate = 0
+
+	out := m.renderMetrics(100)
+	if out == "" {
+		t.Fatal("metrics should appear when running, even with zero results")
+	}
+	if !contains(t, out, "% ok") {
+		t.Fatal("running empty metrics should show success rate")
+	}
+	if !contains(t, out, "r/s") {
+		t.Fatal("running empty metrics should show r/s")
 	}
 }
 
 func TestRenderTabs(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderTabs(94)
+	out := m.renderTabStrip(100)
 	if !contains(t, out, "Timeline") {
-		t.Fatal("tabs should contain 'Timeline'")
+		t.Fatal("tab strip should contain 'Timeline'")
 	}
-	if !contains(t, out, "Live Logs") {
-		t.Fatal("tabs should contain 'Live Logs'")
+	if !contains(t, out, "Logs") {
+		t.Fatal("tab strip should contain 'Logs'")
 	}
 }
 
-func TestRenderTabs_Manual(t *testing.T) {
+func TestRenderTabs_NoManualIndicator(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.autoScroll = false
-	out := m.renderTabs(94)
-	if !contains(t, out, "MANUAL") {
-		t.Fatal("tabs should show 'MANUAL' when autoScroll is off")
+	out := m.renderTabStrip(100)
+	if contains(t, out, "MANUAL") {
+		t.Fatal("tab strip should not show 'MANUAL' indicator")
+	}
+	if !contains(t, out, "Timeline") {
+		t.Fatal("tab strip should still show tabs when autoScroll is off")
+	}
+}
+
+func TestRenderTabs_ActiveMarker(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	out := m.renderTabStrip(100)
+	if !contains(t, out, "▶ Timeline") {
+		t.Fatal("tab strip should show ▶ marker on active Timeline tab")
+	}
+	if !contains(t, out, "  Logs") {
+		t.Fatal("tab strip should show inactive Logs tab without marker")
+	}
+
+	m.activeTab = tabLogs
+	out = m.renderTabStrip(100)
+	if !contains(t, out, "▶ Logs") {
+		t.Fatal("tab strip should show ▶ marker on active Logs tab")
+	}
+	if !contains(t, out, "  Timeline") {
+		t.Fatal("tab strip should show inactive Timeline tab without marker")
+	}
+}
+
+func TestRenderStatusBar_Normal(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.focus = focusResults
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "NORMAL") {
+		t.Fatal("status bar should show 'NORMAL' mode")
+	}
+	if !contains(t, out, "TAB focus") {
+		t.Fatal("status bar should show tab hint")
+	}
+}
+
+func TestRenderStatusBar_Running(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.running = true
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "RUNNING") {
+		t.Fatal("status bar should show 'RUNNING' mode")
+	}
+}
+
+func TestRenderStatusBar_EditURL(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.focus = focusURL
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "EDIT URL") {
+		t.Fatal("status bar should show 'EDIT URL' mode")
+	}
+}
+
+func TestRenderStatusBar_Inspecting(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.inspector = true
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "INSPECTING") {
+		t.Fatal("status bar should show 'INSPECTING' mode")
+	}
+}
+
+func TestRenderStatusBar_QuitConfirm(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.confirmQuit = true
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "PRESS Q AGAIN TO QUIT") {
+		t.Fatal("status bar should show quit confirmation")
 	}
 }
 
@@ -188,8 +446,8 @@ func TestRenderTimeline_Empty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderTimeline(94, 20)
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("empty timeline should show 'Ctrl+R to run'")
+	if !contains(t, out, "▶  Ctrl+R to run") {
+		t.Fatal("empty timeline should show '▶  Ctrl+R to run'")
 	}
 }
 
@@ -220,8 +478,8 @@ func TestRenderLogs_Empty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderLogs(94, 20)
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("empty logs should show 'Ctrl+R to run'")
+	if !contains(t, out, "▶  Ctrl+R to run") {
+		t.Fatal("empty logs should show '▶  Ctrl+R to run'")
 	}
 }
 
@@ -297,32 +555,6 @@ func TestRenderInspector_WithResult(t *testing.T) {
 	}
 }
 
-func TestRenderSparkline_Empty(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	out := m.renderSparkline(96)
-	if out != "" {
-		t.Fatal("sparkline should be empty when no data")
-	}
-}
-
-func TestRenderSparkline_WithData(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.latencyLen = 5
-	m.latencyRing[0] = 10 * time.Millisecond
-	m.latencyRing[1] = 20 * time.Millisecond
-	m.latencyRing[2] = 50 * time.Millisecond
-	m.latencyRing[3] = 100 * time.Millisecond
-	m.latencyRing[4] = 200 * time.Millisecond
-	m.latencyHead = 5
-
-	out := m.renderSparkline(96)
-	if !contains(t, out, "LATENCY SPARKLINE") {
-		t.Fatal("sparkline should show 'LATENCY SPARKLINE' label")
-	}
-}
-
 func TestResultStatus(t *testing.T) {
 	tt := []struct {
 		status   int
@@ -338,6 +570,7 @@ func TestResultStatus(t *testing.T) {
 		{101, "101 Info"},
 		{199, "199 Info"},
 		{302, "302 Redirect"},
+		{50, "50"},
 	}
 
 	for _, tc := range tt {
@@ -350,11 +583,31 @@ func TestResultStatus(t *testing.T) {
 }
 
 func TestRowCursor(t *testing.T) {
-	if got := rowCursor(true); got != "▸" {
+	if got := rowCursor(true); got != "▶" {
 		t.Errorf("selected cursor = %q", got)
 	}
 	if got := rowCursor(false); got != " " {
 		t.Errorf("unselected cursor = %q", got)
+	}
+}
+
+func TestTruncateURL(t *testing.T) {
+	tt := []struct {
+		raw   string
+		width int
+		exp   string
+	}{
+		{"https://api.example.com/v1/users", 100, "api.example.com/v1/users"},
+		{"https://api.example.com/v1/users?page=1", 100, "api.example.com/v1/users"},
+		{"http://example.com/posts", 100, "example.com/posts"},
+		{"https://x.com/a", 100, "x.com/a"},
+		{"", 100, ""},
+	}
+	for _, tc := range tt {
+		got := truncateURL(tc.raw, tc.width)
+		if got != tc.exp {
+			t.Errorf("truncateURL(%q, %d) = %q (expected %q)", tc.raw, tc.width, got, tc.exp)
+		}
 	}
 }
 
@@ -381,86 +634,6 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
-func TestDisplayElapsed(t *testing.T) {
-	m := NewModel()
-	m.elapsed = 5 * time.Second
-
-	m.running = false
-	if got := displayElapsed(m); got != 5*time.Second {
-		t.Fatalf("elapsed should be 5s when not running but has elapsed, got %v", got)
-	}
-
-	m.running = true
-	m.elapsed = 3 * time.Second
-	if got := displayElapsed(m); got != 3*time.Second {
-		t.Fatalf("elapsed should be 3s when running, got %v", got)
-	}
-
-	m.running = false
-	m.elapsed = 0
-	if got := displayElapsed(m); got != 0 {
-		t.Fatalf("elapsed should be 0 when idle, got %v", got)
-	}
-}
-
-func TestRenderFooter_Empty(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	out := m.renderFooter(96)
-	if !contains(t, out, "ctrl+r") {
-		t.Fatal("footer should show 'ctrl+r' shortcut")
-	}
-	if !contains(t, out, "ctrl+x") {
-		t.Fatal("footer should show 'ctrl+x' shortcut")
-	}
-}
-
-func TestRenderFooter_WithResults(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.running = false
-	m.results = []model.Result{
-		{Status: 200, Latency: 10 * time.Millisecond},
-		{Status: 200, Latency: 20 * time.Millisecond},
-	}
-	m.elapsed = 2 * time.Second
-
-	out := m.renderFooter(96)
-	if !contains(t, out, "2 results") {
-		t.Fatal("footer should show result count")
-	}
-	if !contains(t, out, "p99") {
-		t.Fatal("footer should show p99 latency")
-	}
-}
-
-func TestMethodFallback(t *testing.T) {
-	m := NewModel()
-	m.methodIndex = 0
-	m.urlInput.SetValue("https://example.com")
-
-	result := model.Result{Status: 200, Latency: 10 * time.Millisecond}
-
-	if result.RequestMethod != "" {
-		t.Fatal("test setup: RequestMethod should be empty")
-	}
-	if result.RequestURL != "" {
-		t.Fatal("test setup: RequestURL should be empty")
-	}
-
-	_ = resultStatus(result)
-	_ = formatDuration(result.Latency)
-	_ = fmt.Sprintf("%s", runconfig.AllowedMethods()[m.methodIndex])
-	_ = truncate(m.urlInput.Value(), 30)
-}
-
-func TestVersion(t *testing.T) {
-	out := "Pulse terminal"
-	if !strings.Contains(out, "Pulse") {
-		t.Fatal("should contain Pulse")
-	}
-}
-
 func TestRenderTimeline_RunningEmpty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
@@ -468,8 +641,8 @@ func TestRenderTimeline_RunningEmpty(t *testing.T) {
 	m.status = "RUNNING"
 
 	out := m.renderTimeline(94, 20)
-	if !contains(t, out, "Waiting for results...") {
-		t.Fatal("running empty timeline should show 'Waiting for results...'")
+	if !contains(t, out, "⏳  Waiting for results...") {
+		t.Fatal("running empty timeline should show '⏳  Waiting for results...'")
 	}
 }
 
@@ -492,8 +665,8 @@ func TestRenderTimeline_IdleWithURL(t *testing.T) {
 	m.urlInput.SetValue("https://example.com/api")
 
 	out := m.renderTimeline(94, 20)
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("idle empty timeline with URL should show 'Ctrl+R to run'")
+	if !contains(t, out, "▶  Ctrl+R to run") {
+		t.Fatal("idle empty timeline with URL should show '▶  Ctrl+R to run'")
 	}
 }
 
@@ -504,8 +677,8 @@ func TestRenderLogs_RunningEmpty(t *testing.T) {
 	m.status = "RUNNING"
 
 	out := m.renderLogs(94, 20)
-	if !contains(t, out, "No results yet...") {
-		t.Fatal("running empty logs should show 'No results yet...'")
+	if !contains(t, out, "📭  No results yet...") {
+		t.Fatal("running empty logs should show '📭  No results yet...'")
 	}
 }
 
@@ -528,157 +701,8 @@ func TestRenderLogs_IdleWithURL(t *testing.T) {
 	m.urlInput.SetValue("https://example.com/api")
 
 	out := m.renderLogs(94, 20)
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("idle empty logs with URL should show 'Ctrl+R to run'")
-	}
-}
-
-func TestRenderSparkline_ColorGradient(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.latencyLen = 3
-	m.latencyRing[0] = 1 * time.Millisecond
-	m.latencyRing[1] = 50 * time.Millisecond
-	m.latencyRing[2] = 500 * time.Millisecond
-	m.latencyHead = 3
-
-	out := m.renderSparkline(96)
-	if !contains(t, out, "LATENCY SPARKLINE") {
-		t.Fatal("sparkline should show label")
-	}
-}
-
-func TestRenderSparkline_WidthClamping(t *testing.T) {
-	m := NewModel()
-	m.width = 30
-	m.latencyLen = 50
-	for i := 0; i < 50; i++ {
-		m.latencyRing[i] = time.Duration(i) * 10 * time.Millisecond
-	}
-	m.latencyHead = 50
-
-	out := m.renderSparkline(26)
-	if !contains(t, out, "LATENCY SPARKLINE") {
-		t.Fatal("sparkline should show label even when clamped")
-	}
-}
-
-func TestRenderSparkline_LabelOnOwnLine(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.latencyLen = 5
-	m.latencyRing[0] = 10 * time.Millisecond
-	m.latencyRing[1] = 20 * time.Millisecond
-	m.latencyRing[2] = 50 * time.Millisecond
-	m.latencyRing[3] = 100 * time.Millisecond
-	m.latencyRing[4] = 200 * time.Millisecond
-	m.latencyHead = 5
-
-	out := m.renderSparkline(96)
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) < 3 {
-		t.Fatalf("sparkline should have at least 3 lines (label, bars, separator), got %d", len(lines))
-	}
-	if !strings.Contains(lines[0], "LATENCY SPARKLINE") {
-		t.Fatal("first line should contain the label")
-	}
-}
-
-func TestRenderMetrics_SuccessColor(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.summary.Total = 10
-	m.summary.Successes = 10
-	m.summary.SuccessRate = 100
-	m.elapsed = 5 * time.Second
-
-	out100 := m.renderMetrics(96)
-	if !contains(t, out100, "100%") {
-		t.Fatal("100% success rate should show '100%'")
-	}
-
-	m.summary.Successes = 9
-	m.summary.SuccessRate = 90
-	out90 := m.renderMetrics(96)
-	if !contains(t, out90, "90%") {
-		t.Fatal("90% success rate should show '90%'")
-	}
-
-	if out100 == out90 {
-		t.Fatal("different success rates should produce different output")
-	}
-}
-
-func TestRenderMetrics_ErrorColor(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.summary.Total = 10
-	m.summary.Successes = 10
-	m.summary.SuccessRate = 100
-	m.elapsed = 5 * time.Second
-
-	outNoErrors := m.renderMetrics(96)
-	if !contains(t, outNoErrors, "ERRORS") {
-		t.Fatal("metrics should show ERRORS")
-	}
-
-	m.summary.Successes = 7
-	m.summary.SuccessRate = 70
-	outWithErrors := m.renderMetrics(96)
-	if !contains(t, outWithErrors, "ERRORS") {
-		t.Fatal("metrics with errors should show ERRORS")
-	}
-
-	if outNoErrors == outWithErrors {
-		t.Fatal("different error counts should produce different output")
-	}
-}
-
-func TestRenderMetrics_RunningRPS(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-	m.elapsed = 2 * time.Second
-	m.summary.Total = 100
-	m.summary.Successes = 95
-	m.summary.SuccessRate = 95
-	m.summary.P50 = 100 * time.Millisecond
-	m.summary.P99 = 500 * time.Millisecond
-
-	out := m.renderMetrics(96)
-	if !contains(t, out, "REQUESTS") {
-		t.Fatal("metrics should show REQUESTS")
-	}
-	if !contains(t, out, "95%") {
-		t.Fatal("metrics should show success rate")
-	}
-}
-
-func TestRenderHeader_DotGlow(t *testing.T) {
-	m := NewModel()
-	m.width = 100
-
-	out := m.renderHeader(96)
-	if !contains(t, out, "●") {
-		t.Fatal("header should show status dot")
-	}
-
-	m.running = true
-	m.status = "RUNNING"
-	m.startedAt = time.Now()
-	m.dotGlow = false
-
-	// One tickMsg toggles dotGlow true
-	updated, _ := m.Update(tickMsg(time.Now()))
-	m = updated.(Model)
-	if !m.dotGlow {
-		t.Fatal("tickMsg should toggle dotGlow to true")
-	}
-
-	// Another tickMsg toggles it back
-	updated2, _ := m.Update(tickMsg(time.Now()))
-	m = updated2.(Model)
-	if m.dotGlow {
-		t.Fatal("tickMsg should toggle dotGlow to false")
+	if !contains(t, out, "▶  Ctrl+R to run") {
+		t.Fatal("idle empty logs with URL should show '▶  Ctrl+R to run'")
 	}
 }
 
@@ -749,8 +773,11 @@ func TestView_WidthMinClamp(t *testing.T) {
 	m.height = 30
 
 	out := m.View()
-	if !contains(t, out, "Pulse") {
-		t.Fatal("View should contain 'Pulse' even at small width")
+	if !contains(t, out, "GET") {
+		t.Fatal("View should contain method even at small width")
+	}
+	if !contains(t, out, "IDLE") {
+		t.Fatal("View should show state even at small width")
 	}
 }
 
@@ -769,12 +796,121 @@ func TestView_PayloadNotShown(t *testing.T) {
 	}
 }
 
-func TestRenderFooter_Truncation(t *testing.T) {
+func TestRenderPayload_Open(t *testing.T) {
 	m := NewModel()
-	m.width = 40
+	m.width = 100
+	m.showPayload = true
+	m.headers = append(m.headers, newHeaderRow())
+	m.headers[0].Key.SetValue("Content-Type")
+	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderFooter(36)
-	if !contains(t, out, "ctrl+r") {
-		t.Fatal("footer should show 'ctrl+r' even when truncated")
+	out := m.renderPayload(96)
+	if !contains(t, out, "HEADERS") {
+		t.Fatal("payload should contain 'HEADERS'")
+	}
+	if !contains(t, out, "BODY") {
+		t.Fatal("payload should contain 'BODY'")
+	}
+	if !contains(t, out, "Content-Type") {
+		t.Fatal("payload should contain header key")
+	}
+	if !contains(t, out, "application/json") {
+		t.Fatal("payload should contain header value")
+	}
+}
+
+func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.showPayload = true
+
+	out := m.renderPayload(96)
+	if !contains(t, out, "No headers configured.") {
+		t.Fatal("payload should show 'No headers configured.' when no headers")
+	}
+}
+
+func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.showPayload = true
+	m.focus = focusHeaders
+	m.headers = append(m.headers, newHeaderRow())
+	m.headers[0].Key.SetValue("Content-Type")
+	m.headers[0].Value.SetValue("application/json")
+
+	out := m.renderPayload(96)
+	if !contains(t, out, `{"name":"pulse"}`) {
+		t.Fatal("payload should show body placeholder when body is empty")
+	}
+}
+
+func TestRenderWorkspace_InspectorStacked(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.height = 30
+	m.inspector = true
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond,
+			ResponseHeaders: map[string]string{"Content-Type": "application/json"},
+			ResponseBody:    `{"ok": true}`},
+	}
+	m.selected = 0
+	m.focus = focusResults
+
+	out := m.View()
+	if !contains(t, out, "INSPECTOR") {
+		t.Fatal("workspace with inspector should show INSPECTOR")
+	}
+	if !contains(t, out, "Timeline") {
+		t.Fatal("workspace should show Timeline tab")
+	}
+	if !contains(t, out, "200") {
+		t.Fatal("workspace should show result status")
+	}
+}
+
+func TestRenderMetrics_SuccessColor(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.running = true
+	m.summary.Total = 10
+	m.summary.Successes = 10
+	m.summary.SuccessRate = 100
+	m.elapsed = 5 * time.Second
+
+	out100 := m.renderMetrics(100)
+	if !contains(t, out100, "100% ok") {
+		t.Fatal("100% success rate should show '100% ok'")
+	}
+
+	m.summary.Successes = 9
+	m.summary.SuccessRate = 90
+	out90 := m.renderMetrics(100)
+	if !contains(t, out90, "90% ok") {
+		t.Fatal("90% success rate should show '90% ok'")
+	}
+
+	if out100 == out90 {
+		t.Fatal("different success rates should produce different output")
+	}
+}
+
+func TestRenderTimeline_Rows_Selected(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	m.summary.MaxLatency = 100 * time.Millisecond
+	m.focus = focusResults
+	m.selected = 0
+
+	row := m.renderTimelineRow(0, m.results[0], m.summary.MaxLatency, 94, true)
+	if !contains(t, row, "200") {
+		t.Fatal("selected row should show status")
+	}
+	if !contains(t, row, "▶") {
+		t.Fatal("selected row should show cursor")
 	}
 }

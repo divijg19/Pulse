@@ -68,7 +68,6 @@ type Model struct {
 	results    []model.Result
 	selected   int
 	inspector  bool
-	dotGlow    bool
 	autoScroll bool
 
 	running     bool
@@ -77,6 +76,9 @@ type Model struct {
 	cancel      context.CancelFunc
 	eventCh     <-chan model.Event
 	status      string
+	errMsg      string
+	confirmQuit bool
+	capped      bool
 	summary     metrics.Summary
 	latencyRing [latencyRingSize]time.Duration
 	latencyHead int
@@ -89,7 +91,13 @@ type resultMsg struct {
 
 type runFinishedMsg struct{}
 
+type eventErrorMsg struct {
+	Err string
+}
+
 type tickMsg time.Time
+
+type startupMsg struct{}
 
 func NewModel() Model {
 	url := textinput.New()
@@ -125,7 +133,7 @@ func NewModel() Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, startupTimeout())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -133,13 +141,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		innerWidth := msg.Width - 4
+		leftWidth := max(28, innerWidth/2-2)
+		rightWidth := max(28, innerWidth-leftWidth-3)
+		m.bodyInput.SetWidth(max(10, rightWidth-6))
+		return m, nil
+	case startupMsg:
+		if m.width == 0 {
+			m.width = 80
+			m.height = 24
+			innerWidth := 80 - 4
+			leftWidth := max(28, innerWidth/2-2)
+			rightWidth := max(28, innerWidth-leftWidth-3)
+			m.bodyInput.SetWidth(max(10, rightWidth-6))
+		}
 		return m, nil
 	case tickMsg:
 		if !m.running {
 			return m, nil
 		}
 		m.elapsed = time.Since(m.startedAt)
-		m.dotGlow = !m.dotGlow
 		return m, tickCmd()
 	case resultMsg:
 		m.latencyRing[m.latencyHead] = msg.Result.Latency
@@ -150,6 +171,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		before := len(m.results)
 		if len(m.results) < 10000 {
 			m.results = append(m.results, msg.Result)
+		} else {
+			m.capped = true
 		}
 		m.summary = metrics.Compute(m.results, m.elapsed)
 		if m.autoScroll && m.selected >= before-1 {
@@ -159,17 +182,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, waitForEvent(m.eventCh)
 		}
 		return m, nil
+	case eventErrorMsg:
+		m.elapsed = time.Since(m.startedAt)
+		m.running = false
+		m.status = "ERROR: " + msg.Err
+		return m, nil
 	case runFinishedMsg:
 		m.elapsed = time.Since(m.startedAt)
+		if m.running {
+			m.status = "COMPLETE"
+		}
 		m.running = false
 		if m.cancel != nil {
 			m.cancel()
 		}
 		m.cancel = nil
 		m.eventCh = nil
-		if m.status == "RUNNING" {
-			m.status = "COMPLETE"
-		}
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -181,10 +209,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.errMsg = ""
+
+	if m.confirmQuit {
+		m.confirmQuit = false
+		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			if m.running && m.cancel != nil {
+				m.cancel()
+			}
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "ctrl+c", "q":
-		if m.running && m.cancel != nil {
-			m.cancel()
+		if m.running {
+			m.confirmQuit = true
+			return m, nil
 		}
 		return m, tea.Quit
 	case "ctrl+r":
@@ -211,6 +253,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.focus == focusBody {
 			m.focus = focusHeaders
+			return m.syncFocus()
+		}
+		if m.focus == focusResults {
+			m.focus = focusURL
 			return m.syncFocus()
 		}
 		return m, nil
@@ -255,6 +301,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.selected < len(m.results)-1 {
 				m.selected++
+			}
+			return m, nil
+		case "pgup":
+			if len(m.results) > 0 {
+				pageSize := max(5, m.height/2)
+				m.selected = max(0, m.selected-pageSize)
+			}
+			return m, nil
+		case "pgdown":
+			if len(m.results) > 0 {
+				pageSize := max(5, m.height/2)
+				m.selected = min(len(m.results)-1, m.selected+pageSize)
 			}
 			return m, nil
 		case "enter":
@@ -353,11 +411,13 @@ func (m Model) startRun() (Model, tea.Cmd) {
 
 	validated, err := runconfig.Validate(req)
 	if err != nil {
+		m.errMsg = strings.ToUpper(err.Error())
 		m.status = strings.ToUpper(err.Error())
 		return m, nil
 	}
 
 	if len(validated.Body) > maxTUIBodyBytes {
+		m.errMsg = "BODY TOO LARGE (MAX 1MB)"
 		m.status = "BODY TOO LARGE (MAX 1MB)"
 		return m, nil
 	}
@@ -375,6 +435,9 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.results = nil
 	m.selected = 0
 	m.inspector = false
+	m.confirmQuit = false
+	m.capped = false
+	m.errMsg = ""
 	m.status = "RUNNING"
 	m.autoScroll = true
 	m.summary = metrics.Summary{}
@@ -393,6 +456,7 @@ func (m Model) cancelRun() Model {
 	if m.running && m.cancel != nil {
 		m.cancel()
 		m.status = "CANCELLED"
+		m.running = false
 	}
 	return m
 }
@@ -405,7 +469,7 @@ func waitForEvent(ch <-chan model.Event) tea.Cmd {
 		}
 		result, ok := event.Data.(model.Result)
 		if !ok {
-			return runFinishedMsg{}
+			return eventErrorMsg{Err: fmt.Sprintf("unexpected event: %s", event.Type)}
 		}
 		return resultMsg{Result: result}
 	}
@@ -414,6 +478,12 @@ func waitForEvent(ch <-chan model.Event) tea.Cmd {
 func tickCmd() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)
+	})
+}
+
+func startupTimeout() tea.Cmd {
+	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		return startupMsg{}
 	})
 }
 
