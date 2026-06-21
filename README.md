@@ -31,7 +31,7 @@ Design principles:
 
 ## Features
 
-- Canonical terminal UI with command bar, payload editor, live metrics, timeline/log views, and response inspector.
+- Canonical terminal UI with Ready launch pad, payload editor, live metrics, timeline/log views, and response inspector.
 - Optional browser WebUI started with `pulse web`.
 - Concurrent HTTP execution with immediate result streaming.
 - Payload editor for request headers and raw body.
