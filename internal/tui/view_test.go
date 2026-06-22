@@ -244,9 +244,37 @@ func TestMetricsString_RunningEmpty(t *testing.T) {
 func TestRenderStatusBar_Normal(t *testing.T) {
 	m := NewModel()
 	m.width = 100
+	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderStatusBar(100)
 	if !contains(t, out, "OBSERVE") {
 		t.Fatal("status bar should show 'OBSERVE' mode")
+	}
+	if !contains(t, out, "↑↓") {
+		t.Fatal("post-run status bar should show scroll hint")
+	}
+}
+
+func TestRenderStatusBar_Ready(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "OBSERVE") {
+		t.Fatal("ready status bar should show 'OBSERVE' mode")
+	}
+	if contains(t, out, "↑↓") {
+		t.Fatal("ready status bar should not advertise ↑↓ (inert)")
+	}
+	if contains(t, out, "Enter") {
+		t.Fatal("ready status bar should not advertise Enter (inert)")
+	}
+	if contains(t, out, "[ ]") {
+		t.Fatal("ready status bar should not advertise view switching (inert)")
+	}
+	if !contains(t, out, "Ctrl+R") {
+		t.Fatal("ready status bar should show Ctrl+R")
+	}
+	if !contains(t, out, "q") {
+		t.Fatal("ready status bar should show q (quit)")
 	}
 }
 
