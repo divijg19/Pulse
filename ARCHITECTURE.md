@@ -203,3 +203,58 @@ Pulse/
 ├── web/                   # SolidJS frontend source
 └── .github/workflows/     # CI and release pipelines
 ```
+
+## Renderer Architecture (v0.7.7+)
+
+The terminal UI follows a strict four-layer ownership model:
+
+| Layer | Role | Renderers |
+|---|---|---|
+| Context | Persistent state frame | Top bar (method, URL, CC) |
+| Identity | Workspace identification | Timeline, Logs, Inspector - Result #N, Endpoint, Concurrency, Payload |
+| Content | Primary data display | Metrics, result rows, dialog forms, response details |
+| Interaction | Immediate action signals | Status bar mode + hints, ConfirmQuit |
+
+Each workspace surface owns exactly one identity line:
+
+| Surface | Identity | Style |
+|---|---|---|
+| Ready | None (launch state) | N/A |
+| Timeline | `Timeline` | Bold + Accent |
+| Logs | `Logs` | Bold + Accent |
+| Inspector | `Inspector - Result #N` | Bold + Accent |
+| Endpoint | `Endpoint` | Muted |
+| Concurrency | `Concurrency` | Muted |
+| Payload | `Payload` | Muted |
+
+ConfirmQuit is an interaction-layer dialog only - it preserves the current workspace identity and content, changing only the status bar.
+
+### Visual Invariant (v0.7.8+)
+
+| Concept | Representation |
+|---|---|
+| Cursor (navigation position) | `▶` glyph |
+| Highlight (active target) | Accent foreground + dark background |
+
+All selection-capable surfaces follow this invariant:
+
+| Surface | Cursor | Highlight |
+|---|---|---|
+| Timeline | ✓ | ✓ |
+| Logs | ✓ | ✓ |
+| Payload header rows | ✓ | ✓ |
+| Payload body | N/A | ✓ |
+| Endpoint method selector | ✓ | ✓ |
+| Concurrency value | ✓ | ✓ |
+| Inspector | N/A | N/A (read-only) |
+
+### Renderer Dispatch
+
+`View()` is a pure dispatch function:
+
+1. Compute width and body height.
+2. Dispatch to the correct renderer based on dialog, mode, and state.
+3. Compose the layout: Top bar → Separator → Body → Separator → Status bar.
+4. Wrap in base style with explicit width and height.
+
+No renderer performs another renderer's work. No rendering logic lives in `View()`.
