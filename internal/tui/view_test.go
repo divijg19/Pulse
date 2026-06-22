@@ -870,6 +870,73 @@ func TestRenderTimeline_Rows_Selected(t *testing.T) {
 	}
 }
 
+func TestRenderPayload_SelectedRowVisible(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogPayload
+	m.headers = append(m.headers, newHeaderRow(), newHeaderRow(), newHeaderRow())
+	m.headers[0].Key.SetValue("Authorization")
+	m.headers[0].Value.SetValue("Bearer token")
+	m.headers[1].Key.SetValue("Content-Type")
+	m.headers[1].Value.SetValue("application/json")
+	m.selectedHead = 1
+
+	out := m.renderPayload(96)
+	if !contains(t, out, "Authorization") {
+		t.Fatal("payload should show first header key")
+	}
+	if !contains(t, out, "Content-Type") {
+		t.Fatal("payload should show second header key")
+	}
+	// selected row should have cursor
+	if !contains(t, out, "▶ Content-Type") {
+		t.Fatal("selected header row should show ▶ cursor")
+	}
+}
+
+func TestRenderPayload_BodyFocusColor(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogPayload
+	m.selectedHead = bodyFocus
+	m.headers = append(m.headers, newHeaderRow())
+
+	out := m.renderPayload(96)
+	if !contains(t, out, "BODY") {
+		t.Fatal("payload should show BODY label")
+	}
+}
+
+func TestRenderStatusBar_PayloadDialog(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogPayload
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "PAYLOAD") {
+		t.Fatal("status bar should show 'PAYLOAD' mode")
+	}
+	if !contains(t, out, "Esc") {
+		t.Fatal("status bar should show 'Esc' in payload mode")
+	}
+}
+
+func TestConfirmQuit_PreservesWorkspace(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.height = 30
+	m.running = true
+	m.dialog = dialogConfirmQuit
+
+	out := m.View()
+	if !contains(t, out, "Ctrl+C") {
+		t.Fatal("confirm quit should show ctrl+c prompt")
+	}
+	// Body content should still be visible (Timeline identity preserved)
+	if !contains(t, out, "Timeline") {
+		t.Fatal("confirm quit should preserve workspace identity")
+	}
+}
+
 func TestVisibleWindow(t *testing.T) {
 	tt := []struct {
 		total    int

@@ -898,3 +898,37 @@ func TestCCDialog_ClampAtMin(t *testing.T) {
 		t.Fatalf("concurrency at min should stay 1, got %d", m.concurrency())
 	}
 }
+
+// Freezes the current Inspect navigation contract for v0.8.x discussion.
+func TestInspectNavigationChangesSelection(t *testing.T) {
+	m := NewModel()
+	m.mode = modeInspect
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+		{Status: 404, Latency: 20 * time.Millisecond},
+		{Status: 500, Latency: 30 * time.Millisecond},
+	}
+	m.selected = 1
+
+	// Up arrow should move selection up
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.selected != 0 {
+		t.Fatalf("up in inspect: selected = %d, want 0", m.selected)
+	}
+
+	// Down arrow should move selection down
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.selected != 1 {
+		t.Fatalf("down in inspect: selected = %d, want 1", m.selected)
+	}
+
+	// Down at last result should stay
+	m.selected = 2
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.selected != 2 {
+		t.Fatalf("down at last in inspect: selected = %d, want 2", m.selected)
+	}
+}

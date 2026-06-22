@@ -42,7 +42,7 @@ Design principles:
 1. Set URL, method, and concurrency.
 2. Optionally configure headers and body.
 3. Run and watch each request stream in real time.
-4. Click any result to inspect full response details.
+4. Select any result and press Enter to inspect full response details.
 
 ## Documentation Map
 
