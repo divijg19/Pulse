@@ -223,6 +223,9 @@ func (m Model) renderStatusBar(width int) string {
 	case m.running:
 		mode = "RUNNING"
 		hints = "• ↑↓ • Enter • Ctrl+X • q"
+	case !m.running && len(m.results) == 0:
+		mode = "OBSERVE"
+		hints = "• e • c • p • Ctrl+R • q"
 	default:
 		mode = "OBSERVE"
 		hints = "• ↑↓ • Enter • [ ] views • e • c • p • Ctrl+R • q"
