@@ -21,7 +21,6 @@ const (
 	subfocusKey      = 0
 	subfocusValue    = 1
 	bodyFocus        = -1
-	latencyRingSize  = 200
 	defaultBodyWidth = 48
 	maxTUIBodyBytes  = 1 << 20
 )
@@ -84,10 +83,6 @@ type Model struct {
 	errMsg    string
 	capped    bool
 	summary   metrics.Summary
-
-	latencyRing [latencyRingSize]time.Duration
-	latencyHead int
-	latencyLen  int
 }
 
 type resultMsg struct {
@@ -167,11 +162,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.elapsed = time.Since(m.startedAt)
 		return m, tickCmd()
 	case resultMsg:
-		m.latencyRing[m.latencyHead] = msg.Result.Latency
-		m.latencyHead = (m.latencyHead + 1) % latencyRingSize
-		if m.latencyLen < latencyRingSize {
-			m.latencyLen++
-		}
 		following := m.isFollowingTail()
 		if len(m.results) < 10000 {
 			m.results = append(m.results, msg.Result)
@@ -290,17 +280,36 @@ func (m Model) handleCCKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *Model) blurAll() {
+	m.urlInput.Blur()
+	m.ccInput.Blur()
+	m.bodyInput.Blur()
+	for i := range m.headers {
+		m.headers[i].Key.Blur()
+		m.headers[i].Value.Blur()
+	}
+}
+
+func (m *Model) focusPayloadKey() {
+	m.blurAll()
+	m.headers[m.selectedHead].Key.Focus()
+}
+
+func (m *Model) focusPayloadValue() {
+	m.blurAll()
+	m.headers[m.selectedHead].Value.Focus()
+}
+
+func (m *Model) focusPayloadBody() {
+	m.blurAll()
+	m.bodyInput.Focus()
+}
+
 func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.dialog = dialogNone
-		m.urlInput.Blur()
-		m.ccInput.Blur()
-		m.bodyInput.Blur()
-		for i := range m.headers {
-			m.headers[i].Key.Blur()
-			m.headers[i].Value.Blur()
-		}
+		m.blurAll()
 		return m, nil
 	case "ctrl+r":
 		return m.startRun()
@@ -315,17 +324,10 @@ func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.headers) == 0 {
 				m.headers = append(m.headers, newHeaderRow())
 			}
-			m.urlInput.Blur()
-			m.ccInput.Blur()
-			m.bodyInput.Blur()
-			for i := range m.headers {
-				m.headers[i].Key.Blur()
-				m.headers[i].Value.Blur()
-			}
 			if m.headerSubfocus == subfocusKey {
-				m.headers[m.selectedHead].Key.Focus()
+				m.focusPayloadKey()
 			} else {
-				m.headers[m.selectedHead].Value.Focus()
+				m.focusPayloadValue()
 			}
 			return m, nil
 		}
@@ -343,14 +345,7 @@ func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.headers = append(m.headers, newHeaderRow())
 		m.selectedHead = len(m.headers) - 1
 		m.headerSubfocus = subfocusKey
-		m.urlInput.Blur()
-		m.ccInput.Blur()
-		m.bodyInput.Blur()
-		for i := range m.headers {
-			m.headers[i].Key.Blur()
-			m.headers[i].Value.Blur()
-		}
-		m.headers[m.selectedHead].Key.Focus()
+		m.focusPayloadKey()
 		return m, nil
 	case "ctrl+d":
 		if len(m.headers) > 0 {
@@ -375,36 +370,15 @@ func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "left", "h":
 		m.headerSubfocus = subfocusKey
-		m.urlInput.Blur()
-		m.ccInput.Blur()
-		m.bodyInput.Blur()
-		for i := range m.headers {
-			m.headers[i].Key.Blur()
-			m.headers[i].Value.Blur()
-		}
-		m.headers[m.selectedHead].Key.Focus()
+		m.focusPayloadKey()
 		return m, nil
 	case "right", "l":
 		m.headerSubfocus = subfocusValue
-		m.urlInput.Blur()
-		m.ccInput.Blur()
-		m.bodyInput.Blur()
-		for i := range m.headers {
-			m.headers[i].Key.Blur()
-			m.headers[i].Value.Blur()
-		}
-		m.headers[m.selectedHead].Value.Focus()
+		m.focusPayloadValue()
 		return m, nil
 	case "tab":
 		m.selectedHead = bodyFocus
-		m.urlInput.Blur()
-		m.ccInput.Blur()
-		m.bodyInput.Blur()
-		for i := range m.headers {
-			m.headers[i].Key.Blur()
-			m.headers[i].Value.Blur()
-		}
-		m.bodyInput.Focus()
+		m.focusPayloadBody()
 		return m, nil
 	default:
 		if m.selectedHead >= 0 && m.selectedHead < len(m.headers) {
@@ -471,14 +445,7 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.headers) == 0 {
 			m.headers = append(m.headers, newHeaderRow())
 		}
-		m.urlInput.Blur()
-		m.ccInput.Blur()
-		m.bodyInput.Blur()
-		for i := range m.headers {
-			m.headers[i].Key.Blur()
-			m.headers[i].Value.Blur()
-		}
-		m.headers[m.selectedHead].Key.Focus()
+		m.focusPayloadKey()
 		return m, nil
 	case "ctrl+r":
 		return m.startRun()
@@ -560,8 +527,6 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.errMsg = ""
 	m.status = "RUNNING"
 	m.summary = metrics.Summary{}
-	m.latencyHead = 0
-	m.latencyLen = 0
 
 	go func() {
 		defer hub.Remove(eventCh)
