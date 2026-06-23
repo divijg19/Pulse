@@ -64,15 +64,6 @@ func newTimelineRunningModel() Model {
 	m.elapsed = 5 * time.Second
 	m.results = testResults(20)
 	m.summary = metrics.Compute(m.results, m.elapsed)
-	m.latencyLen = len(m.results)
-	for i, r := range m.results {
-		if i < latencyRingSize {
-			m.latencyRing[i] = r.Latency
-		}
-	}
-	if len(m.results) > 0 {
-		m.latencyHead = len(m.results) % latencyRingSize
-	}
 	m.selected = 5
 	m.view = viewTimeline
 	return m
@@ -100,15 +91,6 @@ func newInspectModel() Model {
 	m.results = testResults(20)
 	m.summary = metrics.Compute(m.results, 5*time.Second)
 	m.selected = 3
-	m.latencyLen = len(m.results)
-	for i, r := range m.results {
-		if i < latencyRingSize {
-			m.latencyRing[i] = r.Latency
-		}
-	}
-	if len(m.results) > 0 {
-		m.latencyHead = len(m.results) % latencyRingSize
-	}
 	return m
 }
 
