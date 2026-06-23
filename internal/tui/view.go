@@ -131,7 +131,7 @@ func (m Model) renderEndpoint(width int) string {
 	b.WriteString(fmt.Sprintf(
 		"\n%s\n  %s\n%s\n  %s",
 		lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("URL"),
-		m.urlInput.Value(),
+		m.urlInput.View(),
 		lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("Method"),
 		methodLine,
 	))
@@ -144,9 +144,9 @@ func (m Model) renderConcurrency(width int) string {
 	b.WriteString(identityCell("Concurrency", true))
 	b.WriteString("\n\n")
 
-	val := m.concurrency()
+	ccText := strings.TrimSpace(m.ccInput.View())
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true).Render(
-		fmt.Sprintf("  %d (1–%d)", val, runconfig.MaxConcurrency),
+		fmt.Sprintf("  %s  (1–%d)", ccText, runconfig.MaxConcurrency),
 	))
 	return b.String()
 }
@@ -168,14 +168,8 @@ func (m Model) renderPayload(width int) string {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("  No headers configured."))
 	} else {
 		for i, header := range m.headers {
-			key := header.Key.Value()
-			value := header.Value.Value()
-			if key == "" {
-				key = "Header"
-			}
-			if value == "" {
-				value = "Value"
-			}
+			key := header.Key.View()
+			value := header.Value.View()
 			sel := i == m.selectedHead
 			cursor := rowCursor(sel)
 			line := fmt.Sprintf("%s %s: %s", cursor, key, value)
@@ -198,11 +192,7 @@ func (m Model) renderPayload(width int) string {
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(bodyColor)).Render(bodyLabel))
 	b.WriteString("\n")
 
-	bodyPreview := m.bodyInput.Value()
-	if strings.TrimSpace(bodyPreview) == "" {
-		bodyPreview = `{"name":"pulse"}`
-	}
-	b.WriteString(bodyPreview)
+	b.WriteString(m.bodyInput.View())
 
 	return b.String()
 }
@@ -213,28 +203,31 @@ func (m Model) renderStatusBar(width int) string {
 	switch {
 	case m.dialog == dialogConfirmQuit:
 		mode = ""
-		hints = "q/Ctrl+C again to quit, any key cancels"
+		hints = "Enter/q/Ctrl+C to quit, any key cancels"
 	case m.dialog == dialogEndpoint:
 		mode = "ENDPOINT"
-		hints = "• Esc • ↵"
+		hints = "• Esc • Enter"
 	case m.dialog == dialogConcurrency:
 		mode = "CONCURRENCY"
-		hints = "• ↑↓ • Esc"
+		hints = "• ↑↓ • Enter • Esc"
 	case m.dialog == dialogPayload:
 		mode = "PAYLOAD"
-		hints = "• Esc"
+		hints = "• Tab • ↑↓ • ←→ • Ctrl+N • Ctrl+D • Esc"
 	case m.mode == modeInspect:
 		mode = "INSPECTING"
 		hints = "• ↑↓ • Esc • q"
+	case m.running && len(m.results) == 0:
+		mode = "RUNNING"
+		hints = "• Ctrl+X • q"
 	case m.running:
 		mode = "RUNNING"
-		hints = "• ↑↓ • Enter • Ctrl+X • q"
+		hints = "• ↑↓ • Enter inspect • [ ] views • Ctrl+X • q"
 	case !m.running && len(m.results) == 0:
 		mode = "OBSERVE"
 		hints = "• e • c • p • Ctrl+R • q"
 	default:
 		mode = "OBSERVE"
-		hints = "• ↑↓ • Enter • [ ] views • e • c • p • Ctrl+R • q"
+		hints = "• ↑↓ • Enter inspect • [ ] views • e • c • p • Ctrl+R • q"
 	}
 
 	if mode == "" {
