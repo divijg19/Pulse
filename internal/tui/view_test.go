@@ -281,13 +281,36 @@ func TestRenderStatusBar_Ready(t *testing.T) {
 	}
 }
 
-func TestRenderStatusBar_Running(t *testing.T) {
+func TestRenderStatusBar_RunningEmpty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.running = true
 	out := m.renderStatusBar(100)
 	if !contains(t, out, "RUNNING") {
 		t.Fatal("status bar should show 'RUNNING' mode")
+	}
+	if contains(t, out, "↑↓") {
+		t.Fatal("running empty should not advertise ↑↓ (inert)")
+	}
+	if contains(t, out, "Enter") {
+		t.Fatal("running empty should not advertise Enter (inert)")
+	}
+}
+
+func TestRenderStatusBar_RunningWithResults(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.running = true
+	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
+	out := m.renderStatusBar(100)
+	if !contains(t, out, "RUNNING") {
+		t.Fatal("status bar should show 'RUNNING' mode")
+	}
+	if !contains(t, out, "Enter inspect") {
+		t.Fatal("running status bar should show Enter inspect")
+	}
+	if !contains(t, out, "[ ]") {
+		t.Fatal("running status bar should show view switching")
 	}
 }
 
@@ -299,6 +322,9 @@ func TestRenderStatusBar_EndpointDialog(t *testing.T) {
 	if !contains(t, out, "ENDPOINT") {
 		t.Fatal("status bar should show 'ENDPOINT' mode")
 	}
+	if !contains(t, out, "Enter") {
+		t.Fatal("endpoint status bar should show Enter")
+	}
 }
 
 func TestRenderStatusBar_CCDialog(t *testing.T) {
@@ -308,6 +334,9 @@ func TestRenderStatusBar_CCDialog(t *testing.T) {
 	out := m.renderStatusBar(100)
 	if !contains(t, out, "CONCURRENCY") {
 		t.Fatal("status bar should show 'CONCURRENCY' mode")
+	}
+	if !contains(t, out, "Enter") {
+		t.Fatal("concurrency status bar should show Enter")
 	}
 }
 
@@ -328,6 +357,9 @@ func TestRenderStatusBar_QuitConfirm(t *testing.T) {
 	out := m.renderStatusBar(100)
 	if !contains(t, out, "quit") {
 		t.Fatal("status bar should show quit confirmation")
+	}
+	if !contains(t, out, "Enter") {
+		t.Fatal("quit confirm should mention Enter as confirm option")
 	}
 }
 
@@ -859,6 +891,114 @@ func TestRenderConcurrency_Identity(t *testing.T) {
 	}
 }
 
+func TestRenderEndpoint_Focused(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogEndpoint
+	m.urlInput.Focus()
+	m.urlInput.SetValue("https://example.com/api")
+
+	out := m.renderEndpoint(100)
+	if !contains(t, out, "Endpoint") {
+		t.Fatal("should show identity")
+	}
+	if !contains(t, out, "api") {
+		t.Fatal("should show URL")
+	}
+	if !m.urlInput.Focused() {
+		t.Fatal("urlInput should be focused when dialog is open")
+	}
+}
+
+func TestRenderConcurrency_Focused(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogConcurrency
+	m.ccInput.Focus()
+	m.setConcurrency(7)
+
+	out := m.renderConcurrency(100)
+	if !contains(t, out, "Concurrency") {
+		t.Fatal("should show identity")
+	}
+	if !contains(t, out, "1–100") {
+		t.Fatal("should show range")
+	}
+	if !m.ccInput.Focused() {
+		t.Fatal("ccInput should be focused when dialog is open")
+	}
+}
+
+func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogPayload
+	m.selectedHead = 0
+	m.headerSubfocus = subfocusKey
+	m.headers = append(m.headers, newHeaderRow())
+	m.headers[0].Key.SetValue("Content-Type")
+	m.headers[0].Key.Focus()
+	m.headers[0].Value.SetValue("application/json")
+
+	out := m.renderPayload(96)
+	if !contains(t, out, "Content-Type") {
+		t.Fatal("should show header key")
+	}
+	if !contains(t, out, "application/json") {
+		t.Fatal("should show header value")
+	}
+	if !m.headers[0].Key.Focused() {
+		t.Fatal("key should be focused when subfocus is subfocusKey")
+	}
+	if m.headers[0].Value.Focused() {
+		t.Fatal("value should NOT be focused when subfocus is subfocusKey")
+	}
+}
+
+func TestRenderPayload_HeaderValueFocus(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogPayload
+	m.selectedHead = 0
+	m.headerSubfocus = subfocusValue
+	m.headers = append(m.headers, newHeaderRow())
+	m.headers[0].Key.SetValue("Content-Type")
+	m.headers[0].Value.SetValue("application/json")
+	m.headers[0].Value.Focus()
+
+	out := m.renderPayload(96)
+	if !contains(t, out, "Content-Type") {
+		t.Fatal("should show header key")
+	}
+	if !contains(t, out, "application/json") {
+		t.Fatal("should show header value")
+	}
+	if m.headers[0].Key.Focused() {
+		t.Fatal("key should NOT be focused when subfocus is subfocusValue")
+	}
+	if !m.headers[0].Value.Focused() {
+		t.Fatal("value should be focused when subfocus is subfocusValue")
+	}
+}
+
+func TestRenderPayload_BodyFocus(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.dialog = dialogPayload
+	m.selectedHead = bodyFocus
+	m.bodyInput.Focus()
+	m.bodyInput.SetValue(`{"key": "value"}`)
+	m.headers = append(m.headers, newHeaderRow())
+
+	out := m.renderPayload(96)
+	if !contains(t, out, `{"key": "value"}`) {
+		t.Fatal("should show body content")
+	}
+	if !m.bodyInput.Focused() {
+		t.Fatal("bodyInput should be focused when selectedHead is bodyFocus")
+	}
+}
+
 func TestRenderWorkspace_InspectorDrillDown(t *testing.T) {
 	m := NewModel()
 	m.width = 100
@@ -946,8 +1086,14 @@ func TestRenderStatusBar_PayloadDialog(t *testing.T) {
 	if !contains(t, out, "PAYLOAD") {
 		t.Fatal("status bar should show 'PAYLOAD' mode")
 	}
-	if !contains(t, out, "Esc") {
-		t.Fatal("status bar should show 'Esc' in payload mode")
+	if !contains(t, out, "Tab") {
+		t.Fatal("payload status bar should show Tab hint")
+	}
+	if !contains(t, out, "Ctrl+N") {
+		t.Fatal("payload status bar should show Ctrl+N hint")
+	}
+	if !contains(t, out, "Ctrl+D") {
+		t.Fatal("payload status bar should show Ctrl+D hint")
 	}
 }
 
