@@ -54,6 +54,9 @@ func TestRenderReady(t *testing.T) {
 	m.width = 100
 	m.height = 30
 	out := m.renderReady(100, 26)
+	if !contains(t, out, "OBSERVE") {
+		t.Fatal("Ready should show identity")
+	}
 	if !contains(t, out, "httpbin") {
 		t.Fatal("Ready should show URL")
 	}

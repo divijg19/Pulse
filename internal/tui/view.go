@@ -97,11 +97,17 @@ func (m Model) renderReady(width int, height int) string {
 	url := m.urlInput.Value()
 	cc := m.concurrency()
 
+	identity := identityCell("OBSERVE", false)
+
 	content := fmt.Sprintf("Press Ctrl+R to run\n\n%s %s\n\nCC %d\n\ne Endpoint    c Concurrency    p Payload",
 		method, url, cc)
 
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
-		lipgloss.NewStyle().Foreground(lipgloss.Color(colorText)).Render(content))
+	var b strings.Builder
+	b.WriteString(identity)
+	b.WriteString("\n\n")
+	b.WriteString(content)
+
+	return StyleBase.Copy().Width(width).Height(height).Render(b.String())
 }
 
 func (m Model) renderEndpoint(width int) string {
