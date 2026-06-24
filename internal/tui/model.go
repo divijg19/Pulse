@@ -23,6 +23,9 @@ const (
 	bodyFocus        = -1
 	defaultBodyWidth = 48
 	maxTUIBodyBytes  = 1 << 20
+
+	endpointMethod = 0
+	endpointURL    = 1
 )
 
 type mode int
@@ -62,9 +65,10 @@ type Model struct {
 	dialog dialog
 	view   view
 
-	methodIndex int
-	urlInput    textinput.Model
-	ccInput     textinput.Model
+	methodIndex    int
+	endpointField  int
+	urlInput       textinput.Model
+	ccInput        textinput.Model
 	bodyInput   textarea.Model
 
 	headers        []headerRow
@@ -122,8 +126,9 @@ func NewModel() Model {
 		mode:        modeObserve,
 		dialog:      dialogNone,
 		view:        viewTimeline,
-		methodIndex: 0,
-		urlInput:    url,
+		methodIndex:    0,
+		endpointField:  endpointURL,
+		urlInput:       url,
 		ccInput:     cc,
 		bodyInput:   body,
 		status:      "SYSTEM READY",
@@ -241,9 +246,44 @@ func (m Model) handleConfirmQuitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleEndpointKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "enter":
+	case "esc":
 		m.dialog = dialogNone
 		m.urlInput.Blur()
+		return m, nil
+	case "tab":
+		m.endpointField = (m.endpointField + 1) % 2
+		if m.endpointField == endpointURL {
+			m.urlInput.Focus()
+		} else {
+			m.urlInput.Blur()
+		}
+		return m, nil
+	case "shift+tab":
+		m.endpointField = (m.endpointField + 1) % 2
+		if m.endpointField == endpointURL {
+			m.urlInput.Focus()
+		} else {
+			m.urlInput.Blur()
+		}
+		return m, nil
+	case "left", "h":
+		if m.endpointField == endpointMethod && m.methodIndex > 0 {
+			m.methodIndex--
+		}
+		if m.endpointField != endpointMethod {
+			break
+		}
+		return m, nil
+	case "right", "l":
+		if m.endpointField == endpointMethod {
+			methods := runconfig.AllowedMethods()
+			if m.methodIndex < len(methods)-1 {
+				m.methodIndex++
+			}
+		}
+		if m.endpointField != endpointMethod {
+			break
+		}
 		return m, nil
 	case "ctrl+r":
 		return m.startRun()
@@ -257,7 +297,7 @@ func (m Model) handleEndpointKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleCCKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "enter":
+	case "esc":
 		m.dialog = dialogNone
 		m.ccInput.Blur()
 		return m, nil
@@ -429,6 +469,7 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "e":
 		m.dialog = dialogEndpoint
+		m.endpointField = endpointURL
 		m.urlInput.Focus()
 		return m, nil
 	case "c":

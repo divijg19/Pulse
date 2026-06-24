@@ -97,10 +97,22 @@ func (m Model) renderReady(width int, height int) string {
 	url := m.urlInput.Value()
 	cc := m.concurrency()
 
+	payloadParts := []string{}
+	if len(m.headers) > 0 {
+		payloadParts = append(payloadParts, fmt.Sprintf("%d header(s)", len(m.headers)))
+	}
+	if m.bodyInput.Value() != "" {
+		payloadParts = append(payloadParts, "body present")
+	}
+	payloadState := "Empty"
+	if len(payloadParts) > 0 {
+		payloadState = strings.Join(payloadParts, ", ")
+	}
+
 	identity := identityCell("OBSERVE", false)
 
-	content := fmt.Sprintf("Press Ctrl+R to run\n\n%s %s\n\nCC %d\n\ne Endpoint    c Concurrency    p Payload",
-		method, url, cc)
+	content := fmt.Sprintf("%s    %s\n\nCC %d\n\nBody  %s",
+		method, url, cc, payloadState)
 
 	var b strings.Builder
 	b.WriteString(identity)
@@ -118,22 +130,30 @@ func (m Model) renderEndpoint(width int) string {
 	methods := runconfig.AllowedMethods()
 	var methodLine string
 	for i, method := range methods {
-		if i == m.methodIndex {
-			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("▶ " + method)
+		sel := i == m.methodIndex
+		focus := m.endpointField == endpointMethod
+		if sel && focus {
+			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorDark)).Render(" " + method + " ")
+		} else if sel {
+			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render(" " + method + " ")
 		} else {
-			methodLine += styleMuted.Render("  " + method)
+			methodLine += styleMuted.Render(" " + method + " ")
 		}
-		if i < len(methods)-1 {
-			methodLine += " "
-		}
+	}
+
+	methodLabel := "Method"
+	if m.endpointField == endpointMethod {
+		methodLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("Method")
+	} else {
+		methodLabel = styleMuted.Render("Method")
 	}
 
 	b.WriteString(fmt.Sprintf(
 		"\n%s\n  %s\n%s\n  %s",
+		methodLabel,
+		methodLine,
 		styleMuted.Render("URL"),
 		m.urlInput.View(),
-		styleMuted.Render("Method"),
-		methodLine,
 	))
 
 	return b.String()
@@ -198,46 +218,30 @@ func (m Model) renderPayload(width int) string {
 }
 
 func (m Model) renderStatusBar(width int) string {
-	var mode, hints string
+	var hints string
 
 	switch {
 	case m.dialog == dialogConfirmQuit:
-		mode = ""
 		hints = "Enter/q/Ctrl+C to quit, any key cancels"
 	case m.dialog == dialogEndpoint:
-		mode = "ENDPOINT"
-		hints = "• Esc • Enter"
+		hints = "Tab Next Field  ← → Method  Esc Back"
 	case m.dialog == dialogConcurrency:
-		mode = "CONCURRENCY"
-		hints = "• ↑↓ • Enter • Esc"
+		hints = "↑ ↓ Adjust  Esc Back"
 	case m.dialog == dialogPayload:
-		mode = "PAYLOAD"
-		hints = "• Tab • ↑↓ • ←→ • Ctrl+N • Ctrl+D • Esc"
+		hints = "Tab Next  Ctrl+N Header  Ctrl+D Delete  Esc Back"
 	case m.mode == modeInspect:
-		mode = "INSPECTING"
-		hints = "• ↑↓ • Esc • q"
+		hints = "↑ ↓ Select  Esc Back  q Quit"
 	case m.running && len(m.results) == 0:
-		mode = "RUNNING"
-		hints = "• Ctrl+X • q"
+		hints = "Ctrl+X Cancel"
 	case m.running:
-		mode = "RUNNING"
-		hints = "• ↑↓ • Enter inspect • [ ] views • Ctrl+X • q"
+		hints = "↑ ↓ Select  Enter Inspect  [ ] Views  Ctrl+X Cancel"
 	case !m.running && len(m.results) == 0:
-		mode = "OBSERVE"
-		hints = "• e • c • p • Ctrl+R • q"
+		hints = "e Endpoint  c Concurrency  p Payload  Ctrl+R Run  q Quit"
 	default:
-		mode = "OBSERVE"
-		hints = "• ↑↓ • Enter inspect • [ ] views • e • c • p • Ctrl+R • q"
+		hints = "↑ ↓ Select  Enter Inspect  [ ] Views  e Endpoint  c Concurrency  p Payload  Ctrl+R Run  q Quit"
 	}
 
-	if mode == "" {
-		return styleStatusBar.Width(width).Render(hints)
-	}
-
-	modeStyled := styleStatusMode.Render(" " + mode + " ")
-	hintsStyled := styleMuted.Render(hints)
-	line := modeStyled + " " + hintsStyled
-	return styleStatusBar.Width(width).Render(line)
+	return styleStatusBar.Width(width).Render(hints)
 }
 
 func visibleWindow(total, selected, height int) int {

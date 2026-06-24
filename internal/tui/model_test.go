@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/divijg19/Pulse/internal/model"
+	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
 func TestMethodSelection(t *testing.T) {
@@ -664,27 +665,136 @@ func TestCCDialog_ArrowAdjustDown(t *testing.T) {
 	}
 }
 
-func TestEndpointDialog_EnterCloses(t *testing.T) {
+func TestEndpointDialog_EscCloses(t *testing.T) {
+	m := NewModel()
+	m.dialog = dialogEndpoint
+	m.urlInput.Focus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.dialog != dialogNone {
+		t.Fatal("esc should close endpoint dialog")
+	}
+}
+
+func TestEndpointDialog_EnterDoesNotClose(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogEndpoint
 	m.urlInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
-	if m.dialog != dialogNone {
-		t.Fatal("enter should close endpoint dialog")
+	if m.dialog != dialogEndpoint {
+		t.Fatal("enter should NOT close endpoint dialog (esc-only)")
 	}
 }
 
-func TestCCDialog_EnterCloses(t *testing.T) {
+func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
+	m := NewModel()
+	m.dialog = dialogEndpoint
+	m.endpointField = endpointMethod
+
+	methods := runconfig.AllowedMethods()
+
+	// Start at index 0
+	if m.methodIndex != 0 {
+		t.Fatalf("methodIndex should start at 0, got %d", m.methodIndex)
+	}
+
+	// Right arrow increments
+	updated, _ := m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(Model)
+	if m.methodIndex != 1 {
+		t.Errorf("after right, methodIndex = %d, want 1", m.methodIndex)
+	}
+
+	// Left arrow decrements
+	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(Model)
+	if m.methodIndex != 0 {
+		t.Errorf("after left, methodIndex = %d, want 0", m.methodIndex)
+	}
+
+	// Left at min does not go below 0
+	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(Model)
+	if m.methodIndex != 0 {
+		t.Errorf("left at min should stay 0, got %d", m.methodIndex)
+	}
+
+	// Right at max does not exceed
+	m.methodIndex = len(methods) - 1
+	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(Model)
+	if m.methodIndex != len(methods)-1 {
+		t.Errorf("right at max should stay %d, got %d", len(methods)-1, m.methodIndex)
+	}
+}
+
+func TestEndpointDialog_TabSwitchesField(t *testing.T) {
+	m := NewModel()
+	m.dialog = dialogEndpoint
+	m.endpointField = endpointURL
+	m.urlInput.Focus()
+
+	// Tab should switch to method
+	updated, _ := m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.endpointField != endpointMethod {
+		t.Fatal("tab should switch to method field")
+	}
+
+	// Tab again back to URL
+	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.endpointField != endpointURL {
+		t.Fatal("second tab should switch back to URL field")
+	}
+}
+
+func TestEndpointDialog_LeftRightOnUrlDoesNotChangeMethod(t *testing.T) {
+	m := NewModel()
+	m.dialog = dialogEndpoint
+	m.endpointField = endpointURL
+	m.urlInput.Focus()
+
+	initialMethod := m.methodIndex
+
+	// Left/right on URL should not change method
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(Model)
+	if m.methodIndex != initialMethod {
+		t.Fatal("left arrow on URL should not change method")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(Model)
+	if m.methodIndex != initialMethod {
+		t.Fatal("right arrow on URL should not change method")
+	}
+}
+
+func TestCCDialog_EscCloses(t *testing.T) {
+	m := NewModel()
+	m.dialog = dialogConcurrency
+	m.ccInput.Focus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.dialog != dialogNone {
+		t.Fatal("esc should close concurrency dialog")
+	}
+}
+
+func TestCCDialog_EnterDoesNotClose(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogConcurrency
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
-	if m.dialog != dialogNone {
-		t.Fatal("enter should close concurrency dialog")
+	if m.dialog != dialogConcurrency {
+		t.Fatal("enter should NOT close concurrency dialog (esc-only)")
 	}
 }
 
