@@ -81,7 +81,6 @@ type Model struct {
 	eventCh   <-chan model.Event
 	status    string
 	errMsg    string
-	capped    bool
 	summary   metrics.Summary
 }
 
@@ -165,8 +164,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		following := m.isFollowingTail()
 		if len(m.results) < 10000 {
 			m.results = append(m.results, msg.Result)
-		} else {
-			m.capped = true
 		}
 		m.summary = metrics.Compute(m.results, m.elapsed)
 		if following {
@@ -523,7 +520,6 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.elapsed = 0
 	m.results = nil
 	m.selected = 0
-	m.capped = false
 	m.errMsg = ""
 	m.status = "RUNNING"
 	m.summary = metrics.Summary{}
