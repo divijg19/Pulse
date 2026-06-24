@@ -21,8 +21,8 @@ func TestView_Idle(t *testing.T) {
 	if !contains(t, out, "GET") {
 		t.Fatal("View should contain method")
 	}
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("View should contain 'Ctrl+R to run' in Ready surface")
+	if !contains(t, out, "OBSERVE") {
+		t.Fatal("View should contain OBSERVE identity in Ready surface")
 	}
 }
 
@@ -38,14 +38,14 @@ func TestView_Running(t *testing.T) {
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
 	out := m.View()
-	if !contains(t, out, "RUNNING") {
-		t.Fatal("running view should show running indicator")
-	}
 	if !contains(t, out, "r/s") {
 		t.Fatal("running view should show requests per second")
 	}
 	if !contains(t, out, "Timeline") {
 		t.Fatal("running view should show Timeline identity")
+	}
+	if !contains(t, out, "Ctrl+X") {
+		t.Fatal("running view should show cancel hint in footer")
 	}
 }
 
@@ -63,17 +63,11 @@ func TestRenderReady(t *testing.T) {
 	if !contains(t, out, "CC 10") {
 		t.Fatal("Ready should show concurrency")
 	}
-	if !contains(t, out, "Ctrl+R to run") {
-		t.Fatal("Ready should show run CTA")
+	if !contains(t, out, "Body") {
+		t.Fatal("Ready should show payload state")
 	}
-	if !contains(t, out, "Endpoint") {
-		t.Fatal("Ready should show endpoint action link")
-	}
-	if !contains(t, out, "Concurrency") {
-		t.Fatal("Ready should show concurrency action link")
-	}
-	if !contains(t, out, "Payload") {
-		t.Fatal("Ready should show payload action link")
+	if !contains(t, out, "Empty") {
+		t.Fatal("Ready should show payload as empty")
 	}
 }
 
@@ -83,13 +77,13 @@ func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 	m.height = 30
 
 	out := m.View()
-	if !contains(t, out, "Ctrl+R to run") {
+	if !contains(t, out, "OBSERVE") {
 		t.Fatal("first launch should show Ready surface")
 	}
 
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out = m.View()
-	if contains(t, out, "Ready") {
+	if contains(t, out, "OBSERVE") {
 		t.Fatal("after results exist, Ready should not appear")
 	}
 }
@@ -249,10 +243,7 @@ func TestRenderStatusBar_Normal(t *testing.T) {
 	m.width = 100
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "OBSERVE") {
-		t.Fatal("status bar should show 'OBSERVE' mode")
-	}
-	if !contains(t, out, "↑↓") {
+	if !contains(t, out, "↑ ↓ Select") {
 		t.Fatal("post-run status bar should show scroll hint")
 	}
 }
@@ -261,8 +252,14 @@ func TestRenderStatusBar_Ready(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "OBSERVE") {
-		t.Fatal("ready status bar should show 'OBSERVE' mode")
+	if !contains(t, out, "Endpoint") {
+		t.Fatal("ready status bar should show Endpoint")
+	}
+	if !contains(t, out, "Concurrency") {
+		t.Fatal("ready status bar should show Concurrency")
+	}
+	if !contains(t, out, "Payload") {
+		t.Fatal("ready status bar should show Payload")
 	}
 	if contains(t, out, "↑↓") {
 		t.Fatal("ready status bar should not advertise ↑↓ (inert)")
@@ -276,8 +273,8 @@ func TestRenderStatusBar_Ready(t *testing.T) {
 	if !contains(t, out, "Ctrl+R") {
 		t.Fatal("ready status bar should show Ctrl+R")
 	}
-	if !contains(t, out, "q") {
-		t.Fatal("ready status bar should show q (quit)")
+	if !contains(t, out, "Quit") {
+		t.Fatal("ready status bar should show Quit")
 	}
 }
 
@@ -286,8 +283,8 @@ func TestRenderStatusBar_RunningEmpty(t *testing.T) {
 	m.width = 100
 	m.running = true
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "RUNNING") {
-		t.Fatal("status bar should show 'RUNNING' mode")
+	if !contains(t, out, "Ctrl+X") {
+		t.Fatal("running empty status bar should show Ctrl+X")
 	}
 	if contains(t, out, "↑↓") {
 		t.Fatal("running empty should not advertise ↑↓ (inert)")
@@ -303,13 +300,10 @@ func TestRenderStatusBar_RunningWithResults(t *testing.T) {
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "RUNNING") {
-		t.Fatal("status bar should show 'RUNNING' mode")
+	if !contains(t, out, "Enter Inspect") {
+		t.Fatal("running status bar should show Enter Inspect")
 	}
-	if !contains(t, out, "Enter inspect") {
-		t.Fatal("running status bar should show Enter inspect")
-	}
-	if !contains(t, out, "[ ]") {
+	if !contains(t, out, "[ ] Views") {
 		t.Fatal("running status bar should show view switching")
 	}
 }
@@ -319,11 +313,11 @@ func TestRenderStatusBar_EndpointDialog(t *testing.T) {
 	m.width = 100
 	m.dialog = dialogEndpoint
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "ENDPOINT") {
-		t.Fatal("status bar should show 'ENDPOINT' mode")
+	if !contains(t, out, "Esc Back") {
+		t.Fatal("endpoint status bar should show Esc Back")
 	}
-	if !contains(t, out, "Enter") {
-		t.Fatal("endpoint status bar should show Enter")
+	if !contains(t, out, "Tab Next Field") {
+		t.Fatal("endpoint status bar should show Tab Next Field")
 	}
 }
 
@@ -332,11 +326,11 @@ func TestRenderStatusBar_CCDialog(t *testing.T) {
 	m.width = 100
 	m.dialog = dialogConcurrency
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "CONCURRENCY") {
-		t.Fatal("status bar should show 'CONCURRENCY' mode")
+	if !contains(t, out, "Esc Back") {
+		t.Fatal("concurrency status bar should show Esc Back")
 	}
-	if !contains(t, out, "Enter") {
-		t.Fatal("concurrency status bar should show Enter")
+	if !contains(t, out, "↑ ↓ Adjust") {
+		t.Fatal("concurrency status bar should show ↑ ↓ Adjust")
 	}
 }
 
@@ -345,8 +339,11 @@ func TestRenderStatusBar_Inspecting(t *testing.T) {
 	m.width = 100
 	m.mode = modeInspect
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "INSPECTING") {
-		t.Fatal("status bar should show 'INSPECTING' mode")
+	if !contains(t, out, "Esc Back") {
+		t.Fatal("inspect status bar should show Esc Back")
+	}
+	if !contains(t, out, "q Quit") {
+		t.Fatal("inspect status bar should show q Quit")
 	}
 }
 
@@ -1083,17 +1080,17 @@ func TestRenderStatusBar_PayloadDialog(t *testing.T) {
 	m.width = 100
 	m.dialog = dialogPayload
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "PAYLOAD") {
-		t.Fatal("status bar should show 'PAYLOAD' mode")
-	}
-	if !contains(t, out, "Tab") {
-		t.Fatal("payload status bar should show Tab hint")
+	if !contains(t, out, "Tab Next") {
+		t.Fatal("payload status bar should show Tab Next hint")
 	}
 	if !contains(t, out, "Ctrl+N") {
 		t.Fatal("payload status bar should show Ctrl+N hint")
 	}
 	if !contains(t, out, "Ctrl+D") {
 		t.Fatal("payload status bar should show Ctrl+D hint")
+	}
+	if !contains(t, out, "Esc Back") {
+		t.Fatal("payload status bar should show Esc Back hint")
 	}
 }
 
