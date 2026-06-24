@@ -22,7 +22,7 @@ func (m Model) View() string {
 	var sb strings.Builder
 	sb.WriteString(m.renderTopBar(width))
 	sb.WriteString("\n")
-	sb.WriteString(StyleSeparator.Render(strings.Repeat("─", width)))
+	sb.WriteString(styleSeparator.Render(strings.Repeat("─", width)))
 	sb.WriteString("\n")
 
 	switch {
@@ -43,16 +43,16 @@ func (m Model) View() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(StyleSeparator.Render(strings.Repeat("─", width)))
+	sb.WriteString(styleSeparator.Render(strings.Repeat("─", width)))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderStatusBar(width))
 
-	return StyleBase.Width(width).Height(m.height).Render(sb.String())
+	return styleBase.Width(width).Height(m.height).Render(sb.String())
 }
 
 func identityCell(label string, subdued bool) string {
 	if subdued {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render(label)
+		return styleMuted.Render(label)
 	}
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true).Render(label)
 }
@@ -89,7 +89,7 @@ func (m Model) renderTopBar(width int) string {
 	}
 
 	line := leftTruncated + strings.Repeat(" ", padding) + right
-	return StyleTopBar.Width(width).Render(line)
+	return styleTopBar.Width(width).Render(line)
 }
 
 func (m Model) renderReady(width int, height int) string {
@@ -107,7 +107,7 @@ func (m Model) renderReady(width int, height int) string {
 	b.WriteString("\n\n")
 	b.WriteString(content)
 
-	return StyleBase.Copy().Width(width).Height(height).Render(b.String())
+	return styleBase.Copy().Width(width).Height(height).Render(b.String())
 }
 
 func (m Model) renderEndpoint(width int) string {
@@ -121,7 +121,7 @@ func (m Model) renderEndpoint(width int) string {
 		if i == m.methodIndex {
 			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("▶ " + method)
 		} else {
-			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("  " + method)
+			methodLine += styleMuted.Render("  " + method)
 		}
 		if i < len(methods)-1 {
 			methodLine += " "
@@ -130,9 +130,9 @@ func (m Model) renderEndpoint(width int) string {
 
 	b.WriteString(fmt.Sprintf(
 		"\n%s\n  %s\n%s\n  %s",
-		lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("URL"),
+		styleMuted.Render("URL"),
 		m.urlInput.View(),
-		lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("Method"),
+		styleMuted.Render("Method"),
 		methodLine,
 	))
 
@@ -165,7 +165,7 @@ func (m Model) renderPayload(width int) string {
 	b.WriteString("\n")
 
 	if len(m.headers) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("  No headers configured."))
+		b.WriteString(styleMuted.Render("  No headers configured."))
 	} else {
 		for i, header := range m.headers {
 			key := header.Key.View()
@@ -231,13 +231,13 @@ func (m Model) renderStatusBar(width int) string {
 	}
 
 	if mode == "" {
-		return StyleStatusBar.Width(width).Render(hints)
+		return styleStatusBar.Width(width).Render(hints)
 	}
 
-	modeStyled := StyleStatusMode.Render(" " + mode + " ")
-	hintsStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render(hints)
+	modeStyled := styleStatusMode.Render(" " + mode + " ")
+	hintsStyled := styleMuted.Render(hints)
 	line := modeStyled + " " + hintsStyled
-	return StyleStatusBar.Width(width).Render(line)
+	return styleStatusBar.Width(width).Render(line)
 }
 
 func visibleWindow(total, selected, height int) int {
@@ -263,19 +263,19 @@ func (m Model) renderResultList(width, height int, identity string, emptyRunning
 
 	remaining := height - 1
 	if metrics := m.metricsString(); metrics != "" {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Width(width).Render(metrics))
+		b.WriteString(styleMuted.Width(width).Render(metrics))
 		b.WriteString("\n")
 		remaining--
 	}
 
 	if remaining <= 0 {
-		return lipgloss.NewStyle().Width(width).Height(height).Render(b.String())
+		return styleBase.Copy().Width(width).Height(height).Render(b.String())
 	}
 
 	if len(m.results) == 0 {
 		msg := m.renderEmptyState(emptyRunning)
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render(msg))
-		return lipgloss.NewStyle().Width(width).Height(height).Render(b.String())
+		b.WriteString(styleMuted.Render(msg))
+		return styleBase.Copy().Width(width).Height(height).Render(b.String())
 	}
 
 	start := visibleWindow(len(m.results), m.selected, remaining)
@@ -287,7 +287,7 @@ func (m Model) renderResultList(width, height int, identity string, emptyRunning
 	}
 	b.WriteString(strings.Join(rows, "\n"))
 
-	return lipgloss.NewStyle().Width(width).Height(height).Render(b.String())
+	return styleBase.Copy().Width(width).Height(height).Render(b.String())
 }
 
 func (m Model) renderTimeline(width int, height int) string {
@@ -351,7 +351,7 @@ func (m Model) renderLogs(width int, height int) string {
 
 func (m Model) renderInspect(width int, height int) string {
 	if len(m.results) == 0 || m.selected < 0 || m.selected >= len(m.results) {
-		return StyleBase.Copy().Width(width).Height(height).Render(lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("No result selected."))
+		return styleBase.Copy().Width(width).Height(height).Render(styleMuted.Render("No result selected."))
 	}
 
 	result := m.results[m.selected]
@@ -364,10 +364,9 @@ func (m Model) renderInspect(width int, height int) string {
 		reqURL = m.urlInput.Value()
 	}
 
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 	errorText := lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 	sectionLine := func(label string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("-- " + label + " --")
+		return styleMuted.Render("-- " + label + " --")
 	}
 
 	identity := identityCell(fmt.Sprintf("Inspector - Result #%d", m.selected+1), false)
@@ -386,7 +385,7 @@ func (m Model) renderInspect(width int, height int) string {
 	lines = append(lines, "", sectionLine("HEADERS"))
 
 	if len(result.ResponseHeaders) == 0 {
-		lines = append(lines, muted.Render("No headers captured."))
+		lines = append(lines, styleMuted.Render("No headers captured."))
 	} else {
 		keys := make([]string, 0, len(result.ResponseHeaders))
 		for key := range result.ResponseHeaders {
@@ -401,20 +400,20 @@ func (m Model) renderInspect(width int, height int) string {
 	lines = append(lines, "", sectionLine("BODY"))
 	body := result.ResponseBody
 	if body == "" {
-		body = muted.Render("No body captured.")
+		body = styleMuted.Render("No body captured.")
 	}
 	bodyLines := strings.Split(body, "\n")
 	for i, bline := range bodyLines {
 		if len(lines) >= height-2 {
 			if i < len(bodyLines)-1 {
-				lines = append(lines, muted.Render("... (truncated)"))
+				lines = append(lines, styleMuted.Render("... (truncated)"))
 			}
 			break
 		}
 		lines = append(lines, truncate(bline, width-4))
 	}
 
-	return StyleBase.Copy().Width(width).Height(height).Render(strings.Join(lines, "\n"))
+	return styleBase.Copy().Width(width).Height(height).Render(strings.Join(lines, "\n"))
 }
 
 func resultStatus(result model.Result) string {

@@ -30,32 +30,41 @@ func TestColorConstants(t *testing.T) {
 }
 
 func TestStyleBase(t *testing.T) {
-	if got := StyleBase.GetForeground(); got != lipgloss.Color(colorText) {
-		t.Errorf("StyleBase foreground = %q, want %q", got, colorText)
+	if got := styleBase.GetForeground(); got != lipgloss.Color(colorText) {
+		t.Errorf("styleBase foreground = %q, want %q", got, colorText)
 	}
-	if got := StyleBase.GetBackground(); got != lipgloss.Color(colorBg) {
-		t.Errorf("StyleBase background = %q, want %q", got, colorBg)
+	if got := styleBase.GetBackground(); got != lipgloss.Color(colorBg) {
+		t.Errorf("styleBase background = %q, want %q", got, colorBg)
+	}
+	if got := styleBase.GetBackground(); got != lipgloss.Color(colorBg) {
+		t.Errorf("styleBase background = %q, want %q", got, colorBg)
 	}
 }
 
 func TestStyleStatusBar(t *testing.T) {
-	if got := StyleStatusBar.GetForeground(); got != lipgloss.Color(colorText) {
-		t.Errorf("StyleStatusBar foreground = %q, want %q", got, colorText)
+	if got := styleStatusBar.GetForeground(); got != lipgloss.Color(colorText) {
+		t.Errorf("styleStatusBar foreground = %q, want %q", got, colorText)
 	}
-	if got := StyleStatusBar.GetBackground(); got != lipgloss.Color(colorDark) {
-		t.Errorf("StyleStatusBar background = %q, want %q", got, colorDark)
+	if got := styleStatusBar.GetBackground(); got != lipgloss.Color(colorDark) {
+		t.Errorf("styleStatusBar background = %q, want %q", got, colorDark)
 	}
 }
 
 func TestStyleStatusMode(t *testing.T) {
-	if got := StyleStatusMode.GetForeground(); got != lipgloss.Color(colorBg) {
-		t.Errorf("StyleStatusMode foreground = %q, want %q", got, colorBg)
+	if got := styleStatusMode.GetForeground(); got != lipgloss.Color(colorBg) {
+		t.Errorf("styleStatusMode foreground = %q, want %q", got, colorBg)
 	}
-	if got := StyleStatusMode.GetBackground(); got != lipgloss.Color(colorAccent) {
-		t.Errorf("StyleStatusMode background = %q, want %q", got, colorAccent)
+	if got := styleStatusMode.GetBackground(); got != lipgloss.Color(colorAccent) {
+		t.Errorf("styleStatusMode background = %q, want %q", got, colorAccent)
 	}
-	if got := StyleStatusMode.GetBold(); !got {
-		t.Error("StyleStatusMode should be bold")
+	if got := styleStatusMode.GetBold(); !got {
+		t.Error("styleStatusMode should be bold")
+	}
+	if got := styleStatusMode.GetBackground(); got != lipgloss.Color(colorAccent) {
+		t.Errorf("styleStatusMode background = %q, want %q", got, colorAccent)
+	}
+	if got := styleStatusMode.GetBold(); !got {
+		t.Error("styleStatusMode should be bold")
 	}
 }
 
