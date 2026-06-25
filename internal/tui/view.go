@@ -11,43 +11,65 @@ import (
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
+type Region struct {
+	Width  int
+	Height int
+}
+
+type ShellLayout struct {
+	Context   Region
+	Workspace Region
+	Command   Region
+}
+
+func computeShellLayout(totalWidth, totalHeight int) ShellLayout {
+	width := max(72, totalWidth)
+	bodyHeight := max(1, totalHeight-5)
+	return ShellLayout{
+		Context:   Region{Width: width, Height: 1},
+		Workspace: Region{Width: width, Height: bodyHeight},
+		Command:   Region{Width: width, Height: 1},
+	}
+}
+
 func (m Model) View() string {
 	if m.width == 0 {
 		return "Pulse is starting..."
 	}
 
-	width := max(72, m.width)
-	bodyHeight := max(1, m.height-5)
+	layout := computeShellLayout(m.width, m.height)
 
 	var sb strings.Builder
-	sb.WriteString(m.renderTopBar(width))
+	sb.WriteString(m.renderTopBar(layout.Context.Width))
 	sb.WriteString("\n")
-	sb.WriteString(styleSeparator.Render(strings.Repeat("─", width)))
+	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Context.Width)))
 	sb.WriteString("\n")
+	sb.WriteString(m.renderCurrentSurface(layout.Workspace))
+	sb.WriteString("\n")
+	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Command.Width)))
+	sb.WriteString("\n")
+	sb.WriteString(m.renderStatusBar(layout.Command.Width))
 
+	return styleBase.Width(layout.Context.Width).Height(m.height).Render(sb.String())
+}
+
+func (m Model) renderCurrentSurface(region Region) string {
 	switch {
 	case m.dialog == dialogPayload:
-		sb.WriteString(m.renderPayload(width))
+		return m.renderPayload(region)
 	case m.dialog == dialogEndpoint:
-		sb.WriteString(m.renderEndpoint(width))
+		return m.renderEndpoint(region)
 	case m.dialog == dialogConcurrency:
-		sb.WriteString(m.renderConcurrency(width))
+		return m.renderConcurrency(region)
 	case m.mode == modeInspect:
-		sb.WriteString(m.renderInspect(width, bodyHeight))
+		return m.renderInspect(region)
 	case !m.running && len(m.results) == 0:
-		sb.WriteString(m.renderReady(width, bodyHeight))
+		return m.renderReady(region)
 	case m.view == viewTimeline:
-		sb.WriteString(m.renderTimeline(width, bodyHeight))
+		return m.renderTimeline(region)
 	default:
-		sb.WriteString(m.renderLogs(width, bodyHeight))
+		return m.renderLogs(region)
 	}
-
-	sb.WriteString("\n")
-	sb.WriteString(styleSeparator.Render(strings.Repeat("─", width)))
-	sb.WriteString("\n")
-	sb.WriteString(m.renderStatusBar(width))
-
-	return styleBase.Width(width).Height(m.height).Render(sb.String())
 }
 
 func identityCell(label string, subdued bool) string {
@@ -70,6 +92,21 @@ func (m Model) metricsString() string {
 		s.SuccessRate, rps, formatDuration(s.P90), formatDuration(s.P99))
 }
 
+func (m Model) payloadSummary() string {
+	h := len(m.headers)
+	hasBody := m.bodyInput.Value() != ""
+	switch {
+	case h == 0 && !hasBody:
+		return "—"
+	case h > 0 && hasBody:
+		return fmt.Sprintf("%dH+B", h)
+	case h > 0:
+		return fmt.Sprintf("%dH", h)
+	default:
+		return "B"
+	}
+}
+
 func (m Model) renderTopBar(width int) string {
 	method := runconfig.AllowedMethods()[m.methodIndex]
 	url := truncateURL(m.urlInput.Value(), 40)
@@ -77,6 +114,11 @@ func (m Model) renderTopBar(width int) string {
 
 	cc := strings.TrimSpace(m.ccInput.Value())
 	right := "CC " + cc
+
+	ps := m.payloadSummary()
+	if ps != "—" && width >= 100 {
+		right += " · Payload " + ps
+	}
 
 	maxLeft := width - lipgloss.Width(right) - 3
 	if maxLeft < 12 {
@@ -92,37 +134,27 @@ func (m Model) renderTopBar(width int) string {
 	return styleTopBar.Width(width).Render(line)
 }
 
-func (m Model) renderReady(width int, height int) string {
+func (m Model) renderReady(region Region) string {
 	method := runconfig.AllowedMethods()[m.methodIndex]
 	url := m.urlInput.Value()
 	cc := m.concurrency()
 
-	payloadParts := []string{}
-	if len(m.headers) > 0 {
-		payloadParts = append(payloadParts, fmt.Sprintf("%d header(s)", len(m.headers)))
-	}
-	if m.bodyInput.Value() != "" {
-		payloadParts = append(payloadParts, "body present")
-	}
-	payloadState := "Empty"
-	if len(payloadParts) > 0 {
-		payloadState = strings.Join(payloadParts, ", ")
-	}
+	payloadLabel := "Payload " + m.payloadSummary()
 
 	identity := identityCell("OBSERVE", false)
 
-	content := fmt.Sprintf("%s    %s\n\nCC %d\n\nBody  %s",
-		method, url, cc, payloadState)
+	content := fmt.Sprintf("%s    %s\n\nCC %d\n\n%s",
+		method, url, cc, payloadLabel)
 
 	var b strings.Builder
 	b.WriteString(identity)
 	b.WriteString("\n\n")
 	b.WriteString(content)
 
-	return styleBase.Copy().Width(width).Height(height).Render(b.String())
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
-func (m Model) renderEndpoint(width int) string {
+func (m Model) renderEndpoint(region Region) string {
 	var b strings.Builder
 	b.WriteString(identityCell("Endpoint", true))
 	b.WriteString("\n")
@@ -156,10 +188,10 @@ func (m Model) renderEndpoint(width int) string {
 		m.urlInput.View(),
 	))
 
-	return b.String()
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
-func (m Model) renderConcurrency(width int) string {
+func (m Model) renderConcurrency(region Region) string {
 	var b strings.Builder
 	b.WriteString(identityCell("Concurrency", true))
 	b.WriteString("\n\n")
@@ -168,10 +200,11 @@ func (m Model) renderConcurrency(width int) string {
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true).Render(
 		fmt.Sprintf("  %s  (1–%d)", ccText, runconfig.MaxConcurrency),
 	))
-	return b.String()
+
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
-func (m Model) renderPayload(width int) string {
+func (m Model) renderPayload(region Region) string {
 	var b strings.Builder
 	b.WriteString(identityCell("Payload", true))
 	b.WriteString("\n")
@@ -214,7 +247,7 @@ func (m Model) renderPayload(width int) string {
 
 	b.WriteString(m.bodyInput.View())
 
-	return b.String()
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
 func (m Model) renderStatusBar(width int) string {
@@ -222,23 +255,23 @@ func (m Model) renderStatusBar(width int) string {
 
 	switch {
 	case m.dialog == dialogConfirmQuit:
-		hints = "Enter/q/Ctrl+C to quit, any key cancels"
+		hints = "  [Enter]  [q]  [Ctrl+C] to quit  ·  any key cancels"
 	case m.dialog == dialogEndpoint:
-		hints = "Tab Next Field  ← → Method  Esc Back"
+		hints = "  [Tab] Next Field  ·  [←→] Method  ·  [Esc] Back"
 	case m.dialog == dialogConcurrency:
-		hints = "↑ ↓ Adjust  Esc Back"
+		hints = "  [↑↓] Adjust  ·  [Esc] Back"
 	case m.dialog == dialogPayload:
-		hints = "Tab Next  Ctrl+N Header  Ctrl+D Delete  Esc Back"
+		hints = "  [Tab] Next  ·  [Ctrl+N] Header  ·  [Ctrl+D] Delete  ·  [Esc] Back"
 	case m.mode == modeInspect:
-		hints = "↑ ↓ Select  Esc Back  q Quit"
+		hints = "  [↑↓] Select  ·  [Esc] Back  ·  [q] Quit"
 	case m.running && len(m.results) == 0:
-		hints = "Ctrl+X Cancel"
+		hints = "  [Ctrl+X] Cancel"
 	case m.running:
-		hints = "↑ ↓ Select  Enter Inspect  [ ] Views  Ctrl+X Cancel"
+		hints = "  [↑↓] Select  ·  [Enter] Inspect  ·  [Tab] Views  ·  [Ctrl+X] Cancel"
 	case !m.running && len(m.results) == 0:
-		hints = "e Endpoint  c Concurrency  p Payload  Ctrl+R Run  q Quit"
+		hints = "  [e] Endpoint  ·  [c] Concurrency  ·  [p] Payload  ·  [Ctrl+R] Run  ·  [q] Quit"
 	default:
-		hints = "↑ ↓ Select  Enter Inspect  [ ] Views  e Endpoint  c Concurrency  p Payload  Ctrl+R Run  q Quit"
+		hints = "  [↑↓] Select  ·  [Enter] Inspect  ·  [Tab] Views  ·  [e] Endpoint  ·  [c] Concurrency  ·  [p] Payload  ·  [Ctrl+R] Run  ·  [q] Quit"
 	}
 
 	return styleStatusBar.Width(width).Render(hints)
@@ -259,27 +292,27 @@ func visibleWindow(total, selected, height int) int {
 	return start
 }
 
-func (m Model) renderResultList(width, height int, identity string, emptyRunning string, rowFn func(result model.Result, index int, selected bool, width int) string) string {
+func (m Model) renderResultList(region Region, identity string, emptyRunning string, rowFn func(result model.Result, index int, selected bool, width int) string) string {
 	var b strings.Builder
 
 	b.WriteString(identityCell(identity, false))
 	b.WriteString("\n")
 
-	remaining := height - 1
+	remaining := region.Height - 1
 	if metrics := m.metricsString(); metrics != "" {
-		b.WriteString(styleMuted.Width(width).Render(metrics))
+		b.WriteString(styleMuted.Width(region.Width).Render(metrics))
 		b.WriteString("\n")
 		remaining--
 	}
 
 	if remaining <= 0 {
-		return styleBase.Copy().Width(width).Height(height).Render(b.String())
+		return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 	}
 
 	if len(m.results) == 0 {
 		msg := m.renderEmptyState(emptyRunning)
 		b.WriteString(styleMuted.Render(msg))
-		return styleBase.Copy().Width(width).Height(height).Render(b.String())
+		return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 	}
 
 	start := visibleWindow(len(m.results), m.selected, remaining)
@@ -287,15 +320,15 @@ func (m Model) renderResultList(width, height int, identity string, emptyRunning
 	for i := start; i < len(m.results) && len(rows) < remaining; i++ {
 		result := m.results[i]
 		sel := i == m.selected
-		rows = append(rows, rowFn(result, i, sel, width))
+		rows = append(rows, rowFn(result, i, sel, region.Width))
 	}
 	b.WriteString(strings.Join(rows, "\n"))
 
-	return styleBase.Copy().Width(width).Height(height).Render(b.String())
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
-func (m Model) renderTimeline(width int, height int) string {
-	return m.renderResultList(width, height, "Timeline", "⏳  Waiting for results...",
+func (m Model) renderTimeline(region Region) string {
+	return m.renderResultList(region, "Timeline", "⏳  Waiting for results...",
 		func(result model.Result, index int, selected bool, width int) string {
 			return m.renderTimelineRow(index, result, m.summary.MaxLatency, width, selected)
 		})
@@ -332,8 +365,8 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
 }
 
-func (m Model) renderLogs(width int, height int) string {
-	return m.renderResultList(width, height, "Logs", "📭  No results yet...",
+func (m Model) renderLogs(region Region) string {
+	return m.renderResultList(region, "Logs", "📭  No results yet...",
 		func(result model.Result, index int, selected bool, width int) string {
 			status := resultStatus(result)
 			method := result.RequestMethod
@@ -353,9 +386,9 @@ func (m Model) renderLogs(width int, height int) string {
 		})
 }
 
-func (m Model) renderInspect(width int, height int) string {
+func (m Model) renderInspect(region Region) string {
 	if len(m.results) == 0 || m.selected < 0 || m.selected >= len(m.results) {
-		return styleBase.Copy().Width(width).Height(height).Render(styleMuted.Render("No result selected."))
+		return styleBase.Copy().Width(region.Width).Height(region.Height).Render(styleMuted.Render("No result selected."))
 	}
 
 	result := m.results[m.selected]
@@ -378,7 +411,7 @@ func (m Model) renderInspect(width int, height int) string {
 	lines := []string{
 		identity,
 		"",
-		fmt.Sprintf("  %s %s", method, truncate(reqURL, width-12)),
+		fmt.Sprintf("  %s %s", method, truncate(reqURL, region.Width-12)),
 		"",
 		lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor(result.Status))).Render("Status:  " + resultStatus(result)),
 		fmt.Sprintf("Latency: %s", formatDuration(result.Latency)),
@@ -397,7 +430,7 @@ func (m Model) renderInspect(width int, height int) string {
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			lines = append(lines, truncate(fmt.Sprintf("%s: %s", key, result.ResponseHeaders[key]), width-4))
+			lines = append(lines, truncate(fmt.Sprintf("%s: %s", key, result.ResponseHeaders[key]), region.Width-4))
 		}
 	}
 
@@ -408,16 +441,16 @@ func (m Model) renderInspect(width int, height int) string {
 	}
 	bodyLines := strings.Split(body, "\n")
 	for i, bline := range bodyLines {
-		if len(lines) >= height-2 {
+		if len(lines) >= region.Height-2 {
 			if i < len(bodyLines)-1 {
 				lines = append(lines, styleMuted.Render("... (truncated)"))
 			}
 			break
 		}
-		lines = append(lines, truncate(bline, width-4))
+		lines = append(lines, truncate(bline, region.Width-4))
 	}
 
-	return styleBase.Copy().Width(width).Height(height).Render(strings.Join(lines, "\n"))
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(strings.Join(lines, "\n"))
 }
 
 func resultStatus(result model.Result) string {
