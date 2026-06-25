@@ -65,11 +65,11 @@ type Model struct {
 	dialog dialog
 	view   view
 
-	methodIndex    int
-	endpointField  int
-	urlInput       textinput.Model
-	ccInput        textinput.Model
-	bodyInput   textarea.Model
+	methodIndex   int
+	endpointField int
+	urlInput      textinput.Model
+	ccInput       textinput.Model
+	bodyInput     textarea.Model
 
 	headers        []headerRow
 	selectedHead   int
@@ -123,15 +123,15 @@ func NewModel() Model {
 	body.SetWidth(defaultBodyWidth)
 
 	return Model{
-		mode:        modeObserve,
-		dialog:      dialogNone,
-		view:        viewTimeline,
-		methodIndex:    0,
-		endpointField:  endpointURL,
-		urlInput:       url,
-		ccInput:     cc,
-		bodyInput:   body,
-		status:      "SYSTEM READY",
+		mode:          modeObserve,
+		dialog:        dialogNone,
+		view:          viewTimeline,
+		methodIndex:   0,
+		endpointField: endpointURL,
+		urlInput:      url,
+		ccInput:       cc,
+		bodyInput:     body,
+		status:        "SYSTEM READY",
 	}
 }
 

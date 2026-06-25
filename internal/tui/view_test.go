@@ -53,7 +53,7 @@ func TestRenderReady(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.height = 30
-	out := m.renderReady(100, 26)
+	out := m.renderReady(Region{Width: 100, Height: 26})
 	if !contains(t, out, "OBSERVE") {
 		t.Fatal("Ready should show identity")
 	}
@@ -63,11 +63,11 @@ func TestRenderReady(t *testing.T) {
 	if !contains(t, out, "CC 10") {
 		t.Fatal("Ready should show concurrency")
 	}
-	if !contains(t, out, "Body") {
+	if !contains(t, out, "Payload") {
 		t.Fatal("Ready should show payload state")
 	}
-	if !contains(t, out, "Empty") {
-		t.Fatal("Ready should show payload as empty")
+	if !contains(t, out, "—") {
+		t.Fatal("Ready should show payload as empty (—)")
 	}
 }
 
@@ -97,6 +97,23 @@ func TestRenderTopBar_ShowsMethodAndURL(t *testing.T) {
 	}
 	if !contains(t, out, "httpbin") {
 		t.Fatal("top bar should contain URL")
+	}
+}
+
+func TestRenderTopBar_ShowsPayloadSummary(t *testing.T) {
+	m := NewModel()
+	m.width = 120
+	m.headers = append(m.headers, newHeaderRow())
+	m.headers[0].Key.SetValue("Content-Type")
+	m.headers[0].Value.SetValue("application/json")
+	m.bodyInput.SetValue(`{"key": "value"}`)
+
+	out := m.renderTopBar(120)
+	if !contains(t, out, "Payload") {
+		t.Fatal("top bar should show payload summary when width permits")
+	}
+	if !contains(t, out, "1H+B") {
+		t.Fatal("top bar should show payload summary with header count and body indicator")
 	}
 }
 
@@ -243,8 +260,11 @@ func TestRenderStatusBar_Normal(t *testing.T) {
 	m.width = 100
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "↑ ↓ Select") {
+	if !contains(t, out, "[↑↓] Select") {
 		t.Fatal("post-run status bar should show scroll hint")
+	}
+	if !contains(t, out, "[Tab] Views") {
+		t.Fatal("post-run status bar should show view switch command")
 	}
 }
 
@@ -252,29 +272,29 @@ func TestRenderStatusBar_Ready(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "Endpoint") {
-		t.Fatal("ready status bar should show Endpoint")
+	if !contains(t, out, "[e] Endpoint") {
+		t.Fatal("ready status bar should show [e] Endpoint")
 	}
-	if !contains(t, out, "Concurrency") {
-		t.Fatal("ready status bar should show Concurrency")
+	if !contains(t, out, "[c] Concurrency") {
+		t.Fatal("ready status bar should show [c] Concurrency")
 	}
-	if !contains(t, out, "Payload") {
-		t.Fatal("ready status bar should show Payload")
+	if !contains(t, out, "[p] Payload") {
+		t.Fatal("ready status bar should show [p] Payload")
 	}
-	if contains(t, out, "↑↓") {
-		t.Fatal("ready status bar should not advertise ↑↓ (inert)")
+	if contains(t, out, "[↑↓]") {
+		t.Fatal("ready status bar should not advertise [↑↓] (inert)")
 	}
-	if contains(t, out, "Enter") {
-		t.Fatal("ready status bar should not advertise Enter (inert)")
+	if contains(t, out, "[Enter]") {
+		t.Fatal("ready status bar should not advertise [Enter] (inert)")
 	}
-	if contains(t, out, "[ ]") {
-		t.Fatal("ready status bar should not advertise view switching (inert)")
+	if contains(t, out, "[Tab]") {
+		t.Fatal("ready status bar should not advertise [Tab] (inert)")
 	}
-	if !contains(t, out, "Ctrl+R") {
-		t.Fatal("ready status bar should show Ctrl+R")
+	if !contains(t, out, "[Ctrl+R]") {
+		t.Fatal("ready status bar should show [Ctrl+R]")
 	}
-	if !contains(t, out, "Quit") {
-		t.Fatal("ready status bar should show Quit")
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("ready status bar should show [q] Quit")
 	}
 }
 
@@ -300,11 +320,14 @@ func TestRenderStatusBar_RunningWithResults(t *testing.T) {
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "Enter Inspect") {
-		t.Fatal("running status bar should show Enter Inspect")
+	if !contains(t, out, "[Enter] Inspect") {
+		t.Fatal("running status bar should show [Enter] Inspect")
 	}
-	if !contains(t, out, "[ ] Views") {
-		t.Fatal("running status bar should show view switching")
+	if !contains(t, out, "[Tab] Views") {
+		t.Fatal("running status bar should show [Tab] Views")
+	}
+	if !contains(t, out, "[Ctrl+X]") {
+		t.Fatal("running status bar should show [Ctrl+X] Cancel")
 	}
 }
 
@@ -313,11 +336,14 @@ func TestRenderStatusBar_EndpointDialog(t *testing.T) {
 	m.width = 100
 	m.dialog = dialogEndpoint
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "Esc Back") {
-		t.Fatal("endpoint status bar should show Esc Back")
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("endpoint status bar should show [Esc] Back")
 	}
-	if !contains(t, out, "Tab Next Field") {
-		t.Fatal("endpoint status bar should show Tab Next Field")
+	if !contains(t, out, "[Tab] Next Field") {
+		t.Fatal("endpoint status bar should show [Tab] Next Field")
+	}
+	if !contains(t, out, "[←→] Method") {
+		t.Fatal("endpoint status bar should show [←→] Method")
 	}
 }
 
@@ -326,11 +352,11 @@ func TestRenderStatusBar_CCDialog(t *testing.T) {
 	m.width = 100
 	m.dialog = dialogConcurrency
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "Esc Back") {
-		t.Fatal("concurrency status bar should show Esc Back")
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("concurrency status bar should show [Esc] Back")
 	}
-	if !contains(t, out, "↑ ↓ Adjust") {
-		t.Fatal("concurrency status bar should show ↑ ↓ Adjust")
+	if !contains(t, out, "[↑↓] Adjust") {
+		t.Fatal("concurrency status bar should show [↑↓] Adjust")
 	}
 }
 
@@ -339,11 +365,11 @@ func TestRenderStatusBar_Inspecting(t *testing.T) {
 	m.width = 100
 	m.mode = modeInspect
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "Esc Back") {
-		t.Fatal("inspect status bar should show Esc Back")
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("inspect status bar should show [Esc] Back")
 	}
-	if !contains(t, out, "q Quit") {
-		t.Fatal("inspect status bar should show q Quit")
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("inspect status bar should show [q] Quit")
 	}
 }
 
@@ -369,7 +395,7 @@ func TestRenderTimeline_Identity(t *testing.T) {
 	m.summary.MaxLatency = 100 * time.Millisecond
 	m.selected = 0
 
-	out := m.renderTimeline(94, 20)
+	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
 		t.Fatal("timeline should show identity header")
 	}
@@ -378,7 +404,7 @@ func TestRenderTimeline_Identity(t *testing.T) {
 func TestRenderTimeline_Empty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderTimeline(94, 20)
+	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
 		t.Fatal("empty timeline should show Timeline identity")
 	}
@@ -397,7 +423,7 @@ func TestRenderTimeline_Rows(t *testing.T) {
 	m.summary.MaxLatency = 100 * time.Millisecond
 	m.selected = 0
 
-	out := m.renderTimeline(94, 20)
+	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "200") {
 		t.Fatal("timeline should show status code 200")
 	}
@@ -418,7 +444,7 @@ func TestRenderLogs_Identity(t *testing.T) {
 	m.summary.MaxLatency = 100 * time.Millisecond
 	m.selected = 0
 
-	out := m.renderLogs(94, 20)
+	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {
 		t.Fatal("logs should show identity header")
 	}
@@ -427,7 +453,7 @@ func TestRenderLogs_Identity(t *testing.T) {
 func TestRenderLogs_Empty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderLogs(94, 20)
+	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {
 		t.Fatal("empty logs should show Logs identity")
 	}
@@ -447,7 +473,7 @@ func TestRenderLogs_Rows(t *testing.T) {
 	m.summary.MaxLatency = 100 * time.Millisecond
 	m.selected = 0
 
-	out := m.renderLogs(94, 20)
+	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "GET") {
 		t.Fatal("logs should show method 'GET'")
 	}
@@ -473,7 +499,7 @@ func TestRenderInspect_Identity(t *testing.T) {
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
 
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "Inspector") {
 		t.Fatal("inspector should show identity header")
 	}
@@ -485,7 +511,7 @@ func TestRenderInspect_Identity(t *testing.T) {
 func TestRenderInspect_NoSelection(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "No result selected.") {
 		t.Fatal("inspector with no selection should show 'No result selected.'")
 	}
@@ -506,7 +532,7 @@ func TestRenderInspect_WithResult(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "200") {
 		t.Fatal("inspector should show status")
 	}
@@ -533,7 +559,7 @@ func TestRenderInspect_NoMetrics(t *testing.T) {
 	m.summary.SuccessRate = 90
 	m.elapsed = 5 * time.Second
 
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if contains(t, out, "% ok") {
 		t.Fatal("inspector should NOT show aggregate metrics")
 	}
@@ -554,7 +580,7 @@ func TestRenderInspect_WithError(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "connection refused") {
 		t.Fatal("inspector should show error message")
 	}
@@ -574,7 +600,7 @@ func TestRenderInspect_NoHeaders(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "No headers captured.") {
 		t.Fatal("inspector should show 'No headers captured.' when no response headers")
 	}
@@ -594,7 +620,7 @@ func TestRenderInspect_NoBody(t *testing.T) {
 		},
 	}
 
-	out := m.renderInspect(40, 20)
+	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "No body captured.") {
 		t.Fatal("inspector should show 'No body captured.' when no response body")
 	}
@@ -685,7 +711,7 @@ func TestRenderTimeline_RunningEmpty(t *testing.T) {
 	m.running = true
 	m.status = "RUNNING"
 
-	out := m.renderTimeline(94, 20)
+	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
 		t.Fatal("running empty timeline should show Timeline identity")
 	}
@@ -700,7 +726,7 @@ func TestRenderTimeline_IdleNoURL(t *testing.T) {
 	m.running = false
 	m.urlInput.SetValue("")
 
-	out := m.renderTimeline(94, 20)
+	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
 		t.Fatal("idle empty timeline should show Timeline identity")
 	}
@@ -715,7 +741,7 @@ func TestRenderTimeline_IdleWithURL(t *testing.T) {
 	m.running = false
 	m.urlInput.SetValue("https://example.com/api")
 
-	out := m.renderTimeline(94, 20)
+	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
 		t.Fatal("idle empty timeline should show Timeline identity")
 	}
@@ -730,7 +756,7 @@ func TestRenderLogs_RunningEmpty(t *testing.T) {
 	m.running = true
 	m.status = "RUNNING"
 
-	out := m.renderLogs(94, 20)
+	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {
 		t.Fatal("running empty logs should show Logs identity")
 	}
@@ -745,7 +771,7 @@ func TestRenderLogs_IdleNoURL(t *testing.T) {
 	m.running = false
 	m.urlInput.SetValue("")
 
-	out := m.renderLogs(94, 20)
+	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {
 		t.Fatal("idle empty logs should show Logs identity")
 	}
@@ -760,7 +786,7 @@ func TestRenderLogs_IdleWithURL(t *testing.T) {
 	m.running = false
 	m.urlInput.SetValue("https://example.com/api")
 
-	out := m.renderLogs(94, 20)
+	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {
 		t.Fatal("idle empty logs should show Logs identity")
 	}
@@ -803,7 +829,7 @@ func TestRenderPayload_Identity(t *testing.T) {
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Payload") {
 		t.Fatal("payload should show identity header")
 	}
@@ -827,7 +853,7 @@ func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
 	m.dialog = dialogPayload
 	m.selectedHead = 0
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Payload") {
 		t.Fatal("payload should show identity header")
 	}
@@ -845,7 +871,7 @@ func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Payload") {
 		t.Fatal("payload should show identity header")
 	}
@@ -857,7 +883,7 @@ func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 func TestRenderEndpoint_Identity(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderEndpoint(100)
+	out := m.renderEndpoint(Region{Width: 100, Height: 20})
 	if !contains(t, out, "Endpoint") {
 		t.Fatal("endpoint should show identity header")
 	}
@@ -876,7 +902,7 @@ func TestRenderConcurrency_Identity(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.setConcurrency(7)
-	out := m.renderConcurrency(100)
+	out := m.renderConcurrency(Region{Width: 100, Height: 20})
 	if !contains(t, out, "Concurrency") {
 		t.Fatal("concurrency should show identity header")
 	}
@@ -895,7 +921,7 @@ func TestRenderEndpoint_Focused(t *testing.T) {
 	m.urlInput.Focus()
 	m.urlInput.SetValue("https://example.com/api")
 
-	out := m.renderEndpoint(100)
+	out := m.renderEndpoint(Region{Width: 100, Height: 20})
 	if !contains(t, out, "Endpoint") {
 		t.Fatal("should show identity")
 	}
@@ -914,7 +940,7 @@ func TestRenderConcurrency_Focused(t *testing.T) {
 	m.ccInput.Focus()
 	m.setConcurrency(7)
 
-	out := m.renderConcurrency(100)
+	out := m.renderConcurrency(Region{Width: 100, Height: 20})
 	if !contains(t, out, "Concurrency") {
 		t.Fatal("should show identity")
 	}
@@ -937,7 +963,7 @@ func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
 	m.headers[0].Key.Focus()
 	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Content-Type") {
 		t.Fatal("should show header key")
 	}
@@ -963,7 +989,7 @@ func TestRenderPayload_HeaderValueFocus(t *testing.T) {
 	m.headers[0].Value.SetValue("application/json")
 	m.headers[0].Value.Focus()
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Content-Type") {
 		t.Fatal("should show header key")
 	}
@@ -987,12 +1013,26 @@ func TestRenderPayload_BodyFocus(t *testing.T) {
 	m.bodyInput.SetValue(`{"key": "value"}`)
 	m.headers = append(m.headers, newHeaderRow())
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, `{"key": "value"}`) {
 		t.Fatal("should show body content")
 	}
 	if !m.bodyInput.Focused() {
 		t.Fatal("bodyInput should be focused when selectedHead is bodyFocus")
+	}
+}
+
+func TestRenderCurrentSurface_DispatchesToSurface(t *testing.T) {
+	m := NewModel()
+	m.width = 100
+	m.height = 30
+
+	region := Region{Width: 100, Height: 26}
+
+	// Ready state
+	out := m.renderCurrentSurface(region)
+	if !contains(t, out, "OBSERVE") {
+		t.Fatal("renderCurrentSurface should render Ready when idle")
 	}
 }
 
@@ -1049,7 +1089,7 @@ func TestRenderPayload_SelectedRowVisible(t *testing.T) {
 	m.headers[1].Value.SetValue("application/json")
 	m.selectedHead = 1
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Authorization") {
 		t.Fatal("payload should show first header key")
 	}
@@ -1069,7 +1109,7 @@ func TestRenderPayload_BodyFocusColor(t *testing.T) {
 	m.selectedHead = bodyFocus
 	m.headers = append(m.headers, newHeaderRow())
 
-	out := m.renderPayload(96)
+	out := m.renderPayload(Region{Width: 96, Height: 20})
 	if !contains(t, out, "BODY") {
 		t.Fatal("payload should show BODY label")
 	}
@@ -1080,17 +1120,17 @@ func TestRenderStatusBar_PayloadDialog(t *testing.T) {
 	m.width = 100
 	m.dialog = dialogPayload
 	out := m.renderStatusBar(100)
-	if !contains(t, out, "Tab Next") {
-		t.Fatal("payload status bar should show Tab Next hint")
+	if !contains(t, out, "[Tab] Next") {
+		t.Fatal("payload status bar should show [Tab] Next")
 	}
-	if !contains(t, out, "Ctrl+N") {
-		t.Fatal("payload status bar should show Ctrl+N hint")
+	if !contains(t, out, "[Ctrl+N] Header") {
+		t.Fatal("payload status bar should show [Ctrl+N] Header")
 	}
-	if !contains(t, out, "Ctrl+D") {
-		t.Fatal("payload status bar should show Ctrl+D hint")
+	if !contains(t, out, "[Ctrl+D] Delete") {
+		t.Fatal("payload status bar should show [Ctrl+D] Delete")
 	}
-	if !contains(t, out, "Esc Back") {
-		t.Fatal("payload status bar should show Esc Back hint")
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("payload status bar should show [Esc] Back")
 	}
 }
 
@@ -1108,6 +1148,31 @@ func TestConfirmQuit_PreservesWorkspace(t *testing.T) {
 	// Body content should still be visible (Timeline identity preserved)
 	if !contains(t, out, "Timeline") {
 		t.Fatal("confirm quit should preserve workspace identity")
+	}
+}
+
+func TestPayloadSummary(t *testing.T) {
+	m := NewModel()
+	tt := []struct {
+		headers int
+		body    string
+		want    string
+	}{
+		{0, "", "—"},
+		{1, "", "1H"},
+		{0, "body", "B"},
+		{2, "body", "2H+B"},
+	}
+	for _, tc := range tt {
+		m.headers = nil
+		for i := 0; i < tc.headers; i++ {
+			m.headers = append(m.headers, newHeaderRow())
+		}
+		m.bodyInput.SetValue(tc.body)
+		got := m.payloadSummary()
+		if got != tc.want {
+			t.Errorf("payloadSummary(%d headers, %q) = %q (expected %q)", tc.headers, tc.body, got, tc.want)
+		}
 	}
 }
 
