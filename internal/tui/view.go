@@ -32,15 +32,224 @@ func computeShellLayout(totalWidth, totalHeight int) ShellLayout {
 	}
 }
 
+// ShellColumnWidth is the fixed width reserved for the orientation label
+// in the operator ribbon. Actions always start at Column 19
+// (ShellColumnWidth + 2-char gutter + 1 space).
+const ShellColumnWidth = 16
+
+// ActionCategory defines the four semantic groups an action can belong to.
+// Categories are ordered by priority. Empty categories are omitted.
+type ActionCategory int
+
+const (
+	NavigationCategory ActionCategory = iota
+	ConfigurationCategory
+	OperationCategory
+	ApplicationCategory
+)
+
+// ActionID identifies an operator intent. The workspace exposes which actions
+// currently exist; the ribbon layer maps them to presentation.
+type ActionID int
+
+const (
+	ActionSelect ActionID = iota
+	ActionInspect
+	ActionSwitchView
+	ActionConfigureEndpoint
+	ActionConfigureConcurrency
+	ActionConfigurePayload
+	ActionRun
+	ActionCancel
+	ActionNextField
+	ActionSwitchMethod
+	ActionAdjustConcurrency
+	ActionNextHeader
+	ActionAddHeader
+	ActionDeleteHeader
+	ActionBack
+	ActionQuit
+	ActionConfirmQuit
+	ActionCtrlCQuit
+	ActionQQuit
+	ActionDismissCancel
+)
+
+// Action is a behavioral intent — not a presentation object.
+// The workspace produces actions; the ribbon derives presentation from them.
+type Action struct {
+	ID       ActionID
+	Category ActionCategory
+	Enabled  bool
+}
+
+// configItem represents a single configuration value in the Context region.
+// The contract is Identity, Value, Validity — presentation is a shell concern.
+type configItem struct {
+	Identity string
+	Value    string
+	Valid    bool
+}
+
+// ShellState is an immutable snapshot of the shell-level state produced once
+// per frame. Every shell renderer consumes this instead of reading model
+// fields independently, eliminating duplicate state lookups.
+type ShellState struct {
+	Orientation   string
+	Configuration []configItem
+	Actions       []Action
+}
+
+// actionBinding maps an operator intent (ActionID) to its presentation in the
+// operator ribbon. This is the single source of truth for shortcut-to-intent
+// mapping. All [Ctrl+R], [Esc], [Tab], etc. live here.
+type actionBinding struct {
+	Key      string
+	Label    string
+	Category ActionCategory
+}
+
+var actionBindings = map[ActionID]actionBinding{
+	ActionSelect:               {"↑↓", "Select", NavigationCategory},
+	ActionInspect:              {"Enter", "Inspect", NavigationCategory},
+	ActionSwitchView:           {"Tab", "Views", NavigationCategory},
+	ActionConfigureEndpoint:    {"e", "Endpoint", ConfigurationCategory},
+	ActionConfigureConcurrency: {"c", "Concurrency", ConfigurationCategory},
+	ActionConfigurePayload:     {"p", "Payload", ConfigurationCategory},
+	ActionRun:                  {"Ctrl+R", "Run", OperationCategory},
+	ActionCancel:               {"Ctrl+X", "Cancel", OperationCategory},
+	ActionNextField:            {"Tab", "Next Field", ConfigurationCategory},
+	ActionSwitchMethod:         {"←→", "Method", ConfigurationCategory},
+	ActionAdjustConcurrency:    {"↑↓", "Adjust", ConfigurationCategory},
+	ActionNextHeader:           {"Tab", "Next", ConfigurationCategory},
+	ActionAddHeader:            {"Ctrl+N", "Header", ConfigurationCategory},
+	ActionDeleteHeader:         {"Ctrl+D", "Delete", ConfigurationCategory},
+	ActionBack:                 {"Esc", "Back", ApplicationCategory},
+	ActionQuit:                 {"q", "Quit", ApplicationCategory},
+	ActionConfirmQuit:          {"Enter", "Quit", ApplicationCategory},
+	ActionCtrlCQuit:            {"Ctrl+C", "Quit", ApplicationCategory},
+	ActionQQuit:                {"q", "Quit", ApplicationCategory},
+	ActionDismissCancel:        {"Any", "Cancel", ApplicationCategory},
+}
+
+func (m Model) orientationLabel() string {
+	switch {
+	case m.dialog == dialogConfirmQuit:
+		return "QUIT"
+	case m.dialog == dialogEndpoint:
+		return "ENDPOINT"
+	case m.dialog == dialogConcurrency:
+		return "CONCURRENCY"
+	case m.dialog == dialogPayload:
+		return "PAYLOAD"
+	case m.mode == modeInspect:
+		return "INSPECT"
+	case !m.running && len(m.results) == 0:
+		return "OBSERVE"
+	case m.view == viewTimeline:
+		return "TIMELINE"
+	default:
+		return "LOGS"
+	}
+}
+
+func (m Model) Actions() []Action {
+	switch {
+	case m.dialog == dialogConfirmQuit:
+		return []Action{
+			{ActionConfirmQuit, ApplicationCategory, true},
+			{ActionCtrlCQuit, ApplicationCategory, true},
+			{ActionQQuit, ApplicationCategory, true},
+			{ActionDismissCancel, ApplicationCategory, true},
+		}
+	case m.dialog == dialogEndpoint:
+		return []Action{
+			{ActionNextField, ConfigurationCategory, true},
+			{ActionSwitchMethod, ConfigurationCategory, true},
+			{ActionBack, ApplicationCategory, true},
+		}
+	case m.dialog == dialogConcurrency:
+		return []Action{
+			{ActionAdjustConcurrency, ConfigurationCategory, true},
+			{ActionBack, ApplicationCategory, true},
+		}
+	case m.dialog == dialogPayload:
+		return []Action{
+			{ActionNextHeader, ConfigurationCategory, true},
+			{ActionAddHeader, ConfigurationCategory, true},
+			{ActionDeleteHeader, ConfigurationCategory, true},
+			{ActionBack, ApplicationCategory, true},
+		}
+	case m.mode == modeInspect:
+		return []Action{
+			{ActionSelect, NavigationCategory, true},
+			{ActionBack, ApplicationCategory, true},
+			{ActionQuit, ApplicationCategory, true},
+		}
+	case m.running && len(m.results) == 0:
+		return []Action{
+			{ActionCancel, OperationCategory, true},
+		}
+	case m.running:
+		return []Action{
+			{ActionSelect, NavigationCategory, true},
+			{ActionInspect, NavigationCategory, true},
+			{ActionSwitchView, NavigationCategory, true},
+			{ActionCancel, OperationCategory, true},
+		}
+	case !m.running && len(m.results) == 0:
+		return []Action{
+			{ActionConfigureEndpoint, ConfigurationCategory, true},
+			{ActionConfigureConcurrency, ConfigurationCategory, true},
+			{ActionConfigurePayload, ConfigurationCategory, true},
+			{ActionRun, OperationCategory, true},
+			{ActionQuit, ApplicationCategory, true},
+		}
+	default:
+		return []Action{
+			{ActionSelect, NavigationCategory, true},
+			{ActionInspect, NavigationCategory, true},
+			{ActionSwitchView, NavigationCategory, true},
+			{ActionConfigureEndpoint, ConfigurationCategory, true},
+			{ActionConfigureConcurrency, ConfigurationCategory, true},
+			{ActionConfigurePayload, ConfigurationCategory, true},
+			{ActionRun, OperationCategory, true},
+			{ActionQuit, ApplicationCategory, true},
+		}
+	}
+}
+
+func (m Model) Configuration() []configItem {
+	ps := m.payloadSummary()
+	items := []configItem{
+		{"Method", runconfig.AllowedMethods()[m.methodIndex], true},
+		{"URL", m.urlInput.Value(), m.urlInput.Value() != ""},
+		{"CC", strings.TrimSpace(m.ccInput.Value()), true},
+	}
+	if ps != "—" {
+		items = append(items, configItem{"Payload", ps, true})
+	}
+	return items
+}
+
+func (m Model) ShellState() ShellState {
+	return ShellState{
+		Orientation:   m.orientationLabel(),
+		Configuration: m.Configuration(),
+		Actions:       m.Actions(),
+	}
+}
+
 func (m Model) View() string {
 	if m.width == 0 {
 		return "Pulse is starting..."
 	}
 
 	layout := computeShellLayout(m.width, m.height)
+	state := m.ShellState()
 
 	var sb strings.Builder
-	sb.WriteString(m.renderTopBar(layout.Context.Width))
+	sb.WriteString(m.renderTopBar(state, layout.Context.Width))
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Context.Width)))
 	sb.WriteString("\n")
@@ -48,7 +257,7 @@ func (m Model) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Command.Width)))
 	sb.WriteString("\n")
-	sb.WriteString(m.renderStatusBar(layout.Command.Width))
+	sb.WriteString(m.renderRibbon(state, layout.Command.Width))
 
 	return styleBase.Width(layout.Context.Width).Height(m.height).Render(sb.String())
 }
@@ -107,17 +316,23 @@ func (m Model) payloadSummary() string {
 	}
 }
 
-func (m Model) renderTopBar(width int) string {
-	method := runconfig.AllowedMethods()[m.methodIndex]
-	url := truncateURL(m.urlInput.Value(), 40)
-	left := method + " " + url
-
-	cc := strings.TrimSpace(m.ccInput.Value())
-	right := "CC " + cc
-
-	ps := m.payloadSummary()
-	if ps != "—" && width >= 100 {
-		right += " · Payload " + ps
+func (m Model) renderTopBar(state ShellState, width int) string {
+	cfg := state.Configuration
+	left := ""
+	right := ""
+	for _, c := range cfg {
+		switch c.Identity {
+		case "Method":
+			left = c.Value
+		case "URL":
+			left += " " + truncateURL(c.Value, 40)
+		case "CC":
+			right = "CC " + c.Value
+		case "Payload":
+			if width >= 100 {
+				right += " · Payload " + c.Value
+			}
+		}
 	}
 
 	maxLeft := width - lipgloss.Width(right) - 3
@@ -250,31 +465,49 @@ func (m Model) renderPayload(region Region) string {
 	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
-func (m Model) renderStatusBar(width int) string {
-	var hints string
+func (m Model) renderRibbon(state ShellState, width int) string {
+	label := state.Orientation
+	actions := state.Actions
 
-	switch {
-	case m.dialog == dialogConfirmQuit:
-		hints = "  [Enter]  [q]  [Ctrl+C] to quit  ·  any key cancels"
-	case m.dialog == dialogEndpoint:
-		hints = "  [Tab] Next Field  ·  [←→] Method  ·  [Esc] Back"
-	case m.dialog == dialogConcurrency:
-		hints = "  [↑↓] Adjust  ·  [Esc] Back"
-	case m.dialog == dialogPayload:
-		hints = "  [Tab] Next  ·  [Ctrl+N] Header  ·  [Ctrl+D] Delete  ·  [Esc] Back"
-	case m.mode == modeInspect:
-		hints = "  [↑↓] Select  ·  [Esc] Back  ·  [q] Quit"
-	case m.running && len(m.results) == 0:
-		hints = "  [Ctrl+X] Cancel"
-	case m.running:
-		hints = "  [↑↓] Select  ·  [Enter] Inspect  ·  [Tab] Views  ·  [Ctrl+X] Cancel"
-	case !m.running && len(m.results) == 0:
-		hints = "  [e] Endpoint  ·  [c] Concurrency  ·  [p] Payload  ·  [Ctrl+R] Run  ·  [q] Quit"
-	default:
-		hints = "  [↑↓] Select  ·  [Enter] Inspect  ·  [Tab] Views  ·  [e] Endpoint  ·  [c] Concurrency  ·  [p] Payload  ·  [Ctrl+R] Run  ·  [q] Quit"
+	type cmd struct {
+		key      string
+		label    string
+		category ActionCategory
 	}
 
-	return styleStatusBar.Width(width).Render(hints)
+	groups := make([][]cmd, 4)
+	for _, a := range actions {
+		b := actionBindings[a.ID]
+		c := cmd{key: b.Key, label: b.Label, category: b.Category}
+		groups[b.Category] = append(groups[b.Category], c)
+	}
+
+	var actionParts []string
+	for _, group := range groups {
+		if len(group) == 0 {
+			continue
+		}
+		var parts []string
+		for _, c := range group {
+			parts = append(parts, fmt.Sprintf("[%s] %s", c.key, c.label))
+		}
+		actionParts = append(actionParts, strings.Join(parts, " · "))
+	}
+
+	actionColumn := strings.Join(actionParts, "    ")
+
+	var ribbonParts []string
+	ribbonParts = append(ribbonParts, fmt.Sprintf("%-*s", ShellColumnWidth, label))
+	if actionColumn != "" {
+		ribbonParts = append(ribbonParts, actionColumn)
+	}
+	ribbonLine := strings.Join(ribbonParts, "  ")
+
+	if w := lipgloss.Width(ribbonLine); w < width {
+		ribbonLine += strings.Repeat(" ", width-w)
+	}
+
+	return styleRibbon.Width(width).Render(ribbonLine)
 }
 
 func visibleWindow(total, selected, height int) int {
@@ -483,7 +716,7 @@ func (m Model) renderEmptyState(runningMsg string) string {
 		if strings.TrimSpace(m.urlInput.Value()) == "" {
 			return "Enter a URL to begin"
 		}
-		return "▶  Ctrl+R to run"
+		return "▶  Ready"
 	}
 	return runningMsg
 }

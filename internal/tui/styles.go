@@ -16,7 +16,7 @@ const (
 var (
 	styleBase       = lipgloss.NewStyle().Background(lipgloss.Color(colorBg)).Foreground(lipgloss.Color(colorText))
 	styleTopBar     = styleBase.Copy().Bold(true)
-	styleStatusBar  = styleBase.Copy().Background(lipgloss.Color(colorDark))
+	styleRibbon     = styleBase.Copy().Background(lipgloss.Color(colorDark))
 	styleStatusMode = lipgloss.NewStyle().Background(lipgloss.Color(colorAccent)).Foreground(lipgloss.Color(colorBg)).Bold(true)
 	styleSeparator  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 	styleMuted      = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
