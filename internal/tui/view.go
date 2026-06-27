@@ -56,9 +56,7 @@ const (
 	ActionSelect ActionID = iota
 	ActionInspect
 	ActionSwitchView
-	ActionConfigureEndpoint
-	ActionConfigureConcurrency
-	ActionConfigurePayload
+	ActionConfigureRequest
 	ActionRun
 	ActionCancel
 	ActionNextField
@@ -110,46 +108,36 @@ type actionBinding struct {
 }
 
 var actionBindings = map[ActionID]actionBinding{
-	ActionSelect:               {"↑↓", "Select", NavigationCategory},
-	ActionInspect:              {"Enter", "Inspect", NavigationCategory},
-	ActionSwitchView:           {"Tab", "Views", NavigationCategory},
-	ActionConfigureEndpoint:    {"e", "Endpoint", ConfigurationCategory},
-	ActionConfigureConcurrency: {"c", "Concurrency", ConfigurationCategory},
-	ActionConfigurePayload:     {"p", "Payload", ConfigurationCategory},
-	ActionRun:                  {"Ctrl+R", "Run", OperationCategory},
-	ActionCancel:               {"Ctrl+X", "Cancel", OperationCategory},
-	ActionNextField:            {"Tab", "Next Field", ConfigurationCategory},
-	ActionSwitchMethod:         {"←→", "Method", ConfigurationCategory},
-	ActionAdjustConcurrency:    {"↑↓", "Adjust", ConfigurationCategory},
-	ActionNextHeader:           {"Tab", "Next", ConfigurationCategory},
-	ActionAddHeader:            {"Ctrl+N", "Header", ConfigurationCategory},
-	ActionDeleteHeader:         {"Ctrl+D", "Delete", ConfigurationCategory},
-	ActionBack:                 {"Esc", "Back", ApplicationCategory},
-	ActionQuit:                 {"q", "Quit", ApplicationCategory},
-	ActionConfirmQuit:          {"Enter", "Quit", ApplicationCategory},
-	ActionCtrlCQuit:            {"Ctrl+C", "Quit", ApplicationCategory},
-	ActionQQuit:                {"q", "Quit", ApplicationCategory},
-	ActionDismissCancel:        {"Any", "Cancel", ApplicationCategory},
+	ActionSelect:            {"↑↓", "Select", NavigationCategory},
+	ActionInspect:           {"Enter", "Inspect", NavigationCategory},
+	ActionSwitchView:        {"Tab", "Views", NavigationCategory},
+	ActionConfigureRequest:  {"e", "Request", ConfigurationCategory},
+	ActionRun:               {"Ctrl+R", "Run", OperationCategory},
+	ActionCancel:            {"Ctrl+X", "Cancel", OperationCategory},
+	ActionNextField:         {"Tab", "Next Field", ConfigurationCategory},
+	ActionSwitchMethod:      {"←→", "Method", ConfigurationCategory},
+	ActionAdjustConcurrency: {"↑↓", "Adjust", ConfigurationCategory},
+	ActionNextHeader:        {"Tab", "Next", ConfigurationCategory},
+	ActionAddHeader:         {"Ctrl+N", "Header", ConfigurationCategory},
+	ActionDeleteHeader:      {"Ctrl+D", "Delete", ConfigurationCategory},
+	ActionBack:              {"Esc", "Back", ApplicationCategory},
+	ActionQuit:              {"q", "Quit", ApplicationCategory},
+	ActionConfirmQuit:       {"Enter", "Quit", ApplicationCategory},
+	ActionCtrlCQuit:         {"Ctrl+C", "Quit", ApplicationCategory},
+	ActionQQuit:             {"q", "Quit", ApplicationCategory},
+	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory},
 }
 
 func (m Model) orientationLabel() string {
 	switch {
 	case m.dialog == dialogConfirmQuit:
 		return "QUIT"
-	case m.dialog == dialogEndpoint:
-		return "ENDPOINT"
-	case m.dialog == dialogConcurrency:
-		return "CONCURRENCY"
-	case m.dialog == dialogPayload:
-		return "PAYLOAD"
+	case m.dialog == dialogRequest:
+		return "REQUEST"
 	case m.mode == modeInspect:
 		return "INSPECT"
-	case !m.running && len(m.results) == 0:
-		return "OBSERVE"
-	case m.view == viewTimeline:
-		return "TIMELINE"
 	default:
-		return "LOGS"
+		return "OBSERVE"
 	}
 }
 
@@ -162,24 +150,8 @@ func (m Model) Actions() []Action {
 			{ActionQQuit, ApplicationCategory, true},
 			{ActionDismissCancel, ApplicationCategory, true},
 		}
-	case m.dialog == dialogEndpoint:
-		return []Action{
-			{ActionNextField, ConfigurationCategory, true},
-			{ActionSwitchMethod, ConfigurationCategory, true},
-			{ActionBack, ApplicationCategory, true},
-		}
-	case m.dialog == dialogConcurrency:
-		return []Action{
-			{ActionAdjustConcurrency, ConfigurationCategory, true},
-			{ActionBack, ApplicationCategory, true},
-		}
-	case m.dialog == dialogPayload:
-		return []Action{
-			{ActionNextHeader, ConfigurationCategory, true},
-			{ActionAddHeader, ConfigurationCategory, true},
-			{ActionDeleteHeader, ConfigurationCategory, true},
-			{ActionBack, ApplicationCategory, true},
-		}
+	case m.dialog == dialogRequest:
+		return m.requestActions()
 	case m.mode == modeInspect:
 		return []Action{
 			{ActionSelect, NavigationCategory, true},
@@ -199,9 +171,7 @@ func (m Model) Actions() []Action {
 		}
 	case !m.running && len(m.results) == 0:
 		return []Action{
-			{ActionConfigureEndpoint, ConfigurationCategory, true},
-			{ActionConfigureConcurrency, ConfigurationCategory, true},
-			{ActionConfigurePayload, ConfigurationCategory, true},
+			{ActionConfigureRequest, ConfigurationCategory, true},
 			{ActionRun, OperationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
@@ -210,13 +180,36 @@ func (m Model) Actions() []Action {
 			{ActionSelect, NavigationCategory, true},
 			{ActionInspect, NavigationCategory, true},
 			{ActionSwitchView, NavigationCategory, true},
-			{ActionConfigureEndpoint, ConfigurationCategory, true},
-			{ActionConfigureConcurrency, ConfigurationCategory, true},
-			{ActionConfigurePayload, ConfigurationCategory, true},
+			{ActionConfigureRequest, ConfigurationCategory, true},
 			{ActionRun, OperationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
 	}
+}
+
+func (m Model) requestActions() []Action {
+	domainActions := []Action{
+		{ActionBack, ApplicationCategory, true},
+		{ActionRun, OperationCategory, true},
+	}
+	switch m.activeDomain {
+	case domainRequest:
+		domainActions = append([]Action{
+			{ActionNextField, ConfigurationCategory, true},
+			{ActionSwitchMethod, ConfigurationCategory, true},
+		}, domainActions...)
+	case domainPayload:
+		domainActions = append([]Action{
+			{ActionNextField, ConfigurationCategory, true},
+			{ActionAddHeader, ConfigurationCategory, true},
+			{ActionDeleteHeader, ConfigurationCategory, true},
+		}, domainActions...)
+	case domainExec:
+		domainActions = append([]Action{
+			{ActionAdjustConcurrency, ConfigurationCategory, true},
+		}, domainActions...)
+	}
+	return domainActions
 }
 
 func (m Model) Configuration() []configItem {
@@ -264,12 +257,8 @@ func (m Model) View() string {
 
 func (m Model) renderCurrentSurface(region Region) string {
 	switch {
-	case m.dialog == dialogPayload:
-		return m.renderPayload(region)
-	case m.dialog == dialogEndpoint:
-		return m.renderEndpoint(region)
-	case m.dialog == dialogConcurrency:
-		return m.renderConcurrency(region)
+	case m.dialog == dialogRequest:
+		return m.renderRequest(region)
 	case m.mode == modeInspect:
 		return m.renderInspect(region)
 	case !m.running && len(m.results) == 0:
@@ -369,16 +358,27 @@ func (m Model) renderReady(region Region) string {
 	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
 
-func (m Model) renderEndpoint(region Region) string {
-	var b strings.Builder
-	b.WriteString(identityCell("Endpoint", true))
+func isErrorResult(result model.Result) bool {
+	return result.Status >= 400 || result.Status == 0
+}
+
+func accentOrMuted(name string, active bool) string {
+	if active {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render(name)
+	}
+	return styleMuted.Render(name)
+}
+
+func (m Model) renderRequestDomain(b *strings.Builder) {
+	b.WriteString("\n")
+	b.WriteString(accentOrMuted("Request", m.activeDomain == domainRequest))
 	b.WriteString("\n")
 
 	methods := runconfig.AllowedMethods()
 	var methodLine string
 	for i, method := range methods {
 		sel := i == m.methodIndex
-		focus := m.endpointField == endpointMethod
+		focus := m.activeDomain == domainRequest && m.requestField == reqFieldMethod
 		if sel && focus {
 			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorDark)).Render(" " + method + " ")
 		} else if sel {
@@ -389,78 +389,81 @@ func (m Model) renderEndpoint(region Region) string {
 	}
 
 	methodLabel := "Method"
-	if m.endpointField == endpointMethod {
+	if m.activeDomain == domainRequest && m.requestField == reqFieldMethod {
 		methodLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("Method")
 	} else {
 		methodLabel = styleMuted.Render("Method")
 	}
 
-	b.WriteString(fmt.Sprintf(
-		"\n%s\n  %s\n%s\n  %s",
-		methodLabel,
-		methodLine,
-		styleMuted.Render("URL"),
-		m.urlInput.View(),
-	))
+	b.WriteString(fmt.Sprintf("  %s\n    %s\n", methodLabel, methodLine))
 
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
-}
-
-func (m Model) renderConcurrency(region Region) string {
-	var b strings.Builder
-	b.WriteString(identityCell("Concurrency", true))
-	b.WriteString("\n\n")
-
-	ccText := strings.TrimSpace(m.ccInput.View())
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true).Render(
-		fmt.Sprintf("  %s  (1–%d)", ccText, runconfig.MaxConcurrency),
-	))
-
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
-}
-
-func (m Model) renderPayload(region Region) string {
-	var b strings.Builder
-	b.WriteString(identityCell("Payload", true))
-	b.WriteString("\n")
-
-	headersColor := colorMuted
-	if m.selectedHead != bodyFocus {
-		headersColor = colorAccent
+	urlLabel := "URL"
+	if m.activeDomain == domainRequest && m.requestField == reqFieldURL {
+		urlLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("URL")
+	} else {
+		urlLabel = styleMuted.Render("URL")
 	}
+	b.WriteString(fmt.Sprintf("  %s\n    %s\n", urlLabel, m.urlInput.View()))
+}
+
+func (m Model) renderPayloadDomain(b *strings.Builder) {
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(headersColor)).Render("HEADERS  ctrl+n add  ctrl+d remove"))
+	b.WriteString(accentOrMuted("Payload", m.activeDomain == domainPayload))
+	b.WriteString("\n")
+
+	headersActive := m.activeDomain == domainPayload && m.selectedHead != bodyFocus
+	b.WriteString(accentOrMuted("  HEADERS  ctrl+n add  ctrl+d remove", headersActive))
 	b.WriteString("\n")
 
 	if len(m.headers) == 0 {
-		b.WriteString(styleMuted.Render("  No headers configured."))
+		b.WriteString(styleMuted.Render("    No headers configured."))
 	} else {
 		for i, header := range m.headers {
 			key := header.Key.View()
 			value := header.Value.View()
 			sel := i == m.selectedHead
 			cursor := rowCursor(sel)
-			line := fmt.Sprintf("%s %s: %s", cursor, key, value)
+			line := fmt.Sprintf("  %s %s: %s", cursor, key, value)
 			b.WriteString(rowStyle(sel).Render(line))
 			b.WriteString("\n")
 		}
 	}
 
-	b.WriteString("\n")
-
-	bodyColor := colorMuted
-	if m.selectedHead == bodyFocus {
-		bodyColor = colorAccent
-	}
+	bodyActive := m.activeDomain == domainPayload && m.selectedHead == bodyFocus
 	bodyLen := len(m.bodyInput.Value())
-	bodyLabel := "BODY"
+	bodyLabel := "  BODY"
 	if bodyLen > 0 {
-		bodyLabel = fmt.Sprintf("BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
+		bodyLabel = fmt.Sprintf("  BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
 	}
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(bodyColor)).Render(bodyLabel))
+	b.WriteString(accentOrMuted(bodyLabel, bodyActive))
+	b.WriteString("\n")
+	b.WriteString("  " + m.bodyInput.View())
+}
+
+func (m Model) renderExecDomain(b *strings.Builder) {
+	b.WriteString("\n")
+	b.WriteString(accentOrMuted("Execution", m.activeDomain == domainExec))
 	b.WriteString("\n")
 
-	b.WriteString(m.bodyInput.View())
+	ccText := strings.TrimSpace(m.ccInput.View())
+	active := m.activeDomain == domainExec
+	ccLabel := accentOrMuted("  Concurrency", active)
+	if active {
+		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
+	} else {
+		ccVal := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText)).Render(ccText)
+		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccVal, runconfig.MaxConcurrency))
+	}
+}
+
+func (m Model) renderRequest(region Region) string {
+	var b strings.Builder
+	b.WriteString(identityCell("REQUEST", false))
+	b.WriteString("\n")
+
+	m.renderRequestDomain(&b)
+	m.renderPayloadDomain(&b)
+	m.renderExecDomain(&b)
 
 	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
 }
@@ -496,8 +499,9 @@ func (m Model) renderRibbon(state ShellState, width int) string {
 
 	actionColumn := strings.Join(actionParts, "    ")
 
+	anchor := lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("│")
 	var ribbonParts []string
-	ribbonParts = append(ribbonParts, fmt.Sprintf("%-*s", ShellColumnWidth, label))
+	ribbonParts = append(ribbonParts, fmt.Sprintf("%s %-*s", anchor, ShellColumnWidth-2, label))
 	if actionColumn != "" {
 		ribbonParts = append(ribbonParts, actionColumn)
 	}
@@ -592,7 +596,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	line := fmt.Sprintf("%s %3d %-4s %-12s %s %s",
 		rowCursor(selected), index+1, method, status, bar, latency)
 
-	if result.Status >= 400 || result.Status == 0 {
+	if isErrorResult(result) {
 		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
 	}
 	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
@@ -612,7 +616,7 @@ func (m Model) renderLogs(region Region) string {
 			}
 			line := fmt.Sprintf("%s %3d %-4s %-10s %-8s %s",
 				rowCursor(selected), index+1, method, status, formatDuration(result.Latency), truncate(reqURL, width-33))
-			if result.Status >= 400 || result.Status == 0 {
+			if isErrorResult(result) {
 				return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
 			}
 			return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))

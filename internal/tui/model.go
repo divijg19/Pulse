@@ -17,6 +17,14 @@ import (
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
+type requestDomain int
+
+const (
+	domainRequest requestDomain = iota
+	domainPayload
+	domainExec
+)
+
 const (
 	subfocusKey      = 0
 	subfocusValue    = 1
@@ -24,8 +32,8 @@ const (
 	defaultBodyWidth = 48
 	maxTUIBodyBytes  = 1 << 20
 
-	endpointMethod = 0
-	endpointURL    = 1
+	reqFieldMethod = 0
+	reqFieldURL    = 1
 )
 
 type mode int
@@ -39,9 +47,7 @@ type dialog int
 
 const (
 	dialogNone dialog = iota
-	dialogEndpoint
-	dialogConcurrency
-	dialogPayload
+	dialogRequest
 	dialogConfirmQuit
 )
 
@@ -65,11 +71,12 @@ type Model struct {
 	dialog dialog
 	view   view
 
-	methodIndex   int
-	endpointField int
-	urlInput      textinput.Model
-	ccInput       textinput.Model
-	bodyInput     textarea.Model
+	activeDomain requestDomain
+	methodIndex  int
+	requestField int
+	urlInput     textinput.Model
+	ccInput      textinput.Model
+	bodyInput    textarea.Model
 
 	headers        []headerRow
 	selectedHead   int
@@ -119,19 +126,20 @@ func NewModel() Model {
 	body.Placeholder = `{"name":"pulse"}`
 	body.Prompt = ""
 	body.CharLimit = 1 << 20
-	body.SetHeight(5)
+	body.SetHeight(3)
 	body.SetWidth(defaultBodyWidth)
 
 	return Model{
-		mode:          modeObserve,
-		dialog:        dialogNone,
-		view:          viewTimeline,
-		methodIndex:   0,
-		endpointField: endpointURL,
-		urlInput:      url,
-		ccInput:       cc,
-		bodyInput:     body,
-		status:        "SYSTEM READY",
+		mode:         modeObserve,
+		dialog:       dialogNone,
+		view:         viewTimeline,
+		activeDomain: domainRequest,
+		methodIndex:  0,
+		requestField: reqFieldURL,
+		urlInput:     url,
+		ccInput:      cc,
+		bodyInput:    body,
+		status:       "SYSTEM READY",
 	}
 }
 
@@ -139,24 +147,25 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, startupTimeout())
 }
 
+func (m *Model) setBodyWidths(totalWidth int) {
+	innerWidth := totalWidth - 4
+	leftWidth := max(28, innerWidth/2-2)
+	rightWidth := max(28, innerWidth-leftWidth-3)
+	m.bodyInput.SetWidth(max(10, rightWidth-6))
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		innerWidth := msg.Width - 4
-		leftWidth := max(28, innerWidth/2-2)
-		rightWidth := max(28, innerWidth-leftWidth-3)
-		m.bodyInput.SetWidth(max(10, rightWidth-6))
+		m.setBodyWidths(msg.Width)
 		return m, nil
 	case startupMsg:
 		if m.width == 0 {
 			m.width = 80
 			m.height = 24
-			innerWidth := 80 - 4
-			leftWidth := max(28, innerWidth/2-2)
-			rightWidth := max(28, innerWidth-leftWidth-3)
-			m.bodyInput.SetWidth(max(10, rightWidth-6))
+			m.setBodyWidths(80)
 		}
 		return m, nil
 	case tickMsg:
@@ -210,12 +219,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modeObserve:
 		switch m.dialog {
-		case dialogEndpoint:
-			return m.handleEndpointKey(msg)
-		case dialogConcurrency:
-			return m.handleCCKey(msg)
-		case dialogPayload:
-			return m.handlePayloadKey(msg)
+		case dialogRequest:
+			return m.handleRequestKey(msg)
 		case dialogConfirmQuit:
 			return m.handleConfirmQuitKey(msg)
 		case dialogNone:
@@ -232,142 +237,123 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleConfirmQuitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	m.dialog = dialogNone
+func (m Model) handleRequestKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+c", "q", "enter":
-		if m.running && m.cancel != nil {
-			m.cancel()
-		}
-		return m, tea.Quit
+	case "esc":
+		m.dialog = dialogNone
+		m.blurAll()
+		return m, nil
+	case "tab":
+		return m.advanceDomain(true)
+	case "shift+tab":
+		return m.advanceDomain(false)
+	case "ctrl+r":
+		return m.startRun()
+	case "ctrl+x":
+		return m.cancelRun(), nil
+	}
+
+	switch m.activeDomain {
+	case domainRequest:
+		return m.handleRequestDomainKey(msg)
+	case domainPayload:
+		return m.handlePayloadDomainKey(msg)
+	case domainExec:
+		return m.handleExecDomainKey(msg)
 	}
 	return m, nil
 }
 
-func (m Model) handleEndpointKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) advanceDomain(forward bool) (tea.Model, tea.Cmd) {
+	if forward {
+		switch m.activeDomain {
+		case domainRequest:
+			if m.requestField == reqFieldURL {
+				m.activeDomain = domainPayload
+				m.selectedHead = 0
+				m.headerSubfocus = subfocusKey
+				if len(m.headers) == 0 {
+					m.headers = append(m.headers, newHeaderRow())
+				}
+				m.focusPayloadKey()
+			} else {
+				m.requestField = reqFieldURL
+				m.urlInput.Focus()
+			}
+		case domainPayload:
+			if m.selectedHead == bodyFocus {
+				m.activeDomain = domainExec
+				m.ccInput.Focus()
+			} else {
+				m.selectedHead = bodyFocus
+				m.focusPayloadBody()
+			}
+		case domainExec:
+			m.activeDomain = domainRequest
+			m.requestField = reqFieldMethod
+			m.blurAll()
+		}
+	} else {
+		switch m.activeDomain {
+		case domainRequest:
+			if m.requestField == reqFieldMethod {
+				m.activeDomain = domainExec
+				m.ccInput.Focus()
+			} else {
+				m.requestField = reqFieldMethod
+				m.blurAll()
+			}
+		case domainPayload:
+			if m.selectedHead == bodyFocus {
+				if len(m.headers) == 0 {
+					m.headers = append(m.headers, newHeaderRow())
+				}
+				m.selectedHead = 0
+				m.headerSubfocus = subfocusKey
+				m.focusPayloadKey()
+			} else {
+				m.activeDomain = domainRequest
+				m.requestField = reqFieldURL
+				m.urlInput.Focus()
+			}
+		case domainExec:
+			m.activeDomain = domainPayload
+			m.selectedHead = bodyFocus
+			m.focusPayloadBody()
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleRequestDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
-		m.dialog = dialogNone
-		m.urlInput.Blur()
-		return m, nil
-	case "tab":
-		m.endpointField = (m.endpointField + 1) % 2
-		if m.endpointField == endpointURL {
-			m.urlInput.Focus()
-		} else {
-			m.urlInput.Blur()
-		}
-		return m, nil
-	case "shift+tab":
-		m.endpointField = (m.endpointField + 1) % 2
-		if m.endpointField == endpointURL {
-			m.urlInput.Focus()
-		} else {
-			m.urlInput.Blur()
-		}
-		return m, nil
 	case "left", "h":
-		if m.endpointField == endpointMethod && m.methodIndex > 0 {
+		if m.requestField == reqFieldMethod && m.methodIndex > 0 {
 			m.methodIndex--
 		}
-		if m.endpointField != endpointMethod {
+		if m.requestField != reqFieldMethod {
 			break
 		}
 		return m, nil
 	case "right", "l":
-		if m.endpointField == endpointMethod {
+		if m.requestField == reqFieldMethod {
 			methods := runconfig.AllowedMethods()
 			if m.methodIndex < len(methods)-1 {
 				m.methodIndex++
 			}
 		}
-		if m.endpointField != endpointMethod {
+		if m.requestField != reqFieldMethod {
 			break
 		}
 		return m, nil
-	case "ctrl+r":
-		return m.startRun()
-	case "ctrl+x":
-		return m.cancelRun(), nil
 	}
 	var cmd tea.Cmd
 	m.urlInput, cmd = m.urlInput.Update(msg)
 	return m, cmd
 }
 
-func (m Model) handleCCKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.dialog = dialogNone
-		m.ccInput.Blur()
-		return m, nil
-	case "up", "k":
-		m.setConcurrency(m.concurrency() + 1)
-		return m, nil
-	case "down", "j":
-		m.setConcurrency(m.concurrency() - 1)
-		return m, nil
-	case "ctrl+r":
-		return m.startRun()
-	case "ctrl+x":
-		return m.cancelRun(), nil
-	}
-	var cmd tea.Cmd
-	m.ccInput, cmd = m.ccInput.Update(msg)
-	return m, cmd
-}
-
-func (m *Model) blurAll() {
-	m.urlInput.Blur()
-	m.ccInput.Blur()
-	m.bodyInput.Blur()
-	for i := range m.headers {
-		m.headers[i].Key.Blur()
-		m.headers[i].Value.Blur()
-	}
-}
-
-func (m *Model) focusPayloadKey() {
-	m.blurAll()
-	m.headers[m.selectedHead].Key.Focus()
-}
-
-func (m *Model) focusPayloadValue() {
-	m.blurAll()
-	m.headers[m.selectedHead].Value.Focus()
-}
-
-func (m *Model) focusPayloadBody() {
-	m.blurAll()
-	m.bodyInput.Focus()
-}
-
-func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.dialog = dialogNone
-		m.blurAll()
-		return m, nil
-	case "ctrl+r":
-		return m.startRun()
-	case "ctrl+x":
-		return m.cancelRun(), nil
-	}
-
+func (m Model) handlePayloadDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.selectedHead == bodyFocus {
-		switch msg.String() {
-		case "tab":
-			m.selectedHead = 0
-			if len(m.headers) == 0 {
-				m.headers = append(m.headers, newHeaderRow())
-			}
-			if m.headerSubfocus == subfocusKey {
-				m.focusPayloadKey()
-			} else {
-				m.focusPayloadValue()
-			}
-			return m, nil
-		}
 		var cmd tea.Cmd
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
 		return m, cmd
@@ -413,10 +399,6 @@ func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.headerSubfocus = subfocusValue
 		m.focusPayloadValue()
 		return m, nil
-	case "tab":
-		m.selectedHead = bodyFocus
-		m.focusPayloadBody()
-		return m, nil
 	default:
 		if m.selectedHead >= 0 && m.selectedHead < len(m.headers) {
 			var cmd tea.Cmd
@@ -430,6 +412,57 @@ func (m Model) handlePayloadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) handleExecDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		m.setConcurrency(m.concurrency() + 1)
+		return m, nil
+	case "down", "j":
+		m.setConcurrency(m.concurrency() - 1)
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.ccInput, cmd = m.ccInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) handleConfirmQuitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.dialog = dialogNone
+	switch msg.String() {
+	case "ctrl+c", "q", "enter":
+		if m.running && m.cancel != nil {
+			m.cancel()
+		}
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m *Model) blurAll() {
+	m.urlInput.Blur()
+	m.ccInput.Blur()
+	m.bodyInput.Blur()
+	for i := range m.headers {
+		m.headers[i].Key.Blur()
+		m.headers[i].Value.Blur()
+	}
+}
+
+func (m *Model) focusPayloadKey() {
+	m.blurAll()
+	m.headers[m.selectedHead].Key.Focus()
+}
+
+func (m *Model) focusPayloadValue() {
+	m.blurAll()
+	m.headers[m.selectedHead].Value.Focus()
+}
+
+func (m *Model) focusPayloadBody() {
+	m.blurAll()
+	m.bodyInput.Focus()
 }
 
 func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -468,22 +501,11 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = viewLogs
 		return m, nil
 	case "e":
-		m.dialog = dialogEndpoint
-		m.endpointField = endpointURL
+		m.dialog = dialogRequest
+		m.blurAll()
+		m.activeDomain = domainRequest
+		m.requestField = reqFieldURL
 		m.urlInput.Focus()
-		return m, nil
-	case "c":
-		m.dialog = dialogConcurrency
-		m.ccInput.Focus()
-		return m, nil
-	case "p":
-		m.dialog = dialogPayload
-		m.selectedHead = 0
-		m.headerSubfocus = subfocusKey
-		if len(m.headers) == 0 {
-			m.headers = append(m.headers, newHeaderRow())
-		}
-		m.focusPayloadKey()
 		return m, nil
 	case "ctrl+r":
 		return m.startRun()

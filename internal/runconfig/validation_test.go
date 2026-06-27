@@ -38,7 +38,7 @@ func TestValidateRejectsInvalidRequests(t *testing.T) {
 
 	for _, test := range tests {
 		if _, err := Validate(test); err == nil {
-			t.Fatalf("Validate(%+v) returned nil error", test)
+			t.Errorf("Validate(%+v) returned nil error", test)
 		}
 	}
 }

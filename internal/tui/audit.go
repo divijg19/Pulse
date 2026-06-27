@@ -29,9 +29,9 @@ func AllAuditSurfaces() []AuditSurface {
 		{"LogsRunning", newLogsRunningModel},
 		{"TimelineRunningEmpty", newTimelineRunningEmptyModel},
 		{"Inspect", newInspectModel},
-		{"Payload", newPayloadModel},
-		{"Endpoint", newEndpointModel},
-		{"Concurrency", newConcurrencyModel},
+		{"RequestPayload", newRequestPayloadModel},
+		{"Request", newRequestModel},
+		{"RequestExec", newRequestExecModel},
 		{"ConfirmQuit", newConfirmQuitModel},
 	}
 }
@@ -94,9 +94,10 @@ func newInspectModel() Model {
 	return m
 }
 
-func newPayloadModel() Model {
+func newRequestPayloadModel() Model {
 	m := NewModel()
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = bodyFocus
 	m.headers = []headerRow{newHeaderRow(), newHeaderRow()}
 	m.headers[0].Key.SetValue("Content-Type")
@@ -107,17 +108,20 @@ func newPayloadModel() Model {
 	return m
 }
 
-func newEndpointModel() Model {
+func newRequestModel() Model {
 	m := NewModel()
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.SetValue("https://httpbin.org/delay/1")
 	m.urlInput.Focus()
 	return m
 }
 
-func newConcurrencyModel() Model {
+func newRequestExecModel() Model {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.ccInput.SetValue("10")
 	m.ccInput.Focus()
 	return m

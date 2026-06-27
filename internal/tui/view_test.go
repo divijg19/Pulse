@@ -83,7 +83,7 @@ func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out = m.View()
-	if contains(t, out, "OBSERVE") {
+	if contains(t, out, "▶  Ready") {
 		t.Fatal("after results exist, Ready should not appear")
 	}
 }
@@ -272,14 +272,8 @@ func TestRenderRibbon_Ready(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderRibbon(m.ShellState(), 100)
-	if !contains(t, out, "[e] Endpoint") {
-		t.Fatal("ready ribbon should show [e] Endpoint")
-	}
-	if !contains(t, out, "[c] Concurrency") {
-		t.Fatal("ready ribbon should show [c] Concurrency")
-	}
-	if !contains(t, out, "[p] Payload") {
-		t.Fatal("ready ribbon should show [p] Payload")
+	if !contains(t, out, "[e] Request") {
+		t.Fatal("ready ribbon should show [e] Request")
 	}
 	if contains(t, out, "[↑↓]") {
 		t.Fatal("ready ribbon should not advertise [↑↓] (inert)")
@@ -331,32 +325,34 @@ func TestRenderRibbon_RunningWithResults(t *testing.T) {
 	}
 }
 
-func TestRenderRibbon_EndpointDialog(t *testing.T) {
+func TestRenderRibbon_RequestDialog(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Esc] Back") {
-		t.Fatal("endpoint ribbon should show [Esc] Back")
+		t.Fatal("request ribbon should show [Esc] Back")
 	}
 	if !contains(t, out, "[Tab] Next Field") {
-		t.Fatal("endpoint ribbon should show [Tab] Next Field")
+		t.Fatal("request ribbon should show [Tab] Next Field")
 	}
 	if !contains(t, out, "[←→] Method") {
-		t.Fatal("endpoint ribbon should show [←→] Method")
+		t.Fatal("request ribbon should show [←→] Method")
 	}
 }
 
-func TestRenderRibbon_CCDialog(t *testing.T) {
+func TestRenderRibbon_RequestExecDialog(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Esc] Back") {
-		t.Fatal("concurrency ribbon should show [Esc] Back")
+		t.Fatal("request exec ribbon should show [Esc] Back")
 	}
 	if !contains(t, out, "[↑↓] Adjust") {
-		t.Fatal("concurrency ribbon should show [↑↓] Adjust")
+		t.Fatal("request exec ribbon should show [↑↓] Adjust")
 	}
 }
 
@@ -823,56 +819,59 @@ func TestView_PayloadNotShown(t *testing.T) {
 func TestRenderPayload_Identity(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
-	if !contains(t, out, "Payload") {
-		t.Fatal("payload should show identity header")
+	out := m.renderRequest(Region{Width: 96, Height: 20})
+	if !contains(t, out, "REQUEST") {
+		t.Fatal("request should show identity header")
 	}
 	if !contains(t, out, "HEADERS") {
-		t.Fatal("payload should contain 'HEADERS'")
+		t.Fatal("request should contain 'HEADERS'")
 	}
 	if !contains(t, out, "BODY") {
-		t.Fatal("payload should contain 'BODY'")
+		t.Fatal("request should contain 'BODY'")
 	}
 	if !contains(t, out, "Content-Type") {
-		t.Fatal("payload should contain header key")
+		t.Fatal("request should contain header key")
 	}
 	if !contains(t, out, "application/json") {
-		t.Fatal("payload should contain header value")
+		t.Fatal("request should contain header value")
 	}
 }
 
 func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
-	if !contains(t, out, "Payload") {
-		t.Fatal("payload should show identity header")
+	out := m.renderRequest(Region{Width: 96, Height: 20})
+	if !contains(t, out, "REQUEST") {
+		t.Fatal("request should show identity header")
 	}
 	if !contains(t, out, "No headers configured.") {
-		t.Fatal("payload should show 'No headers configured.' when no headers")
+		t.Fatal("request should show 'No headers configured.' when no headers")
 	}
 }
 
 func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
-	if !contains(t, out, "Payload") {
+	out := m.renderRequest(Region{Width: 96, Height: 20})
+	if !contains(t, out, "REQUEST") {
 		t.Fatal("payload should show identity header")
 	}
 	if !contains(t, out, `{"name":"pulse"}`) {
@@ -880,49 +879,57 @@ func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 	}
 }
 
-func TestRenderEndpoint_Identity(t *testing.T) {
+func TestRenderRequest_Identity(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	out := m.renderEndpoint(Region{Width: 100, Height: 20})
-	if !contains(t, out, "Endpoint") {
-		t.Fatal("endpoint should show identity header")
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
+	m.urlInput.Focus()
+	out := m.renderRequest(Region{Width: 100, Height: 20})
+	if !contains(t, out, "REQUEST") {
+		t.Fatal("request should show identity header")
 	}
 	if !contains(t, out, "URL") {
-		t.Fatal("endpoint editor should show URL label")
+		t.Fatal("request should show URL label")
 	}
 	if !contains(t, out, "Method") {
-		t.Fatal("endpoint editor should show Method label")
+		t.Fatal("request should show Method label")
 	}
 	if !contains(t, out, "GET") {
-		t.Fatal("endpoint editor should show method options")
+		t.Fatal("request should show method options")
 	}
 }
 
-func TestRenderConcurrency_Identity(t *testing.T) {
+func TestRenderRequest_ExecutionIdentity(t *testing.T) {
 	m := NewModel()
 	m.width = 100
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.setConcurrency(7)
-	out := m.renderConcurrency(Region{Width: 100, Height: 20})
-	if !contains(t, out, "Concurrency") {
-		t.Fatal("concurrency should show identity header")
+	out := m.renderRequest(Region{Width: 100, Height: 20})
+	if !contains(t, out, "REQUEST") {
+		t.Fatal("request should show identity header")
 	}
 	if !contains(t, out, "7") {
-		t.Fatal("concurrency editor should show current value")
+		t.Fatal("execution should show current concurrency value")
 	}
 	if !contains(t, out, "1–100") {
-		t.Fatal("concurrency should show range affordance")
+		t.Fatal("execution should show range affordance")
 	}
 }
 
 func TestRenderEndpoint_Focused(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 	m.urlInput.SetValue("https://example.com/api")
 
-	out := m.renderEndpoint(Region{Width: 100, Height: 20})
-	if !contains(t, out, "Endpoint") {
+	out := m.renderRequest(Region{Width: 100, Height: 20})
+	if !contains(t, out, "REQUEST") {
 		t.Fatal("should show identity")
 	}
 	if !contains(t, out, "api") {
@@ -936,12 +943,13 @@ func TestRenderEndpoint_Focused(t *testing.T) {
 func TestRenderConcurrency_Focused(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.ccInput.Focus()
 	m.setConcurrency(7)
 
-	out := m.renderConcurrency(Region{Width: 100, Height: 20})
-	if !contains(t, out, "Concurrency") {
+	out := m.renderRequest(Region{Width: 100, Height: 20})
+	if !contains(t, out, "REQUEST") {
 		t.Fatal("should show identity")
 	}
 	if !contains(t, out, "1–100") {
@@ -955,7 +963,8 @@ func TestRenderConcurrency_Focused(t *testing.T) {
 func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
@@ -963,7 +972,7 @@ func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
 	m.headers[0].Key.Focus()
 	m.headers[0].Value.SetValue("application/json")
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
+	out := m.renderRequest(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Content-Type") {
 		t.Fatal("should show header key")
 	}
@@ -981,7 +990,8 @@ func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
 func TestRenderPayload_HeaderValueFocus(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusValue
 	m.headers = append(m.headers, newHeaderRow())
@@ -989,7 +999,7 @@ func TestRenderPayload_HeaderValueFocus(t *testing.T) {
 	m.headers[0].Value.SetValue("application/json")
 	m.headers[0].Value.Focus()
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
+	out := m.renderRequest(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Content-Type") {
 		t.Fatal("should show header key")
 	}
@@ -1007,13 +1017,14 @@ func TestRenderPayload_HeaderValueFocus(t *testing.T) {
 func TestRenderPayload_BodyFocus(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = bodyFocus
 	m.bodyInput.Focus()
 	m.bodyInput.SetValue(`{"key": "value"}`)
 	m.headers = append(m.headers, newHeaderRow())
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
+	out := m.renderRequest(Region{Width: 96, Height: 20})
 	if !contains(t, out, `{"key": "value"}`) {
 		t.Fatal("should show body content")
 	}
@@ -1081,7 +1092,8 @@ func TestRenderTimeline_Rows_Selected(t *testing.T) {
 func TestRenderPayload_SelectedRowVisible(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.headers = append(m.headers, newHeaderRow(), newHeaderRow(), newHeaderRow())
 	m.headers[0].Key.SetValue("Authorization")
 	m.headers[0].Value.SetValue("Bearer token")
@@ -1089,12 +1101,12 @@ func TestRenderPayload_SelectedRowVisible(t *testing.T) {
 	m.headers[1].Value.SetValue("application/json")
 	m.selectedHead = 1
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
+	out := m.renderRequest(Region{Width: 96, Height: 20})
 	if !contains(t, out, "Authorization") {
-		t.Fatal("payload should show first header key")
+		t.Fatal("request should show first header key")
 	}
 	if !contains(t, out, "Content-Type") {
-		t.Fatal("payload should show second header key")
+		t.Fatal("request should show second header key")
 	}
 	// selected row should have cursor
 	if !contains(t, out, "▶ Content-Type") {
@@ -1105,32 +1117,34 @@ func TestRenderPayload_SelectedRowVisible(t *testing.T) {
 func TestRenderPayload_BodyFocusColor(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = bodyFocus
 	m.headers = append(m.headers, newHeaderRow())
 
-	out := m.renderPayload(Region{Width: 96, Height: 20})
+	out := m.renderRequest(Region{Width: 96, Height: 20})
 	if !contains(t, out, "BODY") {
-		t.Fatal("payload should show BODY label")
+		t.Fatal("request should show BODY label")
 	}
 }
 
-func TestRenderRibbon_PayloadDialog(t *testing.T) {
+func TestRenderRibbon_RequestPayloadDialog(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Tab] Next") {
-		t.Fatal("payload ribbon should show [Tab] Next")
+		t.Fatal("request payload ribbon should show [Tab] Next")
 	}
 	if !contains(t, out, "[Ctrl+N] Header") {
-		t.Fatal("payload ribbon should show [Ctrl+N] Header")
+		t.Fatal("request payload ribbon should show [Ctrl+N] Header")
 	}
 	if !contains(t, out, "[Ctrl+D] Delete") {
-		t.Fatal("payload ribbon should show [Ctrl+D] Delete")
+		t.Fatal("request payload ribbon should show [Ctrl+D] Delete")
 	}
 	if !contains(t, out, "[Esc] Back") {
-		t.Fatal("payload ribbon should show [Esc] Back")
+		t.Fatal("request payload ribbon should show [Esc] Back")
 	}
 }
 
@@ -1188,8 +1202,8 @@ func TestOrientationLabel_WithResults(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "TIMELINE" {
-		t.Fatalf("results orientationLabel = %q, want TIMELINE", got)
+	if got := m.orientationLabel(); got != "OBSERVE" {
+		t.Fatalf("results orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
@@ -1197,8 +1211,8 @@ func TestOrientationLabel_RunningEmpty(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	m.running = true
-	if got := m.orientationLabel(); got != "TIMELINE" {
-		t.Fatalf("running empty orientationLabel = %q, want TIMELINE", got)
+	if got := m.orientationLabel(); got != "OBSERVE" {
+		t.Fatalf("running empty orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
@@ -1207,8 +1221,8 @@ func TestOrientationLabel_RunningWithResults(t *testing.T) {
 	m.width = 100
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "TIMELINE" {
-		t.Fatalf("running+results orientationLabel = %q, want TIMELINE", got)
+	if got := m.orientationLabel(); got != "OBSERVE" {
+		t.Fatalf("running+results orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
@@ -1217,8 +1231,8 @@ func TestOrientationLabel_LogsView(t *testing.T) {
 	m.width = 100
 	m.view = viewLogs
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "LOGS" {
-		t.Fatalf("logs view orientationLabel = %q, want LOGS", got)
+	if got := m.orientationLabel(); got != "OBSERVE" {
+		t.Fatalf("logs view orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
@@ -1228,35 +1242,37 @@ func TestOrientationLabel_RunningLogsView(t *testing.T) {
 	m.running = true
 	m.view = viewLogs
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "LOGS" {
-		t.Fatalf("running+logs orientationLabel = %q, want LOGS", got)
+	if got := m.orientationLabel(); got != "OBSERVE" {
+		t.Fatalf("running+logs orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
-func TestOrientationLabel_EndpointDialog(t *testing.T) {
+func TestOrientationLabel_RequestDialog(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogEndpoint
-	if got := m.orientationLabel(); got != "ENDPOINT" {
-		t.Fatalf("endpoint dialog orientationLabel = %q, want ENDPOINT", got)
+	m.dialog = dialogRequest
+	if got := m.orientationLabel(); got != "REQUEST" {
+		t.Fatalf("request dialog orientationLabel = %q, want REQUEST", got)
 	}
 }
 
-func TestOrientationLabel_ConcurrencyDialog(t *testing.T) {
+func TestOrientationLabel_ExecDomain(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogConcurrency
-	if got := m.orientationLabel(); got != "CONCURRENCY" {
-		t.Fatalf("concurrency dialog orientationLabel = %q, want CONCURRENCY", got)
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
+	if got := m.orientationLabel(); got != "REQUEST" {
+		t.Fatalf("request dialog (exec) orientationLabel = %q, want REQUEST", got)
 	}
 }
 
-func TestOrientationLabel_PayloadDialog(t *testing.T) {
+func TestOrientationLabel_PayloadDomain(t *testing.T) {
 	m := NewModel()
 	m.width = 100
-	m.dialog = dialogPayload
-	if got := m.orientationLabel(); got != "PAYLOAD" {
-		t.Fatalf("payload dialog orientationLabel = %q, want PAYLOAD", got)
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
+	if got := m.orientationLabel(); got != "REQUEST" {
+		t.Fatalf("request dialog (payload) orientationLabel = %q, want REQUEST", got)
 	}
 }
 
@@ -1282,10 +1298,14 @@ func TestRenderRibbon_ShellColumnWidth(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderRibbon(m.ShellState(), 100)
-	// Shell column must contain orientation label right-padded to ShellColumnWidth.
-	// "OBSERVE        " (7 + 9 padding = 16) followed by gutter "  ".
-	if !contains(t, out, "OBSERVE        ") {
-		t.Fatal("ribbon should right-pad OBSERVE to ShellColumnWidth (16)")
+	// Shell column must contain orientation label with accent anchor prefix.
+	// Format: "│ OBSERVE      " (anchor + space + 7-char label padded to 14 = 16).
+	if !contains(t, out, "OBSERVE") {
+		t.Fatal("ribbon should show orientation label")
+	}
+	// Ribbon should have the shell anchor character
+	if !contains(t, out, "│") {
+		t.Fatal("ribbon should show shell anchor (│)")
 	}
 }
 
@@ -1307,12 +1327,12 @@ func TestRenderRibbon_CategoryOrder(t *testing.T) {
 	// With results: Navigation → Configuration → Operation → Application.
 	// Navigation must appear before Configuration.
 	navIdx := strings.Index(out, "[↑↓] Select")
-	cfgIdx := strings.Index(out, "[e] Endpoint")
+	cfgIdx := strings.Index(out, "[e] Request")
 	if navIdx < 0 {
 		t.Fatal("ribbon should include [↑↓] Select when results exist")
 	}
 	if cfgIdx < 0 {
-		t.Fatal("ribbon should include [e] Endpoint when results exist")
+		t.Fatal("ribbon should include [e] Request when results exist")
 	}
 	if navIdx > cfgIdx {
 		t.Fatal("Navigation group must render before Configuration group")
@@ -1323,10 +1343,9 @@ func TestRenderRibbon_WithinGroupSeparator(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	out := m.renderRibbon(m.ShellState(), 100)
-	// Ready state: [e] Endpoint, [c] Concurrency, [p] Payload — all in Configuration group.
-	// They must be separated by " · " (space-bullet-space).
-	if !contains(t, out, "[e] Endpoint · [c] Concurrency · [p] Payload") {
-		t.Fatal("commands within same category should be separated by ' · '")
+	// Ready state: [e] Request in Configuration group.
+	if !contains(t, out, "[e] Request") {
+		t.Fatal("ready state should show [e] Request")
 	}
 }
 
@@ -1336,7 +1355,7 @@ func TestRenderRibbon_BetweenGroupSeparator(t *testing.T) {
 	out := m.renderRibbon(m.ShellState(), 100)
 	// Ready state: Configuration group followed by Operation group.
 	// Must have 4-space gap between groups.
-	if !contains(t, out, "Payload    [Ctrl+R]") {
+	if !contains(t, out, "Request    [Ctrl+R]") {
 		t.Fatal("different category groups must be separated by wider gap (4 spaces)")
 	}
 }
@@ -1357,52 +1376,37 @@ func TestShellInvariant_WorkspaceNoSeparators(t *testing.T) {
 		t.Fatal("renderReady must not render shell separators")
 	}
 
-	// renderEndpoint
+	// renderRequest
 	m2 := NewModel()
 	m2.width = 100
-	m2.dialog = dialogEndpoint
-	if contains(t, m2.renderEndpoint(region), "─") {
-		t.Fatal("renderEndpoint must not render shell separators")
-	}
-
-	// renderConcurrency
-	m3 := NewModel()
-	m3.width = 100
-	m3.dialog = dialogConcurrency
-	if contains(t, m3.renderConcurrency(region), "─") {
-		t.Fatal("renderConcurrency must not render shell separators")
-	}
-
-	// renderPayload
-	m4 := NewModel()
-	m4.width = 100
-	m4.dialog = dialogPayload
-	if contains(t, m4.renderPayload(region), "─") {
-		t.Fatal("renderPayload must not render shell separators")
+	m2.dialog = dialogRequest
+	m2.activeDomain = domainRequest
+	if contains(t, m2.renderRequest(region), "─") {
+		t.Fatal("renderRequest must not render shell separators")
 	}
 
 	// renderTimeline
-	m5 := NewModel()
-	m5.width = 100
-	m5.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if contains(t, m5.renderTimeline(region), "─") {
+	m3 := NewModel()
+	m3.width = 100
+	m3.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
+	if contains(t, m3.renderTimeline(region), "─") {
 		t.Fatal("renderTimeline must not render shell separators")
 	}
 
 	// renderLogs
-	m6 := NewModel()
-	m6.width = 100
-	m6.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if contains(t, m6.renderLogs(region), "─") {
+	m4 := NewModel()
+	m4.width = 100
+	m4.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
+	if contains(t, m4.renderLogs(region), "─") {
 		t.Fatal("renderLogs must not render shell separators")
 	}
 
 	// renderInspect
-	m7 := NewModel()
-	m7.width = 100
-	m7.selected = 0
-	m7.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if contains(t, m7.renderInspect(Region{Width: 40, Height: 20}), "─") {
+	m5 := NewModel()
+	m5.width = 100
+	m5.selected = 0
+	m5.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
+	if contains(t, m5.renderInspect(Region{Width: 40, Height: 20}), "─") {
 		t.Fatal("renderInspect must not render shell separators")
 	}
 }
@@ -1413,7 +1417,7 @@ func TestShellInvariant_WorkspaceNoSeparators(t *testing.T) {
 func TestShellInvariant_WorkspaceNoShortcuts(t *testing.T) {
 	region := Region{Width: 100, Height: 26}
 
-	shortcutPatterns := []string{"Ctrl+", "[Esc]", "[Tab]", "[Enter]", "[↑↓]", "[←→]", "[q]", "[e]", "[c]", "[p]"}
+	shortcutPatterns := []string{"Ctrl+", "[Esc]", "[Tab]", "[Enter]", "[↑↓]", "[←→]", "[q]", "[e]"}
 
 	m := NewModel()
 	m.width = 100
@@ -1424,22 +1428,14 @@ func TestShellInvariant_WorkspaceNoShortcuts(t *testing.T) {
 		}
 	}
 
-	// Verify all dialog surfaces also follow this rule.
+	// Verify the REQUEST surface also follows this rule.
 	m2 := NewModel()
 	m2.width = 100
-	m2.dialog = dialogEndpoint
+	m2.dialog = dialogRequest
+	m2.activeDomain = domainRequest
 	for _, pat := range shortcutPatterns {
-		if contains(t, m2.renderEndpoint(region), pat) {
-			t.Fatalf("Endpoint surface must not contain %q", pat)
-		}
-	}
-
-	m3 := NewModel()
-	m3.width = 100
-	m3.dialog = dialogConcurrency
-	for _, pat := range shortcutPatterns {
-		if contains(t, m3.renderConcurrency(region), pat) {
-			t.Fatalf("Concurrency surface must not contain %q", pat)
+		if contains(t, m2.renderRequest(region), pat) {
+			t.Fatalf("Request surface must not contain %q", pat)
 		}
 	}
 }
@@ -1447,7 +1443,7 @@ func TestShellInvariant_WorkspaceNoShortcuts(t *testing.T) {
 // TestShellInvariant_RibbonHasOrientation verifies every ribbon output starts
 // with a known orientation label (the Shell Column).
 func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
-	labels := []string{"OBSERVE", "TIMELINE", "LOGS", "INSPECT", "ENDPOINT", "CONCURRENCY", "PAYLOAD", "QUIT"}
+	labels := []string{"OBSERVE", "REQUEST", "INSPECT", "QUIT"}
 	hasLabel := func(out string) bool {
 		for _, l := range labels {
 			if contains(t, out, l) {
@@ -1489,12 +1485,12 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 		t.Fatal("ribbon must show orientation label in inspect mode")
 	}
 
-	// Endpoint dialog
+	// Request dialog
 	m5 := NewModel()
 	m5.width = 100
-	m5.dialog = dialogEndpoint
+	m5.dialog = dialogRequest
 	if !hasLabel(m5.renderRibbon(m5.ShellState(), 100)) {
-		t.Fatal("ribbon must show orientation label in endpoint dialog")
+		t.Fatal("ribbon must show orientation label in request dialog")
 	}
 
 	// ConfirmQuit dialog
@@ -1515,9 +1511,24 @@ func TestShellInvariant_ActionsAreIntents(t *testing.T) {
 		func() []Action { m := NewModel(); m.running = true; return m.Actions() },
 		func() []Action { m := NewModel(); m.running = true; m.results = []model.Result{{}}; return m.Actions() },
 		func() []Action { m := NewModel(); m.results = []model.Result{{}}; return m.Actions() },
-		func() []Action { m := NewModel(); m.dialog = dialogEndpoint; return m.Actions() },
-		func() []Action { m := NewModel(); m.dialog = dialogConcurrency; return m.Actions() },
-		func() []Action { m := NewModel(); m.dialog = dialogPayload; return m.Actions() },
+		func() []Action {
+			m := NewModel()
+			m.dialog = dialogRequest
+			m.activeDomain = domainRequest
+			return m.Actions()
+		},
+		func() []Action {
+			m := NewModel()
+			m.dialog = dialogRequest
+			m.activeDomain = domainExec
+			return m.Actions()
+		},
+		func() []Action {
+			m := NewModel()
+			m.dialog = dialogRequest
+			m.activeDomain = domainPayload
+			return m.Actions()
+		},
 		func() []Action { m := NewModel(); m.mode = modeInspect; return m.Actions() },
 		func() []Action { m := NewModel(); m.dialog = dialogConfirmQuit; return m.Actions() },
 	}
@@ -1613,8 +1624,8 @@ func TestShellState_UpdatesWithState(t *testing.T) {
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 
 	s := m.ShellState()
-	if s.Orientation != "TIMELINE" {
-		t.Fatalf("running state ShellState.Orientation = %q, want TIMELINE", s.Orientation)
+	if s.Orientation != "OBSERVE" {
+		t.Fatalf("running state ShellState.Orientation = %q, want OBSERVE", s.Orientation)
 	}
 }
 

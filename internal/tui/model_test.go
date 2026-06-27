@@ -14,14 +14,19 @@ import (
 
 func TestMethodSelection(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
-	// pressing Tab should not crash (Tab is a no-op in endpoint dialog currently)
+	// Tab advances from URL field to Payload domain (stays within request dialog)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.dialog != dialogEndpoint {
-		t.Fatal("tab should not close endpoint dialog")
+	if m.dialog != dialogRequest {
+		t.Fatal("tab should not close request dialog")
+	}
+	if m.activeDomain != domainPayload {
+		t.Fatal("tab from URL field should advance to payload domain")
 	}
 }
 
@@ -39,12 +44,16 @@ func TestConcurrencyClamping(t *testing.T) {
 
 func TestPayloadEditorState(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 
-	if m.dialog != dialogPayload {
-		t.Fatal("payload dialog should be active")
+	if m.dialog != dialogRequest {
+		t.Fatal("request dialog should be active")
+	}
+	if m.activeDomain != domainPayload {
+		t.Fatal("payload domain should be active")
 	}
 	if len(m.headers) != 0 {
 		t.Fatalf("headers len = %d (expect 0, lazily initialized)", len(m.headers))
@@ -146,7 +155,8 @@ func TestResultSelectionAndInspect(t *testing.T) {
 
 func TestHeaderAddRemove(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
@@ -593,55 +603,70 @@ func TestObserve_EndpointDialogOpenClose(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	m = updated.(Model)
-	if m.dialog != dialogEndpoint {
-		t.Fatal("pressing e should open endpoint dialog")
+	if m.dialog != dialogRequest {
+		t.Fatal("pressing e should open request dialog")
+	}
+	if m.activeDomain != domainRequest {
+		t.Fatal("pressing e should set active domain to request")
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.dialog != dialogNone {
-		t.Fatal("pressing esc should close endpoint dialog")
+		t.Fatal("pressing esc should close request dialog")
 	}
 }
 
 func TestObserve_CCDialogOpenClose(t *testing.T) {
 	m := NewModel()
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
+	m.ccInput.Focus()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	m = updated.(Model)
-	if m.dialog != dialogConcurrency {
-		t.Fatal("pressing c should open concurrency dialog")
+	if m.dialog != dialogRequest {
+		t.Fatal("request dialog should be active")
+	}
+	if m.activeDomain != domainExec {
+		t.Fatal("execution domain should be active")
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// Esc closes the request dialog
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.dialog != dialogNone {
-		t.Fatal("pressing esc should close concurrency dialog")
+		t.Fatal("pressing esc should close request dialog")
 	}
 }
 
 func TestObserve_PayloadDialogOpenClose(t *testing.T) {
 	m := NewModel()
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
+	m.selectedHead = 0
+	m.headerSubfocus = subfocusKey
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	m = updated.(Model)
-	if m.dialog != dialogPayload {
-		t.Fatal("pressing p should open payload dialog")
+	if m.dialog != dialogRequest {
+		t.Fatal("request dialog should be active")
 	}
-	if len(m.headers) == 0 {
-		t.Fatal("opening payload dialog should initialize headers")
+	if m.activeDomain != domainPayload {
+		t.Fatal("payload domain should be active")
+	}
+	if len(m.headers) != 0 {
+		t.Fatal("headers should be lazily initialized")
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// Esc closes the request dialog
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.dialog != dialogNone {
-		t.Fatal("pressing esc should close payload dialog")
+		t.Fatal("pressing esc should close request dialog")
 	}
 }
 
 func TestCCDialog_ArrowAdjustUp(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 
 	initial := m.concurrency()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -654,7 +679,8 @@ func TestCCDialog_ArrowAdjustUp(t *testing.T) {
 
 func TestCCDialog_ArrowAdjustDown(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.setConcurrency(50)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -667,32 +693,37 @@ func TestCCDialog_ArrowAdjustDown(t *testing.T) {
 
 func TestEndpointDialog_EscCloses(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.dialog != dialogNone {
-		t.Fatal("esc should close endpoint dialog")
+		t.Fatal("esc should close request dialog")
 	}
 }
 
 func TestEndpointDialog_EnterDoesNotClose(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
-	if m.dialog != dialogEndpoint {
-		t.Fatal("enter should NOT close endpoint dialog (esc-only)")
+	if m.dialog != dialogRequest {
+		t.Fatal("enter should NOT close request dialog (esc-only)")
 	}
 }
 
 func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
-	m.endpointField = endpointMethod
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldMethod
 
 	methods := runconfig.AllowedMethods()
 
@@ -702,21 +733,21 @@ func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
 	}
 
 	// Right arrow increments
-	updated, _ := m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyRight})
+	updated, _ := m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyRight})
 	m = updated.(Model)
 	if m.methodIndex != 1 {
 		t.Errorf("after right, methodIndex = %d, want 1", m.methodIndex)
 	}
 
 	// Left arrow decrements
-	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyLeft})
+	updated, _ = m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyLeft})
 	m = updated.(Model)
 	if m.methodIndex != 0 {
 		t.Errorf("after left, methodIndex = %d, want 0", m.methodIndex)
 	}
 
 	// Left at min does not go below 0
-	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyLeft})
+	updated, _ = m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyLeft})
 	m = updated.(Model)
 	if m.methodIndex != 0 {
 		t.Errorf("left at min should stay 0, got %d", m.methodIndex)
@@ -724,7 +755,7 @@ func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
 
 	// Right at max does not exceed
 	m.methodIndex = len(methods) - 1
-	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyRight})
+	updated, _ = m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyRight})
 	m = updated.(Model)
 	if m.methodIndex != len(methods)-1 {
 		t.Errorf("right at max should stay %d, got %d", len(methods)-1, m.methodIndex)
@@ -733,29 +764,24 @@ func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
 
 func TestEndpointDialog_TabSwitchesField(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
-	m.endpointField = endpointURL
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
-	// Tab should switch to method
-	updated, _ := m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab should advance to payload domain (URL → Payload)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.endpointField != endpointMethod {
-		t.Fatal("tab should switch to method field")
-	}
-
-	// Tab again back to URL
-	updated, _ = m.handleEndpointKey(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
-	if m.endpointField != endpointURL {
-		t.Fatal("second tab should switch back to URL field")
+	if m.activeDomain != domainPayload {
+		t.Fatal("tab from URL field should advance to payload domain")
 	}
 }
 
 func TestEndpointDialog_LeftRightOnUrlDoesNotChangeMethod(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
-	m.endpointField = endpointURL
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
 	initialMethod := m.methodIndex
@@ -776,25 +802,27 @@ func TestEndpointDialog_LeftRightOnUrlDoesNotChangeMethod(t *testing.T) {
 
 func TestCCDialog_EscCloses(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.dialog != dialogNone {
-		t.Fatal("esc should close concurrency dialog")
+		t.Fatal("esc should close request dialog")
 	}
 }
 
 func TestCCDialog_EnterDoesNotClose(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
-	if m.dialog != dialogConcurrency {
-		t.Fatal("enter should NOT close concurrency dialog (esc-only)")
+	if m.dialog != dialogRequest {
+		t.Fatal("enter should NOT close request dialog (esc-only)")
 	}
 }
 
@@ -849,14 +877,16 @@ func TestViewSwitch_PreservesSelection(t *testing.T) {
 
 func TestEndpointDialog_NotClosableByWrongKey(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
+	m.activeDomain = domainRequest
+	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
 	// Typing text should go to urlInput, not close dialog
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m = updated.(Model)
-	if m.dialog != dialogEndpoint {
-		t.Fatal("typing text should not close endpoint dialog")
+	if m.dialog != dialogRequest {
+		t.Fatal("typing text should not close request dialog")
 	}
 	if !strings.Contains(m.urlInput.Value(), "/") {
 		t.Fatal("URL input should contain typed character")
@@ -865,7 +895,8 @@ func TestEndpointDialog_NotClosableByWrongKey(t *testing.T) {
 
 func TestCCDialog_TypesDigits(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
@@ -878,7 +909,8 @@ func TestCCDialog_TypesDigits(t *testing.T) {
 
 func TestPayloadDialog_HeaderNavigationUpDown(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow(), newHeaderRow())
@@ -912,28 +944,31 @@ func TestPayloadDialog_HeaderNavigationUpDown(t *testing.T) {
 
 func TestPayloadDialog_TabToBody(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogPayload
+	m.dialog = dialogRequest
+	m.activeDomain = domainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
 
+	// Tab within payload: headers → body
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
 	if m.selectedHead != bodyFocus {
 		t.Fatalf("tab from headers should go to body, got selectedHead=%d", m.selectedHead)
 	}
 
+	// Tab from body → next domain (execution)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.selectedHead != 0 {
-		t.Fatalf("tab from body should go to headers, got selectedHead=%d", m.selectedHead)
+	if m.activeDomain != domainExec {
+		t.Fatalf("tab from body should advance to execution domain, got domain=%d", m.activeDomain)
 	}
 }
 
 func TestStartRun_ResetsDialogAndMode(t *testing.T) {
 	m := NewModel()
 	m.mode = modeInspect
-	m.dialog = dialogEndpoint
+	m.dialog = dialogRequest
 	m.urlInput.SetValue("https://example.com/api")
 	m.setConcurrency(1)
 
@@ -987,7 +1022,8 @@ func TestConfirmQuit_FromInspectMode(t *testing.T) {
 
 func TestCCDialog_ClampAtMax(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.setConcurrency(100)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -999,7 +1035,8 @@ func TestCCDialog_ClampAtMax(t *testing.T) {
 
 func TestCCDialog_ClampAtMin(t *testing.T) {
 	m := NewModel()
-	m.dialog = dialogConcurrency
+	m.dialog = dialogRequest
+	m.activeDomain = domainExec
 	m.setConcurrency(1)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
