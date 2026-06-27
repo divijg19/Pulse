@@ -41,12 +41,12 @@ func TestStyleBase(t *testing.T) {
 	}
 }
 
-func TestStyleStatusBar(t *testing.T) {
-	if got := styleStatusBar.GetForeground(); got != lipgloss.Color(colorText) {
-		t.Errorf("styleStatusBar foreground = %q, want %q", got, colorText)
+func TestStyleRibbon(t *testing.T) {
+	if got := styleRibbon.GetForeground(); got != lipgloss.Color(colorText) {
+		t.Errorf("styleRibbon foreground = %q, want %q", got, colorText)
 	}
-	if got := styleStatusBar.GetBackground(); got != lipgloss.Color(colorDark) {
-		t.Errorf("styleStatusBar background = %q, want %q", got, colorDark)
+	if got := styleRibbon.GetBackground(); got != lipgloss.Color(colorDark) {
+		t.Errorf("styleRibbon background = %q, want %q", got, colorDark)
 	}
 }
 
