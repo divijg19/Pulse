@@ -43,13 +43,6 @@ const (
 	dialogConfirmQuit
 )
 
-type view int
-
-const (
-	viewTimeline view = iota
-	viewLogs
-)
-
 type headerRow struct {
 	Key   textinput.Model
 	Value textinput.Model
@@ -58,10 +51,6 @@ type headerRow struct {
 type Model struct {
 	shell     Shell
 	workspace Workspace
-
-	mode   mode
-	dialog dialog
-	view   view
 
 	activeDomain DomainType
 	methodIndex  int
@@ -124,9 +113,6 @@ func NewModel() Model {
 	return Model{
 		shell:        NewShell(),
 		workspace:    NewWorkspace(),
-		mode:         modeObserve,
-		dialog:       dialogNone,
-		view:         viewTimeline,
 		activeDomain: DomainRequest,
 		methodIndex:  0,
 		requestField: reqFieldURL,
@@ -209,9 +195,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.errMsg = ""
 
-	switch m.mode {
+	switch m.workspace.mode {
 	case modeObserve:
-		switch m.dialog {
+		switch m.workspace.dialog {
 		case dialogRequest:
 			return m.handleRequestKey(msg)
 		case dialogConfirmQuit:
@@ -220,7 +206,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleObserveKey(msg)
 		}
 	case modeInspect:
-		switch m.dialog {
+		switch m.workspace.dialog {
 		case dialogConfirmQuit:
 			return m.handleConfirmQuitKey(msg)
 		case dialogNone:
@@ -233,7 +219,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleRequestKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.dialog = dialogNone
+		m.workspace.dialog = dialogNone
 		m.blurAll()
 		return m, nil
 	case "tab":
@@ -270,44 +256,54 @@ func (m Model) advanceDomain(forward bool) (tea.Model, tea.Cmd) {
 				}
 				m.focusPayloadKey()
 			} else {
-				m.requestField = reqFieldURL
-				m.urlInput.Focus()
+				m.focusURL()
 			}
 		case DomainPayload:
 			if m.selectedHead == bodyFocus {
-				m.activeDomain = DomainExec
-				m.ccInput.Focus()
+				m.focusCC()
+			} else if m.headerSubfocus == subfocusKey {
+				m.headerSubfocus = subfocusValue
+				m.focusPayloadValue()
+			} else if m.selectedHead < len(m.headers)-1 {
+				m.selectedHead++
+				m.headerSubfocus = subfocusKey
+				m.focusPayloadKey()
 			} else {
 				m.selectedHead = bodyFocus
 				m.focusPayloadBody()
 			}
 		case DomainExec:
 			m.activeDomain = DomainRequest
-			m.requestField = reqFieldMethod
-			m.blurAll()
+			m.focusMethod()
 		}
 	} else {
 		switch m.activeDomain {
 		case DomainRequest:
 			if m.requestField == reqFieldMethod {
-				m.activeDomain = DomainExec
-				m.ccInput.Focus()
+				m.focusCC()
 			} else {
-				m.requestField = reqFieldMethod
-				m.blurAll()
+				m.focusMethod()
 			}
 		case DomainPayload:
 			if m.selectedHead == bodyFocus {
-				if len(m.headers) == 0 {
-					m.headers = append(m.headers, newHeaderRow())
+				if len(m.headers) > 0 {
+					m.selectedHead = len(m.headers) - 1
+					m.headerSubfocus = subfocusValue
+					m.focusPayloadValue()
+				} else {
+					m.activeDomain = DomainRequest
+					m.focusURL()
 				}
-				m.selectedHead = 0
+			} else if m.headerSubfocus == subfocusValue {
 				m.headerSubfocus = subfocusKey
 				m.focusPayloadKey()
+			} else if m.selectedHead > 0 {
+				m.selectedHead--
+				m.headerSubfocus = subfocusValue
+				m.focusPayloadValue()
 			} else {
 				m.activeDomain = DomainRequest
-				m.requestField = reqFieldURL
-				m.urlInput.Focus()
+				m.focusURL()
 			}
 		case DomainExec:
 			m.activeDomain = DomainPayload
@@ -320,33 +316,77 @@ func (m Model) advanceDomain(forward bool) (tea.Model, tea.Cmd) {
 
 func (m Model) handleRequestDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "up":
+		if m.requestField == reqFieldURL {
+			m.focusMethod()
+		}
+		return m, nil
+	case "k":
+		if m.requestField == reqFieldMethod {
+			return m, nil
+		}
+	case "down":
+		if m.requestField == reqFieldMethod {
+			m.focusURL()
+		} else {
+			m.activeDomain = DomainPayload
+			m.selectedHead = 0
+			m.headerSubfocus = subfocusKey
+			if len(m.headers) == 0 {
+				m.headers = append(m.headers, newHeaderRow())
+			}
+			m.focusPayloadKey()
+		}
+		return m, nil
+	case "j":
+		if m.requestField == reqFieldMethod {
+			m.focusURL()
+			return m, nil
+		}
 	case "left", "h":
 		if m.requestField == reqFieldMethod && m.methodIndex > 0 {
 			m.methodIndex--
 		}
-		if m.requestField != reqFieldMethod {
-			break
+		if m.requestField == reqFieldMethod {
+			return m, nil
 		}
-		return m, nil
 	case "right", "l":
 		if m.requestField == reqFieldMethod {
 			methods := runconfig.AllowedMethods()
 			if m.methodIndex < len(methods)-1 {
 				m.methodIndex++
 			}
+			return m, nil
 		}
-		if m.requestField != reqFieldMethod {
-			break
-		}
-		return m, nil
 	}
 	var cmd tea.Cmd
-	m.urlInput, cmd = m.urlInput.Update(msg)
+	if m.urlInput.Focused() {
+		m.urlInput, cmd = m.urlInput.Update(msg)
+	}
 	return m, cmd
 }
 
 func (m Model) handlePayloadDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.selectedHead == bodyFocus {
+		switch msg.String() {
+		case "up":
+			if len(m.headers) > 0 {
+				m.selectedHead = len(m.headers) - 1
+				m.headerSubfocus = subfocusValue
+				m.focusPayloadValue()
+			} else {
+				m.activeDomain = DomainRequest
+				m.focusURL()
+			}
+			return m, nil
+		case "k":
+			return m, nil
+		case "down":
+			m.focusCC()
+			return m, nil
+		case "j":
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
 		return m, cmd
@@ -374,23 +414,55 @@ func (m Model) handlePayloadDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case "up", "k":
+	case "up":
+		if m.selectedHead == 0 {
+			m.activeDomain = DomainRequest
+			m.focusURL()
+		} else {
+			m.selectedHead--
+		}
+		return m, nil
+	case "k":
 		if m.selectedHead > 0 {
 			m.selectedHead--
 		}
 		return m, nil
-	case "down", "j":
+	case "down":
+		if m.selectedHead == len(m.headers)-1 {
+			m.selectedHead = bodyFocus
+			m.focusPayloadBody()
+		} else {
+			m.selectedHead++
+		}
+		return m, nil
+	case "j":
 		if m.selectedHead < len(m.headers)-1 {
 			m.selectedHead++
 		}
 		return m, nil
-	case "left", "h":
-		m.headerSubfocus = subfocusKey
-		m.focusPayloadKey()
+	case "left":
+		if m.headerSubfocus == subfocusValue {
+			m.headerSubfocus = subfocusKey
+			m.focusPayloadKey()
+		}
 		return m, nil
-	case "right", "l":
-		m.headerSubfocus = subfocusValue
-		m.focusPayloadValue()
+	case "right":
+		if m.headerSubfocus == subfocusKey {
+			m.headerSubfocus = subfocusValue
+			m.focusPayloadValue()
+		}
+		return m, nil
+	case "h":
+		if m.headerSubfocus == subfocusValue {
+			m.headerSubfocus = subfocusKey
+			m.focusPayloadKey()
+		}
+		return m, nil
+	case "l":
+		if m.headerSubfocus == subfocusKey {
+			m.headerSubfocus = subfocusValue
+			m.focusPayloadValue()
+		}
 		return m, nil
 	default:
 		if m.selectedHead >= 0 && m.selectedHead < len(m.headers) {
@@ -409,20 +481,28 @@ func (m Model) handlePayloadDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleExecDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		m.setConcurrency(m.concurrency() + 1)
 		return m, nil
-	case "down", "j":
+	case "k":
+		m.setConcurrency(m.concurrency() + 1)
+		return m, nil
+	case "down":
+		m.setConcurrency(m.concurrency() - 1)
+		return m, nil
+	case "j":
 		m.setConcurrency(m.concurrency() - 1)
 		return m, nil
 	}
 	var cmd tea.Cmd
-	m.ccInput, cmd = m.ccInput.Update(msg)
+	if m.ccInput.Focused() {
+		m.ccInput, cmd = m.ccInput.Update(msg)
+	}
 	return m, cmd
 }
 
 func (m Model) handleConfirmQuitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	m.dialog = dialogNone
+	m.workspace.dialog = dialogNone
 	switch msg.String() {
 	case "ctrl+c", "q", "enter":
 		if m.running && m.cancel != nil {
@@ -433,6 +513,20 @@ func (m Model) handleConfirmQuitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) effectiveMethod(result model.Result) string {
+	if result.RequestMethod != "" {
+		return result.RequestMethod
+	}
+	return runconfig.AllowedMethods()[m.methodIndex]
+}
+
+func (m Model) effectiveURL(result model.Result) string {
+	if result.RequestURL != "" {
+		return result.RequestURL
+	}
+	return m.urlInput.Value()
+}
+
 func (m *Model) blurAll() {
 	m.urlInput.Blur()
 	m.ccInput.Blur()
@@ -441,6 +535,23 @@ func (m *Model) blurAll() {
 		m.headers[i].Key.Blur()
 		m.headers[i].Value.Blur()
 	}
+}
+
+func (m *Model) focusMethod() {
+	m.requestField = reqFieldMethod
+	m.blurAll()
+}
+
+func (m *Model) focusURL() {
+	m.requestField = reqFieldURL
+	m.blurAll()
+	m.urlInput.Focus()
+}
+
+func (m *Model) focusCC() {
+	m.activeDomain = DomainExec
+	m.blurAll()
+	m.ccInput.Focus()
 }
 
 func (m *Model) focusPayloadKey() {
@@ -460,12 +571,22 @@ func (m *Model) focusPayloadBody() {
 
 func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		if m.selected > 0 {
 			m.selected--
 		}
 		return m, nil
-	case "down", "j":
+	case "k":
+		if m.selected > 0 {
+			m.selected--
+		}
+		return m, nil
+	case "down":
+		if m.selected < len(m.results)-1 {
+			m.selected++
+		}
+		return m, nil
+	case "j":
 		if m.selected < len(m.results)-1 {
 			m.selected++
 		}
@@ -486,28 +607,28 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		if len(m.results) > 0 {
-			m.mode = modeInspect
+			m.workspace.mode = modeInspect
 		}
 		return m, nil
+	case "tab", "shift+tab", "left", "right", "h", "l":
+		return m, nil
 	case "[":
-		m.view = viewTimeline
+		m.workspace.view = TimelineView
 		return m, nil
 	case "]":
-		m.view = viewLogs
+		m.workspace.view = LogsView
 		return m, nil
 	case "e":
-		m.dialog = dialogRequest
-		m.blurAll()
+		m.workspace.dialog = dialogRequest
 		m.activeDomain = DomainRequest
-		m.requestField = reqFieldURL
-		m.urlInput.Focus()
+		m.focusURL()
 		return m, nil
 	case "ctrl+r":
 		return m.startRun()
 	case "ctrl+x":
 		return m.cancelRun(), nil
 	case "q", "ctrl+c":
-		m.dialog = dialogConfirmQuit
+		m.workspace.dialog = dialogConfirmQuit
 		return m, nil
 	}
 	return m, nil
@@ -516,20 +637,32 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.mode = modeObserve
+		m.workspace.mode = modeObserve
 		return m, nil
-	case "up", "k":
+	case "up":
 		if m.selected > 0 {
 			m.selected--
 		}
 		return m, nil
-	case "down", "j":
+	case "k":
+		if m.selected > 0 {
+			m.selected--
+		}
+		return m, nil
+	case "down":
+		if m.selected < len(m.results)-1 {
+			m.selected++
+		}
+		return m, nil
+	case "j":
 		if m.selected < len(m.results)-1 {
 			m.selected++
 		}
 		return m, nil
 	case "q", "ctrl+c":
-		m.dialog = dialogConfirmQuit
+		m.workspace.dialog = dialogConfirmQuit
+		return m, nil
+	case "tab", "shift+tab", "left", "right", "h", "l":
 		return m, nil
 	}
 	return m, nil
@@ -566,8 +699,8 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	eventCh := make(chan model.Event, runconfig.MaxConcurrency)
 	hub.Add(eventCh)
 
-	m.mode = modeObserve
-	m.dialog = dialogNone
+	m.workspace.mode = modeObserve
+	m.workspace.dialog = dialogNone
 	m.running = true
 	m.cancel = cancel
 	m.eventCh = eventCh

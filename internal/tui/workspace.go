@@ -15,8 +15,6 @@ type Workspace struct {
 	mode   mode
 	dialog dialog
 	view   ViewType
-
-	surface Surface
 }
 
 // NewWorkspace creates the default Workspace (OBSERVE/Timeline).
@@ -41,17 +39,3 @@ func (w Workspace) Orientation() string {
 		return "OBSERVE"
 	}
 }
-
-// IsRequesting returns true when the REQUEST dialog is active.
-func (w Workspace) IsRequesting() bool { return w.dialog == dialogRequest }
-
-// IsInspecting returns true when INSPECT mode is active.
-func (w Workspace) IsInspecting() bool { return w.mode == modeInspect }
-
-// IsObserving returns true when in the default OBSERVE mode with no dialog.
-func (w Workspace) IsObserving() bool {
-	return w.mode == modeObserve && w.dialog == dialogNone
-}
-
-// IsQuitting returns true when the confirm-quit dialog is shown.
-func (w Workspace) IsQuitting() bool { return w.dialog == dialogConfirmQuit }

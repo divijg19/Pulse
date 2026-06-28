@@ -19,7 +19,37 @@ var (
 	styleRibbon    = styleBase.Copy().Background(lipgloss.Color(colorDark))
 	styleSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 	styleMuted     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	styleAccent    = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
+	styleError     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
+
+	styleModeCell = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorBg)).
+			Background(lipgloss.Color(colorAccent)).
+			Bold(true).
+			Padding(0, 1)
+
+	stylePrimaryAction = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorAccent)).
+				Background(lipgloss.Color(colorDark)).
+				Bold(true)
+
+	styleStatusCell = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorMuted)).
+			Bold(true)
+
+	styleSectionLine = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorMuted))
+
+	styleDomainActive = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorAccent))
+
+	styleDomainInactive = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorMuted))
 )
+
+func regionStyle(region Region) lipgloss.Style {
+	return styleBase.Copy().Width(region.Width).Height(region.Height)
+}
 
 func statusColor(status int) string {
 	if status == 0 {

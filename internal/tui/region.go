@@ -1,10 +1,11 @@
 package tui
 
-// RegionType distinguishes the two kinds of region in the Shell layout.
+// RegionType distinguishes the three kinds of region in the Shell layout.
 type RegionType int
 
 const (
-	ContextRegion RegionType = iota
+	RegionUnset RegionType = iota
+	ContextRegion
 	WorkspaceRegion
 	CommandRegion
 )

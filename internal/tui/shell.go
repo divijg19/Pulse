@@ -1,7 +1,9 @@
 package tui
 
-// Region is a rectangular area within a layout.
+// Region is a rectangular area within a layout. Each Region has a type that
+// identifies its role in the composition.
 type Region struct {
+	Type   RegionType
 	Width  int
 	Height int
 }
@@ -12,10 +14,6 @@ type ShellLayout struct {
 	Workspace Region
 	Command   Region
 }
-
-// ShellColumnWidth is the fixed width reserved for the orientation label
-// in the operator ribbon.
-const ShellColumnWidth = 16
 
 // ActionCategory defines the four semantic groups an action can belong to.
 type ActionCategory int
@@ -73,33 +71,44 @@ type ShellState struct {
 	Actions       []Action
 }
 
+// ActionPriority defines the semantic importance of an operator action.
+type ActionPriority int
+
+const (
+	PriorityCritical ActionPriority = iota
+	PriorityHigh
+	PriorityMedium
+	PriorityLow
+)
+
 // actionBinding maps an operator intent (ActionID) to its presentation in the
 // operator ribbon.
 type actionBinding struct {
 	Key      string
 	Label    string
 	Category ActionCategory
+	Priority ActionPriority
 }
 
 var actionBindings = map[ActionID]actionBinding{
-	ActionSelect:            {"↑↓", "Select", NavigationCategory},
-	ActionInspect:           {"Enter", "Inspect", NavigationCategory},
-	ActionSwitchView:        {"Tab", "Views", NavigationCategory},
-	ActionConfigureRequest:  {"e", "Request", ConfigurationCategory},
-	ActionRun:               {"Ctrl+R", "Run", OperationCategory},
-	ActionCancel:            {"Ctrl+X", "Cancel", OperationCategory},
-	ActionNextField:         {"Tab", "Next Field", ConfigurationCategory},
-	ActionSwitchMethod:      {"←→", "Method", ConfigurationCategory},
-	ActionAdjustConcurrency: {"↑↓", "Adjust", ConfigurationCategory},
-	ActionNextHeader:        {"Tab", "Next", ConfigurationCategory},
-	ActionAddHeader:         {"Ctrl+N", "Header", ConfigurationCategory},
-	ActionDeleteHeader:      {"Ctrl+D", "Delete", ConfigurationCategory},
-	ActionBack:              {"Esc", "Back", ApplicationCategory},
-	ActionQuit:              {"q", "Quit", ApplicationCategory},
-	ActionConfirmQuit:       {"Enter", "Quit", ApplicationCategory},
-	ActionCtrlCQuit:         {"Ctrl+C", "Quit", ApplicationCategory},
-	ActionQQuit:             {"q", "Quit", ApplicationCategory},
-	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory},
+	ActionSelect:            {"↑↓", "Select", NavigationCategory, PriorityHigh},
+	ActionInspect:           {"Enter", "Inspect", NavigationCategory, PriorityHigh},
+	ActionSwitchView:        {"Tab", "Views", NavigationCategory, PriorityMedium},
+	ActionConfigureRequest:  {"e", "Request", ConfigurationCategory, PriorityCritical},
+	ActionRun:               {"Ctrl+R", "Run", OperationCategory, PriorityCritical},
+	ActionCancel:            {"Ctrl+X", "Cancel", OperationCategory, PriorityCritical},
+	ActionNextField:         {"Tab", "Next Field", ConfigurationCategory, PriorityHigh},
+	ActionSwitchMethod:      {"←→", "Method", ConfigurationCategory, PriorityHigh},
+	ActionAdjustConcurrency: {"↑↓", "Adjust", ConfigurationCategory, PriorityHigh},
+	ActionNextHeader:        {"Tab", "Next", ConfigurationCategory, PriorityHigh},
+	ActionAddHeader:         {"Ctrl+N", "Header", ConfigurationCategory, PriorityHigh},
+	ActionDeleteHeader:      {"Ctrl+D", "Delete", ConfigurationCategory, PriorityLow},
+	ActionBack:              {"Esc", "Back", ApplicationCategory, PriorityCritical},
+	ActionQuit:              {"q", "Quit", ApplicationCategory, PriorityCritical},
+	ActionConfirmQuit:       {"Enter", "Quit", ApplicationCategory, PriorityCritical},
+	ActionCtrlCQuit:         {"Ctrl+C", "Quit", ApplicationCategory, PriorityCritical},
+	ActionQQuit:             {"q", "Quit", ApplicationCategory, PriorityCritical},
+	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory, PriorityCritical},
 }
 
 // Shell is the permanent outer boundary of Pulse. It owns orientation,
@@ -130,21 +139,12 @@ func computeShellLayout(totalWidth, totalHeight int) ShellLayout {
 	width := max(72, totalWidth)
 	bodyHeight := max(1, totalHeight-5)
 	return ShellLayout{
-		Context:   Region{Width: width, Height: 1},
-		Workspace: Region{Width: width, Height: bodyHeight},
-		Command:   Region{Width: width, Height: 1},
+		Context:   Region{Type: ContextRegion, Width: width, Height: 1},
+		Workspace: Region{Type: WorkspaceRegion, Width: width, Height: bodyHeight},
+		Command:   Region{Type: CommandRegion, Width: width, Height: 1},
 	}
 }
 
 func orientationLabel(m Model) string {
-	switch {
-	case m.dialog == dialogConfirmQuit:
-		return "QUIT"
-	case m.mode == modeInspect:
-		return "INSPECT"
-	case m.dialog == dialogRequest:
-		return "REQUEST"
-	default:
-		return "OBSERVE"
-	}
+	return m.workspace.Orientation()
 }

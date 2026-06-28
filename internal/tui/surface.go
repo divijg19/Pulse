@@ -8,25 +8,43 @@ type Surface interface {
 	Render(region Region) string
 }
 
-// surfaceFunc adapts a function to the Surface interface.
-type surfaceFunc func(Region) string
+// RequestSurface renders the REQUEST workspace.
+type RequestSurface struct{ m Model }
 
-func (f surfaceFunc) Render(region Region) string {
-	return f(region)
-}
+func (s RequestSurface) Render(region Region) string { return s.m.renderRequest(region) }
+
+// InspectSurface renders the INSPECT workspace.
+type InspectSurface struct{ m Model }
+
+func (s InspectSurface) Render(region Region) string { return s.m.renderInspect(region) }
+
+// ReadySurface renders the idle OBSERVE state before any results exist.
+type ReadySurface struct{ m Model }
+
+func (s ReadySurface) Render(region Region) string { return s.m.renderReady(region) }
+
+// TimelineSurface renders the Timeline view within OBSERVE.
+type TimelineSurface struct{ m Model }
+
+func (s TimelineSurface) Render(region Region) string { return s.m.renderTimeline(region) }
+
+// LogsSurface renders the Logs view within OBSERVE.
+type LogsSurface struct{ m Model }
+
+func (s LogsSurface) Render(region Region) string { return s.m.renderLogs(region) }
 
 // resolveSurface returns the Surface for the current Model state.
 func (m Model) resolveSurface() Surface {
 	switch {
-	case m.dialog == dialogRequest:
-		return surfaceFunc(m.renderRequest)
-	case m.mode == modeInspect:
-		return surfaceFunc(m.renderInspect)
+	case m.workspace.dialog == dialogRequest:
+		return RequestSurface{m: m}
+	case m.workspace.mode == modeInspect:
+		return InspectSurface{m: m}
 	case !m.running && len(m.results) == 0:
-		return surfaceFunc(m.renderReady)
-	case m.view == viewTimeline:
-		return surfaceFunc(m.renderTimeline)
+		return ReadySurface{m: m}
+	case m.workspace.view == TimelineView:
+		return TimelineSurface{m: m}
 	default:
-		return surfaceFunc(m.renderLogs)
+		return LogsSurface{m: m}
 	}
 }
