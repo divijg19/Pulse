@@ -64,13 +64,13 @@ func newTimelineRunningModel() Model {
 	m.results = testResults(20)
 	m.summary = metrics.Compute(m.results, m.elapsed)
 	m.selected = 5
-	m.view = viewTimeline
+	m.workspace.view = TimelineView
 	return m
 }
 
 func newLogsRunningModel() Model {
 	m := newTimelineRunningModel()
-	m.view = viewLogs
+	m.workspace.view = LogsView
 	return m
 }
 
@@ -80,13 +80,13 @@ func newTimelineRunningEmptyModel() Model {
 	m.status = "RUNNING"
 	m.startedAt = time.Now().Add(-2 * time.Second)
 	m.elapsed = 2 * time.Second
-	m.view = viewTimeline
+	m.workspace.view = TimelineView
 	return m
 }
 
 func newInspectModel() Model {
 	m := NewModel()
-	m.mode = modeInspect
+	m.workspace.mode = modeInspect
 	m.results = testResults(20)
 	m.summary = metrics.Compute(m.results, 5*time.Second)
 	m.selected = 3
@@ -95,7 +95,7 @@ func newInspectModel() Model {
 
 func newRequestPayloadModel() Model {
 	m := NewModel()
-	m.dialog = dialogRequest
+	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainPayload
 	m.selectedHead = bodyFocus
 	m.headers = []headerRow{newHeaderRow(), newHeaderRow()}
@@ -109,7 +109,7 @@ func newRequestPayloadModel() Model {
 
 func newRequestModel() Model {
 	m := NewModel()
-	m.dialog = dialogRequest
+	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.SetValue("https://httpbin.org/delay/1")
@@ -119,7 +119,7 @@ func newRequestModel() Model {
 
 func newRequestExecModel() Model {
 	m := NewModel()
-	m.dialog = dialogRequest
+	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
 	m.ccInput.SetValue("10")
 	m.ccInput.Focus()
@@ -128,7 +128,7 @@ func newRequestExecModel() Model {
 
 func newConfirmQuitModel() Model {
 	m := newTimelineRunningModel()
-	m.dialog = dialogConfirmQuit
+	m.workspace.dialog = dialogConfirmQuit
 	return m
 }
 

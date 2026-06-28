@@ -13,16 +13,16 @@ import (
 
 func (m Model) Actions() []Action {
 	switch {
-	case m.dialog == dialogConfirmQuit:
+	case m.workspace.dialog == dialogConfirmQuit:
 		return []Action{
 			{ActionConfirmQuit, ApplicationCategory, true},
 			{ActionCtrlCQuit, ApplicationCategory, true},
 			{ActionQQuit, ApplicationCategory, true},
 			{ActionDismissCancel, ApplicationCategory, true},
 		}
-	case m.dialog == dialogRequest:
+	case m.workspace.dialog == dialogRequest:
 		return m.requestActions()
-	case m.mode == modeInspect:
+	case m.workspace.mode == modeInspect:
 		return []Action{
 			{ActionSelect, NavigationCategory, true},
 			{ActionBack, ApplicationCategory, true},
@@ -89,6 +89,9 @@ func (m Model) ShellState() ShellState {
 	}
 }
 
+const contextThreshold = 140
+const contextMinWidth = 28
+
 func (m Model) View() string {
 	w, h := m.shell.Dimensions()
 	if w == 0 {
@@ -103,35 +106,89 @@ func (m Model) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Context.Width)))
 	sb.WriteString("\n")
-	sb.WriteString(m.resolveSurface().Render(layout.Workspace))
+	sb.WriteString(m.renderWorkspace(layout, w))
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Command.Width)))
 	sb.WriteString("\n")
-	sb.WriteString(m.renderRibbon(state, layout.Command.Width))
+	sb.WriteString(m.renderStatusline(state, layout.Command.Width))
 
 	return styleBase.Width(layout.Context.Width).Height(h).Render(sb.String())
 }
 
-func (m Model) renderCurrentSurface(region Region) string {
+func (m Model) renderWorkspace(layout ShellLayout, width int) string {
+	context := m.renderContextRegion(layout.Workspace)
+	if context == "" || width < contextThreshold {
+		return m.resolveSurface().Render(layout.Workspace)
+	}
+
+	ctxWidth := min(contextMinWidth, max(contextMinWidth, layout.Workspace.Width/3))
+	primaryWidth := layout.Workspace.Width - ctxWidth - 1
+	if primaryWidth < 40 {
+		return m.resolveSurface().Render(layout.Workspace)
+	}
+
+	primary := m.resolveSurface().Render(Region{Type: WorkspaceRegion, Width: primaryWidth, Height: layout.Workspace.Height})
+	contextPanel := m.renderContextRegion(Region{Type: ContextRegion, Width: ctxWidth, Height: layout.Workspace.Height})
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, primary, " ", contextPanel)
+}
+
+func (m Model) renderContextRegion(region Region) string {
 	switch {
-	case m.dialog == dialogRequest:
-		return m.renderRequest(region)
-	case m.mode == modeInspect:
-		return m.renderInspect(region)
-	case !m.running && len(m.results) == 0:
-		return m.renderReady(region)
-	case m.view == viewTimeline:
-		return m.renderTimeline(region)
+	case m.workspace.dialog == dialogRequest:
+		return m.renderRequestContext(region)
+	case m.workspace.mode == modeInspect && len(m.results) > 0:
+		return m.renderInspectContext(region)
+	case len(m.results) > 0:
+		return m.renderObserveContext(region)
 	default:
-		return m.renderLogs(region)
+		return ""
 	}
 }
 
-func identityCell(label string, subdued bool) string {
-	if subdued {
-		return styleMuted.Render(label)
+func (m Model) renderObserveContext(region Region) string {
+	sel := m.selected
+	if sel < 0 || sel >= len(m.results) {
+		return regionStyle(region).Render("")
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true).Render(label)
+	result := m.results[sel]
+	method := m.effectiveMethod(result)
+	reqURL := m.effectiveURL(result)
+
+	var b strings.Builder
+	b.WriteString(accentOrMuted("Selected Request", true))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("  %s %s\n", method, truncateURL(reqURL, region.Width-12)))
+	b.WriteString(fmt.Sprintf("  %s\n", renderStatusBadge(result)))
+	b.WriteString(fmt.Sprintf("  Latency: %s\n", formatDuration(result.Latency)))
+	return regionStyle(region).Render(b.String())
+}
+
+func (m Model) renderInspectContext(region Region) string {
+	var b strings.Builder
+	b.WriteString(accentOrMuted("Metrics", false))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("  Duration: %s\n", formatDuration(m.elapsed)))
+	b.WriteString(fmt.Sprintf("  Requests: %d\n", len(m.results)))
+	if metrics := m.metricsString(); metrics != "" {
+		b.WriteString(fmt.Sprintf("  %s\n", metrics))
+	}
+	return regionStyle(region).Render(b.String())
+}
+
+func (m Model) renderRequestContext(region Region) string {
+	var b strings.Builder
+	b.WriteString(accentOrMuted("Preview", false))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("  Method: %s\n", runconfig.AllowedMethods()[m.methodIndex]))
+	b.WriteString(fmt.Sprintf("  URL: %s\n", truncateURL(m.urlInput.Value(), region.Width-8)))
+	b.WriteString(fmt.Sprintf("  CC: %d\n", m.concurrency()))
+	b.WriteString(fmt.Sprintf("  Payload: %s\n", m.payloadSummary()))
+	return regionStyle(region).Render(b.String())
+}
+
+func identityCell(label string) string {
+	return styleMuted.Render(label)
 }
 
 func (m Model) metricsString() string {
@@ -202,7 +259,7 @@ func (m Model) renderReady(region Region) string {
 
 	payloadLabel := "Payload " + m.payloadSummary()
 
-	identity := identityCell("OBSERVE", false)
+	identity := renderWorkspaceBadge("OBSERVE")
 
 	content := fmt.Sprintf("%s    %s\n\nCC %d\n\n%s",
 		method, url, cc, payloadLabel)
@@ -212,7 +269,7 @@ func (m Model) renderReady(region Region) string {
 	b.WriteString("\n\n")
 	b.WriteString(content)
 
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+	return regionStyle(region).Render(b.String())
 }
 
 func isErrorResult(result model.Result) bool {
@@ -221,26 +278,48 @@ func isErrorResult(result model.Result) bool {
 
 func accentOrMuted(name string, active bool) string {
 	if active {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render(name)
+		return styleAccent.Render(name)
 	}
 	return styleMuted.Render(name)
 }
 
-func (m Model) renderRequest(region Region) string {
-	var b strings.Builder
-	b.WriteString(identityCell("REQUEST", false))
-	b.WriteString("\n")
-	b.WriteString(m.renderRequestDomain())
-	b.WriteString(m.renderPayloadDomain())
-	b.WriteString(m.renderRunDomain())
-
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+func domainHeader(label string, width int, active bool) string {
+	if width <= 0 {
+		width = 80
+	}
+	label = " " + label + " "
+	ruleLen := width - lipgloss.Width(label)
+	if ruleLen < 4 {
+		return strings.TrimSpace(label)
+	}
+	ruleChar := "─"
+	if active {
+		ruleChar = "━"
+	}
+	left := strings.Repeat(ruleChar, ruleLen/2)
+	right := strings.Repeat(ruleChar, ruleLen-ruleLen/2)
+	line := left + label + right
+	if active {
+		return styleDomainActive.Render(line)
+	}
+	return styleDomainInactive.Render(line)
 }
 
-func (m Model) renderRequestDomain() string {
+func (m Model) renderRequest(region Region) string {
+	var b strings.Builder
+	b.WriteString(renderWorkspaceBadge("REQUEST"))
+	b.WriteString("\n")
+	b.WriteString(m.renderRequestDomain(region.Width))
+	b.WriteString(m.renderPayloadDomain(region.Width))
+	b.WriteString(m.renderExecDomain(region.Width))
+
+	return regionStyle(region).Render(b.String())
+}
+
+func (m Model) renderRequestDomain(width int) string {
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(accentOrMuted("Request", m.activeDomain == DomainRequest))
+	b.WriteString(domainHeader("Request", width, m.activeDomain == DomainRequest))
 	b.WriteString("\n")
 
 	methods := runconfig.AllowedMethods()
@@ -248,18 +327,12 @@ func (m Model) renderRequestDomain() string {
 	for i, method := range methods {
 		sel := i == m.methodIndex
 		focus := m.activeDomain == DomainRequest && m.requestField == reqFieldMethod
-		if sel && focus {
-			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorDark)).Render(" " + method + " ")
-		} else if sel {
-			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render(" " + method + " ")
-		} else {
-			methodLine += styleMuted.Render(" " + method + " ")
-		}
+		methodLine += renderMethodPill(method, sel, focus)
 	}
 
 	methodLabel := "Method"
 	if m.activeDomain == DomainRequest && m.requestField == reqFieldMethod {
-		methodLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("Method")
+		methodLabel = styleAccent.Render("Method")
 	} else {
 		methodLabel = styleMuted.Render("Method")
 	}
@@ -268,7 +341,7 @@ func (m Model) renderRequestDomain() string {
 
 	urlLabel := "URL"
 	if m.activeDomain == DomainRequest && m.requestField == reqFieldURL {
-		urlLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("URL")
+		urlLabel = styleAccent.Render("URL")
 	} else {
 		urlLabel = styleMuted.Render("URL")
 	}
@@ -277,10 +350,10 @@ func (m Model) renderRequestDomain() string {
 	return b.String()
 }
 
-func (m Model) renderPayloadDomain() string {
+func (m Model) renderPayloadDomain(width int) string {
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(accentOrMuted("Payload", m.activeDomain == DomainPayload))
+	b.WriteString(domainHeader("Payload", width, m.activeDomain == DomainPayload))
 	b.WriteString("\n")
 
 	headersActive := m.activeDomain == DomainPayload && m.selectedHead != bodyFocus
@@ -310,14 +383,15 @@ func (m Model) renderPayloadDomain() string {
 	b.WriteString(accentOrMuted(bodyLabel, bodyActive))
 	b.WriteString("\n")
 	b.WriteString("  " + m.bodyInput.View())
+	b.WriteString("\n")
 
 	return b.String()
 }
 
-func (m Model) renderRunDomain() string {
+func (m Model) renderExecDomain(width int) string {
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(accentOrMuted("Execution", m.activeDomain == DomainExec))
+	b.WriteString(domainHeader("Execution", width, m.activeDomain == DomainExec))
 	b.WriteString("\n")
 
 	ccText := strings.TrimSpace(m.ccInput.View())
@@ -326,57 +400,201 @@ func (m Model) renderRunDomain() string {
 	if active {
 		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
 	} else {
-		ccVal := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText)).Render(ccText)
+		ccVal := styleBase.Foreground(lipgloss.Color(colorText)).Render(ccText)
 		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccVal, runconfig.MaxConcurrency))
 	}
 
 	return b.String()
 }
 
-func (m Model) renderRibbon(state ShellState, width int) string {
-	label := state.Orientation
-	actions := state.Actions
+func renderWorkspaceBadge(label string) string {
+	return styleModeCell.Render(label)
+}
 
-	type cmd struct {
-		key      string
-		label    string
-		category ActionCategory
+func renderMethodPill(method string, selected bool, focused bool) string {
+	switch {
+	case selected && focused:
+		return stylePrimaryAction.Render(" " + method + " ")
+	case selected:
+		return styleAccent.Render(" " + method + " ")
+	default:
+		return styleMuted.Render(" " + method + " ")
+	}
+}
+
+func renderStatusBadge(result model.Result) string {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(statusColor(result.Status))).
+		Bold(true).
+		Render("Status: " + resultStatus(result))
+}
+
+func renderLatencyBar(filled, barWidth int, barColor string) string {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(barColor)).
+		Render(strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled))
+}
+
+func renderInteractionStatus(m Model) string {
+	switch {
+	case m.workspace.dialog == dialogRequest:
+		return "Editing"
+	case m.workspace.dialog == dialogConfirmQuit:
+		return "Quitting"
+	case m.workspace.mode == modeInspect:
+		return "Inspecting"
+	case m.running:
+		return "Running"
+	case len(m.results) > 0:
+		return "Completed"
+	default:
+		return "Ready"
+	}
+}
+
+// Density controls how much information the ribbon displays at a given width.
+// Higher density values pack more information into less space until the
+// action strip is fully hidden. Badge and status are never removed.
+type Density int
+
+const (
+	DensityFull            Density = iota // 0: 4-space gaps, "  │  " seps, full labels
+	DensityRelaxed                        // 1: 1-space group gaps, "  │  " seps
+	DensityCompact                        // 2: 1-space gaps, "│" seps
+	DensityCompressed                     // 3: 1-space gaps, "│" seps, " " within-group
+	DensityAbbreviated                    // 4: same as 3, abbrev labels
+	DensityPriorityReduced                // 5: same as 4, drop Low priority
+	DensityMinimal                        // 6: keys only
+	DensityEmergency                      // 7: no actions
+)
+
+// RibbonLayout holds the pre-rendered components of the footer statusline.
+type RibbonLayout struct {
+	Badge   string
+	Actions string
+	Status  string
+	Density Density
+}
+
+func abbreviateLabel(label string) string {
+	abbr := map[string]string{
+		"Request":   "Req",
+		"Execution": "Exec",
+		"Observe":   "Obs",
+		"Header":    "Hdr",
+		"Headers":   "Hdrs",
+		"Delete":    "Del",
+		"Select":    "Sel",
+		"Inspect":   "Insp",
+		"Cancel":    "Ccl",
+		"Adjust":    "Adj",
+		"Method":    "Mth",
+	}
+	if v, ok := abbr[label]; ok {
+		return v
+	}
+	if idx := strings.Index(label, " "); idx != -1 {
+		return label[:idx]
+	}
+	return label
+}
+
+func buildActionStrip(actions []Action, level Density) string {
+	if level >= DensityEmergency {
+		return ""
 	}
 
-	groups := make([][]cmd, 4)
+	groupGap := "    "
+	withinSep := " · "
+	if level >= DensityRelaxed {
+		groupGap = " "
+	}
+	if level >= DensityCompressed {
+		withinSep = " "
+	}
+
+	groups := make([][]actionBinding, 4)
 	for _, a := range actions {
 		b := actionBindings[a.ID]
-		c := cmd{key: b.Key, label: b.Label, category: b.Category}
-		groups[b.Category] = append(groups[b.Category], c)
+		if level == DensityPriorityReduced && b.Priority == PriorityLow {
+			continue
+		}
+		groups[b.Category] = append(groups[b.Category], b)
 	}
 
+	highlighted := false
 	var actionParts []string
 	for _, group := range groups {
 		if len(group) == 0 {
 			continue
 		}
 		var parts []string
-		for _, c := range group {
-			parts = append(parts, fmt.Sprintf("[%s] %s", c.key, c.label))
+		for _, b := range group {
+			var part string
+			switch {
+			case level >= DensityMinimal:
+				part = fmt.Sprintf("[%s]", b.Key)
+			case level >= DensityAbbreviated:
+				part = fmt.Sprintf("[%s] %s", b.Key, abbreviateLabel(b.Label))
+			default:
+				part = fmt.Sprintf("[%s] %s", b.Key, b.Label)
+			}
+			if !highlighted {
+				part = stylePrimaryAction.Render(" " + part)
+				highlighted = true
+			}
+			parts = append(parts, part)
 		}
-		actionParts = append(actionParts, strings.Join(parts, " · "))
+		actionParts = append(actionParts, strings.Join(parts, withinSep))
+	}
+	return strings.Join(actionParts, groupGap)
+}
+
+func chooseRibbonLevel(badge, status string, actions []Action, width int) (Density, string) {
+	badgeWidth := lipgloss.Width(badge)
+	statusWidth := lipgloss.Width(status)
+
+	for level := DensityFull; level <= DensityEmergency; level++ {
+		actionText := buildActionStrip(actions, level)
+		actionWidth := lipgloss.Width(actionText)
+
+		sepWidth := 11
+		if level >= DensityCompact {
+			sepWidth = 2
+		}
+
+		if badgeWidth+statusWidth+sepWidth+actionWidth <= width {
+			return level, actionText
+		}
+	}
+	return DensityEmergency, ""
+}
+
+func renderRibbon(layout RibbonLayout, width int) string {
+	sep := styleMuted.Render("│")
+	var leftSep, rightSep string
+	if layout.Density >= DensityCompact {
+		leftSep = sep
+		rightSep = sep
+	} else {
+		leftSep = "  " + sep + "  "
+		rightSep = "  " + sep + "  "
 	}
 
-	actionColumn := strings.Join(actionParts, "    ")
+	ls := lipgloss.Width(leftSep)
+	rs := lipgloss.Width(rightSep)
+	padding := max(0, width-lipgloss.Width(layout.Badge)-lipgloss.Width(layout.Status)-ls-rs-lipgloss.Width(layout.Actions))
 
-	anchor := lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("│")
-	var ribbonParts []string
-	ribbonParts = append(ribbonParts, fmt.Sprintf("%s %-*s", anchor, ShellColumnWidth-2, label))
-	if actionColumn != "" {
-		ribbonParts = append(ribbonParts, actionColumn)
-	}
-	ribbonLine := strings.Join(ribbonParts, "  ")
+	line := layout.Badge + leftSep + layout.Actions + strings.Repeat(" ", padding) + rightSep + layout.Status
+	return styleRibbon.Width(width).Render(line)
+}
 
-	if w := lipgloss.Width(ribbonLine); w < width {
-		ribbonLine += strings.Repeat(" ", width-w)
-	}
+func (m Model) renderStatusline(state ShellState, width int) string {
+	badge := renderWorkspaceBadge(state.Orientation)
+	status := styleStatusCell.Render(renderInteractionStatus(m))
+	level, actions := chooseRibbonLevel(badge, status, state.Actions, width)
 
-	return styleRibbon.Width(width).Render(ribbonLine)
+	return renderRibbon(RibbonLayout{Badge: badge, Actions: actions, Status: status, Density: level}, width)
 }
 
 func visibleWindow(total, selected, height int) int {
@@ -397,10 +615,10 @@ func visibleWindow(total, selected, height int) int {
 func (m Model) renderResultList(region Region, identity string, emptyRunning string, rowFn func(result model.Result, index int, selected bool, width int) string) string {
 	var b strings.Builder
 
-	b.WriteString(identityCell(identity, false))
-	b.WriteString("\n")
+	b.WriteString(identityCell(identity))
+	b.WriteString("\n\n")
 
-	remaining := region.Height - 1
+	remaining := region.Height - 2
 	if metrics := m.metricsString(); metrics != "" {
 		b.WriteString(styleMuted.Width(region.Width).Render(metrics))
 		b.WriteString("\n")
@@ -408,13 +626,13 @@ func (m Model) renderResultList(region Region, identity string, emptyRunning str
 	}
 
 	if remaining <= 0 {
-		return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+		return regionStyle(region).Render(b.String())
 	}
 
 	if len(m.results) == 0 {
 		msg := m.renderEmptyState(emptyRunning)
 		b.WriteString(styleMuted.Render(msg))
-		return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+		return regionStyle(region).Render(b.String())
 	}
 
 	start := visibleWindow(len(m.results), m.selected, remaining)
@@ -426,7 +644,7 @@ func (m Model) renderResultList(region Region, identity string, emptyRunning str
 	}
 	b.WriteString(strings.Join(rows, "\n"))
 
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+	return regionStyle(region).Render(b.String())
 }
 
 func (m Model) renderTimeline(region Region) string {
@@ -439,10 +657,7 @@ func (m Model) renderTimeline(region Region) string {
 func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time.Duration, width int, selected bool) string {
 	status := resultStatus(result)
 	latency := formatDuration(result.Latency)
-	method := result.RequestMethod
-	if method == "" {
-		method = runconfig.AllowedMethods()[m.methodIndex]
-	}
+	method := m.effectiveMethod(result)
 
 	barWidth := max(6, width-38)
 	filled := 0
@@ -454,9 +669,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	}
 
 	barColor := statusColor(result.Status)
-	bar := lipgloss.NewStyle().Foreground(lipgloss.Color(barColor)).Render(
-		strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled),
-	)
+	bar := renderLatencyBar(filled, barWidth, barColor)
 
 	line := fmt.Sprintf("%s %3d %-4s %-12s %s %s",
 		rowCursor(selected), index+1, method, status, bar, latency)
@@ -471,14 +684,8 @@ func (m Model) renderLogs(region Region) string {
 	return m.renderResultList(region, "Logs", "📭  No results yet...",
 		func(result model.Result, index int, selected bool, width int) string {
 			status := resultStatus(result)
-			method := result.RequestMethod
-			if method == "" {
-				method = runconfig.AllowedMethods()[m.methodIndex]
-			}
-			reqURL := result.RequestURL
-			if reqURL == "" {
-				reqURL = m.urlInput.Value()
-			}
+			method := m.effectiveMethod(result)
+			reqURL := m.effectiveURL(result)
 			line := fmt.Sprintf("%s %3d %-4s %-10s %-8s %s",
 				rowCursor(selected), index+1, method, status, formatDuration(result.Latency), truncate(reqURL, width-33))
 			if isErrorResult(result) {
@@ -490,36 +697,29 @@ func (m Model) renderLogs(region Region) string {
 
 func (m Model) renderInspect(region Region) string {
 	if len(m.results) == 0 || m.selected < 0 || m.selected >= len(m.results) {
-		return styleBase.Copy().Width(region.Width).Height(region.Height).Render(styleMuted.Render("No result selected."))
+		return regionStyle(region).Render(styleMuted.Render("No result selected."))
 	}
 
 	result := m.results[m.selected]
-	method := result.RequestMethod
-	if method == "" {
-		method = runconfig.AllowedMethods()[m.methodIndex]
-	}
-	reqURL := result.RequestURL
-	if reqURL == "" {
-		reqURL = m.urlInput.Value()
-	}
+	method := m.effectiveMethod(result)
+	reqURL := m.effectiveURL(result)
 
-	errorText := lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 	sectionLine := func(label string) string {
-		return styleMuted.Render("-- " + label + " --")
+		return styleSectionLine.Render("── " + label + " ──")
 	}
 
-	identity := identityCell(fmt.Sprintf("Inspector - Result #%d", m.selected+1), false)
+	identity := identityCell(fmt.Sprintf("Inspector - Result #%d", m.selected+1))
 
 	lines := []string{
 		identity,
 		"",
 		fmt.Sprintf("  %s %s", method, truncate(reqURL, region.Width-12)),
 		"",
-		lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor(result.Status))).Render("Status:  " + resultStatus(result)),
+		renderStatusBadge(result),
 		fmt.Sprintf("Latency: %s", formatDuration(result.Latency)),
 	}
 	if result.Error != "" {
-		lines = append(lines, errorText.Render("Error: "+result.Error))
+		lines = append(lines, styleError.Render("Error: "+result.Error))
 	}
 	lines = append(lines, "", sectionLine("HEADERS"))
 
@@ -552,7 +752,7 @@ func (m Model) renderInspect(region Region) string {
 		lines = append(lines, truncate(bline, region.Width-4))
 	}
 
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(strings.Join(lines, "\n"))
+	return regionStyle(region).Render(strings.Join(lines, "\n"))
 }
 
 func resultStatus(result model.Result) string {
