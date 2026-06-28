@@ -38,8 +38,7 @@ func AllAuditSurfaces() []AuditSurface {
 
 func WriteAuditCapture(surface AuditSurface, w, h int, dir string) (string, error) {
 	m := surface.Setup()
-	m.width = w
-	m.height = h
+	m.shell.Resize(w, h)
 	out := m.View()
 	name := fmt.Sprintf("%s_%dx%d.ansi", surface.Name, w, h)
 	path := filepath.Join(dir, name)
@@ -97,7 +96,7 @@ func newInspectModel() Model {
 func newRequestPayloadModel() Model {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = bodyFocus
 	m.headers = []headerRow{newHeaderRow(), newHeaderRow()}
 	m.headers[0].Key.SetValue("Content-Type")
@@ -111,7 +110,7 @@ func newRequestPayloadModel() Model {
 func newRequestModel() Model {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.SetValue("https://httpbin.org/delay/1")
 	m.urlInput.Focus()
@@ -121,7 +120,7 @@ func newRequestModel() Model {
 func newRequestExecModel() Model {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.ccInput.SetValue("10")
 	m.ccInput.Focus()
 	return m
