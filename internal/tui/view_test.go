@@ -15,8 +15,7 @@ func contains(t *testing.T, s, substr string) bool {
 
 func TestView_Idle(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 	out := m.View()
 	if !contains(t, out, "GET") {
 		t.Fatal("View should contain method")
@@ -28,8 +27,7 @@ func TestView_Idle(t *testing.T) {
 
 func TestView_Running(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 	m.running = true
 	m.status = "RUNNING"
 	m.startedAt = time.Now().Add(-2 * time.Second)
@@ -51,8 +49,7 @@ func TestView_Running(t *testing.T) {
 
 func TestRenderReady(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 	out := m.renderReady(Region{Width: 100, Height: 26})
 	if !contains(t, out, "OBSERVE") {
 		t.Fatal("Ready should show identity")
@@ -73,8 +70,7 @@ func TestRenderReady(t *testing.T) {
 
 func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 
 	out := m.View()
 	if !contains(t, out, "OBSERVE") {
@@ -90,7 +86,7 @@ func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 
 func TestRenderTopBar_ShowsMethodAndURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderTopBar(m.ShellState(), 100)
 	if !contains(t, out, "GET") {
 		t.Fatal("top bar should contain method")
@@ -102,7 +98,7 @@ func TestRenderTopBar_ShowsMethodAndURL(t *testing.T) {
 
 func TestRenderTopBar_ShowsPayloadSummary(t *testing.T) {
 	m := NewModel()
-	m.width = 120
+	m.shell.Resize(120, 30)
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
 	m.headers[0].Value.SetValue("application/json")
@@ -119,7 +115,7 @@ func TestRenderTopBar_ShowsPayloadSummary(t *testing.T) {
 
 func TestRenderTopBar_ShowsCC(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderTopBar(m.ShellState(), 100)
 	if !contains(t, out, "CC") {
 		t.Fatal("top bar should show CC")
@@ -128,7 +124,7 @@ func TestRenderTopBar_ShowsCC(t *testing.T) {
 
 func TestRenderTopBar_QueryTruncation(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.urlInput.SetValue("https://api.example.com/users?page=1")
 	out := m.renderTopBar(m.ShellState(), 100)
 	if contains(t, out, "?page=1") {
@@ -141,7 +137,7 @@ func TestRenderTopBar_QueryTruncation(t *testing.T) {
 
 func TestMetricsString(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.summary.Total = 50
 	m.summary.Successes = 45
@@ -168,7 +164,7 @@ func TestMetricsString(t *testing.T) {
 
 func TestMetricsString_Zero(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.metricsString()
 	if out != "" {
 		t.Fatal("idle metrics with no results should be empty")
@@ -177,7 +173,7 @@ func TestMetricsString_Zero(t *testing.T) {
 
 func TestMetricsString_HiddenWhenIdle(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = false
 	m.summary.Total = 0
 	m.summary.SuccessRate = 0
@@ -197,7 +193,7 @@ func TestMetricsString_HiddenWhenIdle(t *testing.T) {
 
 func TestMetricsString_Values(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.summary.Total = 10
 	m.summary.Successes = 10
@@ -219,7 +215,7 @@ func TestMetricsString_Values(t *testing.T) {
 
 func TestMetricsString_RunningRPS(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.elapsed = 2 * time.Second
 	m.summary.Total = 100
@@ -237,7 +233,7 @@ func TestMetricsString_RunningRPS(t *testing.T) {
 
 func TestMetricsString_RunningEmpty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.elapsed = 100 * time.Millisecond
 	m.summary.Total = 0
@@ -257,7 +253,7 @@ func TestMetricsString_RunningEmpty(t *testing.T) {
 
 func TestRenderRibbon_Normal(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[↑↓] Select") {
@@ -270,7 +266,7 @@ func TestRenderRibbon_Normal(t *testing.T) {
 
 func TestRenderRibbon_Ready(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[e] Request") {
 		t.Fatal("ready ribbon should show [e] Request")
@@ -294,7 +290,7 @@ func TestRenderRibbon_Ready(t *testing.T) {
 
 func TestRenderRibbon_RunningEmpty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "Ctrl+X") {
@@ -310,7 +306,7 @@ func TestRenderRibbon_RunningEmpty(t *testing.T) {
 
 func TestRenderRibbon_RunningWithResults(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderRibbon(m.ShellState(), 100)
@@ -327,9 +323,9 @@ func TestRenderRibbon_RunningWithResults(t *testing.T) {
 
 func TestRenderRibbon_RequestDialog(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Esc] Back") {
 		t.Fatal("request ribbon should show [Esc] Back")
@@ -344,9 +340,9 @@ func TestRenderRibbon_RequestDialog(t *testing.T) {
 
 func TestRenderRibbon_RequestExecDialog(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Esc] Back") {
 		t.Fatal("request exec ribbon should show [Esc] Back")
@@ -358,7 +354,7 @@ func TestRenderRibbon_RequestExecDialog(t *testing.T) {
 
 func TestRenderRibbon_Inspecting(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.mode = modeInspect
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Esc] Back") {
@@ -371,7 +367,7 @@ func TestRenderRibbon_Inspecting(t *testing.T) {
 
 func TestRenderRibbon_QuitConfirm(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogConfirmQuit
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "Quit") {
@@ -384,7 +380,7 @@ func TestRenderRibbon_QuitConfirm(t *testing.T) {
 
 func TestRenderTimeline_Identity(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
@@ -399,7 +395,7 @@ func TestRenderTimeline_Identity(t *testing.T) {
 
 func TestRenderTimeline_Empty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
 		t.Fatal("empty timeline should show Timeline identity")
@@ -411,7 +407,7 @@ func TestRenderTimeline_Empty(t *testing.T) {
 
 func TestRenderTimeline_Rows(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond},
 		{Status: 404, Latency: 50 * time.Millisecond},
@@ -433,7 +429,7 @@ func TestRenderTimeline_Rows(t *testing.T) {
 
 func TestRenderLogs_Identity(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond, RequestMethod: "GET", RequestURL: "https://example.com/api"},
 	}
@@ -448,7 +444,7 @@ func TestRenderLogs_Identity(t *testing.T) {
 
 func TestRenderLogs_Empty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {
 		t.Fatal("empty logs should show Logs identity")
@@ -460,7 +456,7 @@ func TestRenderLogs_Empty(t *testing.T) {
 
 func TestRenderLogs_Rows(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.urlInput.SetValue("https://example.com/api")
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond, RequestMethod: "GET", RequestURL: "https://example.com/api"},
@@ -489,7 +485,7 @@ func TestRenderLogs_Rows(t *testing.T) {
 
 func TestRenderInspect_Identity(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.selected = 0
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond},
@@ -506,7 +502,7 @@ func TestRenderInspect_Identity(t *testing.T) {
 
 func TestRenderInspect_NoSelection(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderInspect(Region{Width: 40, Height: 20})
 	if !contains(t, out, "No result selected.") {
 		t.Fatal("inspector with no selection should show 'No result selected.'")
@@ -515,7 +511,7 @@ func TestRenderInspect_NoSelection(t *testing.T) {
 
 func TestRenderInspect_WithResult(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.selected = 0
 	m.results = []model.Result{
 		{
@@ -545,7 +541,7 @@ func TestRenderInspect_WithResult(t *testing.T) {
 
 func TestRenderInspect_NoMetrics(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.selected = 0
 	m.results = []model.Result{
@@ -566,7 +562,7 @@ func TestRenderInspect_NoMetrics(t *testing.T) {
 
 func TestRenderInspect_WithError(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.selected = 0
 	m.results = []model.Result{
 		{
@@ -587,7 +583,7 @@ func TestRenderInspect_WithError(t *testing.T) {
 
 func TestRenderInspect_NoHeaders(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.selected = 0
 	m.results = []model.Result{
 		{
@@ -604,7 +600,7 @@ func TestRenderInspect_NoHeaders(t *testing.T) {
 
 func TestRenderInspect_NoBody(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.selected = 0
 	m.results = []model.Result{
 		{
@@ -703,7 +699,7 @@ func TestTruncate(t *testing.T) {
 
 func TestRenderTimeline_RunningEmpty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.status = "RUNNING"
 
@@ -718,7 +714,7 @@ func TestRenderTimeline_RunningEmpty(t *testing.T) {
 
 func TestRenderTimeline_IdleNoURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = false
 	m.urlInput.SetValue("")
 
@@ -733,7 +729,7 @@ func TestRenderTimeline_IdleNoURL(t *testing.T) {
 
 func TestRenderTimeline_IdleWithURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = false
 	m.urlInput.SetValue("https://example.com/api")
 
@@ -748,7 +744,7 @@ func TestRenderTimeline_IdleWithURL(t *testing.T) {
 
 func TestRenderLogs_RunningEmpty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.status = "RUNNING"
 
@@ -763,7 +759,7 @@ func TestRenderLogs_RunningEmpty(t *testing.T) {
 
 func TestRenderLogs_IdleNoURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = false
 	m.urlInput.SetValue("")
 
@@ -778,7 +774,7 @@ func TestRenderLogs_IdleNoURL(t *testing.T) {
 
 func TestRenderLogs_IdleWithURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = false
 	m.urlInput.SetValue("https://example.com/api")
 
@@ -793,8 +789,7 @@ func TestRenderLogs_IdleWithURL(t *testing.T) {
 
 func TestView_WidthMinClamp(t *testing.T) {
 	m := NewModel()
-	m.width = 40
-	m.height = 30
+	m.shell.Resize(40, 30)
 
 	out := m.View()
 	if !contains(t, out, "GET") {
@@ -804,8 +799,7 @@ func TestView_WidthMinClamp(t *testing.T) {
 
 func TestView_PayloadNotShown(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 
 	out := m.View()
 	if contains(t, out, "HEADERS") {
@@ -818,9 +812,9 @@ func TestView_PayloadNotShown(t *testing.T) {
 
 func TestRenderPayload_Identity(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
@@ -846,9 +840,9 @@ func TestRenderPayload_Identity(t *testing.T) {
 
 func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 
 	out := m.renderRequest(Region{Width: 96, Height: 20})
@@ -862,9 +856,9 @@ func TestRenderPayload_NoHeadersConfigured(t *testing.T) {
 
 func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headers = append(m.headers, newHeaderRow())
 	m.headers[0].Key.SetValue("Content-Type")
@@ -881,9 +875,9 @@ func TestRenderPayload_EmptyBodyPlaceholder(t *testing.T) {
 
 func TestRenderRequest_Identity(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 	out := m.renderRequest(Region{Width: 100, Height: 20})
@@ -903,9 +897,9 @@ func TestRenderRequest_Identity(t *testing.T) {
 
 func TestRenderRequest_ExecutionIdentity(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.setConcurrency(7)
 	out := m.renderRequest(Region{Width: 100, Height: 20})
 	if !contains(t, out, "REQUEST") {
@@ -921,9 +915,9 @@ func TestRenderRequest_ExecutionIdentity(t *testing.T) {
 
 func TestRenderEndpoint_Focused(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 	m.urlInput.SetValue("https://example.com/api")
@@ -942,9 +936,9 @@ func TestRenderEndpoint_Focused(t *testing.T) {
 
 func TestRenderConcurrency_Focused(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.ccInput.Focus()
 	m.setConcurrency(7)
 
@@ -962,9 +956,9 @@ func TestRenderConcurrency_Focused(t *testing.T) {
 
 func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
@@ -989,9 +983,9 @@ func TestRenderPayload_HeaderKeyFocus(t *testing.T) {
 
 func TestRenderPayload_HeaderValueFocus(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusValue
 	m.headers = append(m.headers, newHeaderRow())
@@ -1016,9 +1010,9 @@ func TestRenderPayload_HeaderValueFocus(t *testing.T) {
 
 func TestRenderPayload_BodyFocus(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = bodyFocus
 	m.bodyInput.Focus()
 	m.bodyInput.SetValue(`{"key": "value"}`)
@@ -1035,8 +1029,7 @@ func TestRenderPayload_BodyFocus(t *testing.T) {
 
 func TestRenderCurrentSurface_DispatchesToSurface(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 
 	region := Region{Width: 100, Height: 26}
 
@@ -1049,8 +1042,7 @@ func TestRenderCurrentSurface_DispatchesToSurface(t *testing.T) {
 
 func TestRenderWorkspace_InspectorDrillDown(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 	m.mode = modeInspect
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond,
@@ -1073,7 +1065,7 @@ func TestRenderWorkspace_InspectorDrillDown(t *testing.T) {
 
 func TestRenderTimeline_Rows_Selected(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
@@ -1091,9 +1083,9 @@ func TestRenderTimeline_Rows_Selected(t *testing.T) {
 
 func TestRenderPayload_SelectedRowVisible(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.headers = append(m.headers, newHeaderRow(), newHeaderRow(), newHeaderRow())
 	m.headers[0].Key.SetValue("Authorization")
 	m.headers[0].Value.SetValue("Bearer token")
@@ -1116,9 +1108,9 @@ func TestRenderPayload_SelectedRowVisible(t *testing.T) {
 
 func TestRenderPayload_BodyFocusColor(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = bodyFocus
 	m.headers = append(m.headers, newHeaderRow())
 
@@ -1130,9 +1122,9 @@ func TestRenderPayload_BodyFocusColor(t *testing.T) {
 
 func TestRenderRibbon_RequestPayloadDialog(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	out := m.renderRibbon(m.ShellState(), 100)
 	if !contains(t, out, "[Tab] Next") {
 		t.Fatal("request payload ribbon should show [Tab] Next")
@@ -1150,8 +1142,7 @@ func TestRenderRibbon_RequestPayloadDialog(t *testing.T) {
 
 func TestConfirmQuit_PreservesWorkspace(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 	m.running = true
 	m.dialog = dialogConfirmQuit
 
@@ -1192,111 +1183,111 @@ func TestPayloadSummary(t *testing.T) {
 
 func TestOrientationLabel_Ready(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	if got := m.orientationLabel(); got != "OBSERVE" {
+	m.shell.Resize(100, 24)
+	if got := orientationLabel(m); got != "OBSERVE" {
 		t.Fatalf("ready orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
 func TestOrientationLabel_WithResults(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "OBSERVE" {
+	if got := orientationLabel(m); got != "OBSERVE" {
 		t.Fatalf("results orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
 func TestOrientationLabel_RunningEmpty(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
-	if got := m.orientationLabel(); got != "OBSERVE" {
+	if got := orientationLabel(m); got != "OBSERVE" {
 		t.Fatalf("running empty orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
 func TestOrientationLabel_RunningWithResults(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "OBSERVE" {
+	if got := orientationLabel(m); got != "OBSERVE" {
 		t.Fatalf("running+results orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
 func TestOrientationLabel_LogsView(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.view = viewLogs
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "OBSERVE" {
+	if got := orientationLabel(m); got != "OBSERVE" {
 		t.Fatalf("logs view orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
 func TestOrientationLabel_RunningLogsView(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.view = viewLogs
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	if got := m.orientationLabel(); got != "OBSERVE" {
+	if got := orientationLabel(m); got != "OBSERVE" {
 		t.Fatalf("running+logs orientationLabel = %q, want OBSERVE", got)
 	}
 }
 
 func TestOrientationLabel_RequestDialog(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	if got := m.orientationLabel(); got != "REQUEST" {
+	if got := orientationLabel(m); got != "REQUEST" {
 		t.Fatalf("request dialog orientationLabel = %q, want REQUEST", got)
 	}
 }
 
 func TestOrientationLabel_ExecDomain(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
-	if got := m.orientationLabel(); got != "REQUEST" {
+	m.activeDomain = DomainExec
+	if got := orientationLabel(m); got != "REQUEST" {
 		t.Fatalf("request dialog (exec) orientationLabel = %q, want REQUEST", got)
 	}
 }
 
 func TestOrientationLabel_PayloadDomain(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
-	if got := m.orientationLabel(); got != "REQUEST" {
+	m.activeDomain = DomainPayload
+	if got := orientationLabel(m); got != "REQUEST" {
 		t.Fatalf("request dialog (payload) orientationLabel = %q, want REQUEST", got)
 	}
 }
 
 func TestOrientationLabel_InspectMode(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.mode = modeInspect
-	if got := m.orientationLabel(); got != "INSPECT" {
+	if got := orientationLabel(m); got != "INSPECT" {
 		t.Fatalf("inspect mode orientationLabel = %q, want INSPECT", got)
 	}
 }
 
 func TestOrientationLabel_QuitDialog(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.dialog = dialogConfirmQuit
-	if got := m.orientationLabel(); got != "QUIT" {
+	if got := orientationLabel(m); got != "QUIT" {
 		t.Fatalf("quit dialog orientationLabel = %q, want QUIT", got)
 	}
 }
 
 func TestRenderRibbon_ShellColumnWidth(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderRibbon(m.ShellState(), 100)
 	// Shell column must contain orientation label with accent anchor prefix.
 	// Format: "│ OBSERVE      " (anchor + space + 7-char label padded to 14 = 16).
@@ -1311,7 +1302,7 @@ func TestRenderRibbon_ShellColumnWidth(t *testing.T) {
 
 func TestRenderRibbon_EmptyGroupsOmitted(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderRibbon(m.ShellState(), 100)
 	// Ready state has no Navigation commands — must not render "[↑↓]" or "[Enter] Inspect".
 	if contains(t, out, "[↑↓]") {
@@ -1321,7 +1312,7 @@ func TestRenderRibbon_EmptyGroupsOmitted(t *testing.T) {
 
 func TestRenderRibbon_CategoryOrder(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderRibbon(m.ShellState(), 100)
 	// With results: Navigation → Configuration → Operation → Application.
@@ -1341,7 +1332,7 @@ func TestRenderRibbon_CategoryOrder(t *testing.T) {
 
 func TestRenderRibbon_WithinGroupSeparator(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderRibbon(m.ShellState(), 100)
 	// Ready state: [e] Request in Configuration group.
 	if !contains(t, out, "[e] Request") {
@@ -1351,7 +1342,7 @@ func TestRenderRibbon_WithinGroupSeparator(t *testing.T) {
 
 func TestRenderRibbon_BetweenGroupSeparator(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderRibbon(m.ShellState(), 100)
 	// Ready state: Configuration group followed by Operation group.
 	// Must have 4-space gap between groups.
@@ -1371,23 +1362,23 @@ func TestShellInvariant_WorkspaceNoSeparators(t *testing.T) {
 
 	// renderReady
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	if contains(t, m.renderReady(region), "─") {
 		t.Fatal("renderReady must not render shell separators")
 	}
 
 	// renderRequest
 	m2 := NewModel()
-	m2.width = 100
+	m2.shell.Resize(100, 24)
 	m2.dialog = dialogRequest
-	m2.activeDomain = domainRequest
+	m2.activeDomain = DomainRequest
 	if contains(t, m2.renderRequest(region), "─") {
 		t.Fatal("renderRequest must not render shell separators")
 	}
 
 	// renderTimeline
 	m3 := NewModel()
-	m3.width = 100
+	m3.shell.Resize(100, 24)
 	m3.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	if contains(t, m3.renderTimeline(region), "─") {
 		t.Fatal("renderTimeline must not render shell separators")
@@ -1395,7 +1386,7 @@ func TestShellInvariant_WorkspaceNoSeparators(t *testing.T) {
 
 	// renderLogs
 	m4 := NewModel()
-	m4.width = 100
+	m4.shell.Resize(100, 24)
 	m4.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	if contains(t, m4.renderLogs(region), "─") {
 		t.Fatal("renderLogs must not render shell separators")
@@ -1403,7 +1394,7 @@ func TestShellInvariant_WorkspaceNoSeparators(t *testing.T) {
 
 	// renderInspect
 	m5 := NewModel()
-	m5.width = 100
+	m5.shell.Resize(100, 24)
 	m5.selected = 0
 	m5.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	if contains(t, m5.renderInspect(Region{Width: 40, Height: 20}), "─") {
@@ -1420,7 +1411,7 @@ func TestShellInvariant_WorkspaceNoShortcuts(t *testing.T) {
 	shortcutPatterns := []string{"Ctrl+", "[Esc]", "[Tab]", "[Enter]", "[↑↓]", "[←→]", "[q]", "[e]"}
 
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	out := m.renderCurrentSurface(region)
 	for _, pat := range shortcutPatterns {
 		if contains(t, out, pat) {
@@ -1430,9 +1421,9 @@ func TestShellInvariant_WorkspaceNoShortcuts(t *testing.T) {
 
 	// Verify the REQUEST surface also follows this rule.
 	m2 := NewModel()
-	m2.width = 100
+	m2.shell.Resize(100, 24)
 	m2.dialog = dialogRequest
-	m2.activeDomain = domainRequest
+	m2.activeDomain = DomainRequest
 	for _, pat := range shortcutPatterns {
 		if contains(t, m2.renderRequest(region), pat) {
 			t.Fatalf("Request surface must not contain %q", pat)
@@ -1454,7 +1445,7 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 	}
 
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 
 	// Idle
 	if !hasLabel(m.renderRibbon(m.ShellState(), 100)) {
@@ -1463,7 +1454,7 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 
 	// Running empty
 	m2 := NewModel()
-	m2.width = 100
+	m2.shell.Resize(100, 24)
 	m2.running = true
 	if !hasLabel(m2.renderRibbon(m2.ShellState(), 100)) {
 		t.Fatal("ribbon must show orientation label when running empty")
@@ -1471,7 +1462,7 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 
 	// With results
 	m3 := NewModel()
-	m3.width = 100
+	m3.shell.Resize(100, 24)
 	m3.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	if !hasLabel(m3.renderRibbon(m3.ShellState(), 100)) {
 		t.Fatal("ribbon must show orientation label with results")
@@ -1479,7 +1470,7 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 
 	// Inspect mode
 	m4 := NewModel()
-	m4.width = 100
+	m4.shell.Resize(100, 24)
 	m4.mode = modeInspect
 	if !hasLabel(m4.renderRibbon(m4.ShellState(), 100)) {
 		t.Fatal("ribbon must show orientation label in inspect mode")
@@ -1487,7 +1478,7 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 
 	// Request dialog
 	m5 := NewModel()
-	m5.width = 100
+	m5.shell.Resize(100, 24)
 	m5.dialog = dialogRequest
 	if !hasLabel(m5.renderRibbon(m5.ShellState(), 100)) {
 		t.Fatal("ribbon must show orientation label in request dialog")
@@ -1495,7 +1486,7 @@ func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
 
 	// ConfirmQuit dialog
 	m6 := NewModel()
-	m6.width = 100
+	m6.shell.Resize(100, 24)
 	m6.dialog = dialogConfirmQuit
 	if !hasLabel(m6.renderRibbon(m6.ShellState(), 100)) {
 		t.Fatal("ribbon must show orientation label in quit dialog")
@@ -1514,19 +1505,19 @@ func TestShellInvariant_ActionsAreIntents(t *testing.T) {
 		func() []Action {
 			m := NewModel()
 			m.dialog = dialogRequest
-			m.activeDomain = domainRequest
+			m.activeDomain = DomainRequest
 			return m.Actions()
 		},
 		func() []Action {
 			m := NewModel()
 			m.dialog = dialogRequest
-			m.activeDomain = domainExec
+			m.activeDomain = DomainExec
 			return m.Actions()
 		},
 		func() []Action {
 			m := NewModel()
 			m.dialog = dialogRequest
-			m.activeDomain = domainPayload
+			m.activeDomain = DomainPayload
 			return m.Actions()
 		},
 		func() []Action { m := NewModel(); m.mode = modeInspect; return m.Actions() },
@@ -1553,8 +1544,7 @@ func TestShellInvariant_ActionsAreIntents(t *testing.T) {
 // separators, and they appear exactly twice (context separator, ribbon separator).
 func TestShellInvariant_ViewOwnsSeparators(t *testing.T) {
 	m := NewModel()
-	m.width = 100
-	m.height = 30
+	m.shell.Resize(100, 30)
 	out := m.View()
 	if !contains(t, out, "─") {
 		t.Fatal("View must render shell separators")
@@ -1567,7 +1557,7 @@ func TestShellInvariant_ViewOwnsSeparators(t *testing.T) {
 
 func TestShellState_ContainsOrientation(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	s := m.ShellState()
 	if s.Orientation == "" {
 		t.Fatal("ShellState.Orientation must not be empty")
@@ -1576,7 +1566,7 @@ func TestShellState_ContainsOrientation(t *testing.T) {
 
 func TestShellState_ContainsConfiguration(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	s := m.ShellState()
 	if len(s.Configuration) == 0 {
 		t.Fatal("ShellState.Configuration must not be empty")
@@ -1594,7 +1584,7 @@ func TestShellState_ContainsConfiguration(t *testing.T) {
 
 func TestShellState_ContainsActions(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	s := m.ShellState()
 	if len(s.Actions) == 0 {
 		t.Fatal("ShellState.Actions must not be empty")
@@ -1603,7 +1593,7 @@ func TestShellState_ContainsActions(t *testing.T) {
 
 func TestShellState_QueryTruncated(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.urlInput.SetValue("https://api.example.com/users?page=1")
 	s := m.ShellState()
 	url := ""
@@ -1619,7 +1609,7 @@ func TestShellState_QueryTruncated(t *testing.T) {
 
 func TestShellState_UpdatesWithState(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 
@@ -1635,7 +1625,7 @@ func TestShellState_UpdatesWithState(t *testing.T) {
 
 func TestConfiguration_MethodAndURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	cfg := m.Configuration()
 	if len(cfg) < 3 {
 		t.Fatal("Configuration should have at least 3 items (Method, URL, CC)")
@@ -1653,7 +1643,7 @@ func TestConfiguration_MethodAndURL(t *testing.T) {
 
 func TestConfiguration_InvalidURL(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.urlInput.SetValue("")
 	cfg := m.Configuration()
 	for _, c := range cfg {
@@ -1665,7 +1655,7 @@ func TestConfiguration_InvalidURL(t *testing.T) {
 
 func TestConfiguration_PayloadIncluded(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	m.headers = append(m.headers, newHeaderRow())
 	m.bodyInput.SetValue("{}")
 	cfg := m.Configuration()
@@ -1682,7 +1672,7 @@ func TestConfiguration_PayloadIncluded(t *testing.T) {
 
 func TestConfiguration_PayloadExcluded(t *testing.T) {
 	m := NewModel()
-	m.width = 100
+	m.shell.Resize(100, 24)
 	cfg := m.Configuration()
 	for _, c := range cfg {
 		if c.Identity == "Payload" {

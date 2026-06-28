@@ -15,7 +15,7 @@ import (
 func TestMethodSelection(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
@@ -25,7 +25,7 @@ func TestMethodSelection(t *testing.T) {
 	if m.dialog != dialogRequest {
 		t.Fatal("tab should not close request dialog")
 	}
-	if m.activeDomain != domainPayload {
+	if m.activeDomain != DomainPayload {
 		t.Fatal("tab from URL field should advance to payload domain")
 	}
 }
@@ -45,14 +45,14 @@ func TestConcurrencyClamping(t *testing.T) {
 func TestPayloadEditorState(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 
 	if m.dialog != dialogRequest {
 		t.Fatal("request dialog should be active")
 	}
-	if m.activeDomain != domainPayload {
+	if m.activeDomain != DomainPayload {
 		t.Fatal("payload domain should be active")
 	}
 	if len(m.headers) != 0 {
@@ -103,7 +103,7 @@ func TestViewSwitching(t *testing.T) {
 
 func TestResultSelection_PageUpDown(t *testing.T) {
 	m := NewModel()
-	m.height = 30
+	m.shell.Resize(80, 30)
 	for i := 0; i < 50; i++ {
 		m.results = append(m.results, model.Result{Status: 200})
 	}
@@ -156,7 +156,7 @@ func TestResultSelectionAndInspect(t *testing.T) {
 func TestHeaderAddRemove(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
@@ -267,8 +267,9 @@ func TestWindowSizeMsg(t *testing.T) {
 	initialWidth := m.bodyInput.Width()
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
-	if m.width != 120 || m.height != 40 {
-		t.Fatalf("width/height = %d/%d", m.width, m.height)
+	w, h := m.shell.Dimensions()
+	if w != 120 || h != 40 {
+		t.Fatalf("width/height = %d/%d", w, h)
 	}
 	if got := m.bodyInput.Width(); got <= initialWidth {
 		t.Fatalf("bodyInput.Width() = %d after resize to 120, expected > initial %d", got, initialWidth)
@@ -321,10 +322,13 @@ func TestCtrlC_QuitIdle(t *testing.T) {
 	m.running = false
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	_ = updated.(Model)
+	m = updated.(Model)
 
-	if cmd == nil {
-		t.Fatal("ctrl+c while idle should return a quit command")
+	if cmd != nil {
+		t.Fatal("ctrl+c while idle should return nil cmd (opens confirmation)")
+	}
+	if m.dialog != dialogConfirmQuit {
+		t.Fatal("ctrl+c while idle should open confirmation dialog")
 	}
 }
 
@@ -333,10 +337,13 @@ func TestQ_QuitIdle(t *testing.T) {
 	m.running = false
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	_ = updated.(Model)
+	m = updated.(Model)
 
-	if cmd == nil {
-		t.Fatal("q while idle should return a quit command")
+	if cmd != nil {
+		t.Fatal("q while idle should return nil cmd (opens confirmation)")
+	}
+	if m.dialog != dialogConfirmQuit {
+		t.Fatal("q while idle should open confirmation dialog")
 	}
 }
 
@@ -424,11 +431,12 @@ func TestStartupMsg_SetsDefaults(t *testing.T) {
 	m := NewModel()
 	updated, _ := m.Update(startupMsg{})
 	m = updated.(Model)
-	if m.width != 80 {
-		t.Fatalf("width = %d, want 80", m.width)
+	w, h := m.shell.Dimensions()
+	if w != 80 {
+		t.Fatalf("width = %d, want 80", w)
 	}
-	if m.height != 24 {
-		t.Fatalf("height = %d, want 24", m.height)
+	if h != 24 {
+		t.Fatalf("height = %d, want 24", h)
 	}
 }
 
@@ -438,7 +446,8 @@ func TestStartupMsg_AfterWindowSize(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(startupMsg{})
 	m = updated.(Model)
-	if m.width != 120 {
+	w, _ := m.shell.Dimensions()
+	if w != 120 {
 		t.Fatal("startupMsg should not override existing width")
 	}
 }
@@ -606,7 +615,7 @@ func TestObserve_EndpointDialogOpenClose(t *testing.T) {
 	if m.dialog != dialogRequest {
 		t.Fatal("pressing e should open request dialog")
 	}
-	if m.activeDomain != domainRequest {
+	if m.activeDomain != DomainRequest {
 		t.Fatal("pressing e should set active domain to request")
 	}
 
@@ -620,13 +629,13 @@ func TestObserve_EndpointDialogOpenClose(t *testing.T) {
 func TestObserve_CCDialogOpenClose(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.ccInput.Focus()
 
 	if m.dialog != dialogRequest {
 		t.Fatal("request dialog should be active")
 	}
-	if m.activeDomain != domainExec {
+	if m.activeDomain != DomainExec {
 		t.Fatal("execution domain should be active")
 	}
 
@@ -641,14 +650,14 @@ func TestObserve_CCDialogOpenClose(t *testing.T) {
 func TestObserve_PayloadDialogOpenClose(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 
 	if m.dialog != dialogRequest {
 		t.Fatal("request dialog should be active")
 	}
-	if m.activeDomain != domainPayload {
+	if m.activeDomain != DomainPayload {
 		t.Fatal("payload domain should be active")
 	}
 	if len(m.headers) != 0 {
@@ -666,7 +675,7 @@ func TestObserve_PayloadDialogOpenClose(t *testing.T) {
 func TestCCDialog_ArrowAdjustUp(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 
 	initial := m.concurrency()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -680,7 +689,7 @@ func TestCCDialog_ArrowAdjustUp(t *testing.T) {
 func TestCCDialog_ArrowAdjustDown(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.setConcurrency(50)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -694,7 +703,7 @@ func TestCCDialog_ArrowAdjustDown(t *testing.T) {
 func TestEndpointDialog_EscCloses(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
@@ -708,7 +717,7 @@ func TestEndpointDialog_EscCloses(t *testing.T) {
 func TestEndpointDialog_EnterDoesNotClose(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
@@ -722,7 +731,7 @@ func TestEndpointDialog_EnterDoesNotClose(t *testing.T) {
 func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldMethod
 
 	methods := runconfig.AllowedMethods()
@@ -765,14 +774,14 @@ func TestEndpointDialog_MethodSwitchingLeftRight(t *testing.T) {
 func TestEndpointDialog_TabSwitchesField(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
 	// Tab should advance to payload domain (URL → Payload)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.activeDomain != domainPayload {
+	if m.activeDomain != DomainPayload {
 		t.Fatal("tab from URL field should advance to payload domain")
 	}
 }
@@ -780,7 +789,7 @@ func TestEndpointDialog_TabSwitchesField(t *testing.T) {
 func TestEndpointDialog_LeftRightOnUrlDoesNotChangeMethod(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
@@ -803,7 +812,7 @@ func TestEndpointDialog_LeftRightOnUrlDoesNotChangeMethod(t *testing.T) {
 func TestCCDialog_EscCloses(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -816,7 +825,7 @@ func TestCCDialog_EscCloses(t *testing.T) {
 func TestCCDialog_EnterDoesNotClose(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -878,7 +887,7 @@ func TestViewSwitch_PreservesSelection(t *testing.T) {
 func TestEndpointDialog_NotClosableByWrongKey(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainRequest
+	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
@@ -896,7 +905,7 @@ func TestEndpointDialog_NotClosableByWrongKey(t *testing.T) {
 func TestCCDialog_TypesDigits(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.ccInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
@@ -910,7 +919,7 @@ func TestCCDialog_TypesDigits(t *testing.T) {
 func TestPayloadDialog_HeaderNavigationUpDown(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow(), newHeaderRow())
@@ -945,7 +954,7 @@ func TestPayloadDialog_HeaderNavigationUpDown(t *testing.T) {
 func TestPayloadDialog_TabToBody(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainPayload
+	m.activeDomain = DomainPayload
 	m.selectedHead = 0
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
@@ -960,7 +969,7 @@ func TestPayloadDialog_TabToBody(t *testing.T) {
 	// Tab from body → next domain (execution)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.activeDomain != domainExec {
+	if m.activeDomain != DomainExec {
 		t.Fatalf("tab from body should advance to execution domain, got domain=%d", m.activeDomain)
 	}
 }
@@ -1023,7 +1032,7 @@ func TestConfirmQuit_FromInspectMode(t *testing.T) {
 func TestCCDialog_ClampAtMax(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.setConcurrency(100)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -1036,7 +1045,7 @@ func TestCCDialog_ClampAtMax(t *testing.T) {
 func TestCCDialog_ClampAtMin(t *testing.T) {
 	m := NewModel()
 	m.dialog = dialogRequest
-	m.activeDomain = domainExec
+	m.activeDomain = DomainExec
 	m.setConcurrency(1)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})

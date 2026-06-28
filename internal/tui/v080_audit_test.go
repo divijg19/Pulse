@@ -16,8 +16,7 @@ func TestV080Audit_AllSurfaces(t *testing.T) {
 				s := s
 				t.Run(fmt.Sprintf("%dx%d", s.W, s.H), func(t *testing.T) {
 					m := c.Setup()
-					m.width = s.W
-					m.height = s.H
+					m.shell.Resize(s.W, s.H)
 					out := m.View()
 					t.Logf("=== %s at %dx%d ===\n%s", c.Name, s.W, s.H, out)
 					checkE1(t, out, s.W, s.H, c.Name)
@@ -30,8 +29,7 @@ func TestV080Audit_AllSurfaces(t *testing.T) {
 func TestV080Audit_E1VerticalPadding(t *testing.T) {
 	t.Run("Ready_80x24", func(t *testing.T) {
 		m := newReadyModel()
-		m.width = 80
-		m.height = 24
+		m.shell.Resize(80, 24)
 		out := m.View()
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		if len(lines) != 24 {
@@ -49,8 +47,7 @@ func TestV080Audit_E1VerticalPadding(t *testing.T) {
 func TestV080Audit_E1StyleBleed(t *testing.T) {
 	m := newTimelineRunningModel()
 	for _, s := range AuditSizes {
-		m.width = s.W
-		m.height = s.H
+		m.shell.Resize(s.W, s.H)
 		out := m.View()
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		if len(lines) != s.H {

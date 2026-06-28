@@ -11,136 +11,6 @@ import (
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
-type Region struct {
-	Width  int
-	Height int
-}
-
-type ShellLayout struct {
-	Context   Region
-	Workspace Region
-	Command   Region
-}
-
-func computeShellLayout(totalWidth, totalHeight int) ShellLayout {
-	width := max(72, totalWidth)
-	bodyHeight := max(1, totalHeight-5)
-	return ShellLayout{
-		Context:   Region{Width: width, Height: 1},
-		Workspace: Region{Width: width, Height: bodyHeight},
-		Command:   Region{Width: width, Height: 1},
-	}
-}
-
-// ShellColumnWidth is the fixed width reserved for the orientation label
-// in the operator ribbon. Actions always start at Column 19
-// (ShellColumnWidth + 2-char gutter + 1 space).
-const ShellColumnWidth = 16
-
-// ActionCategory defines the four semantic groups an action can belong to.
-// Categories are ordered by priority. Empty categories are omitted.
-type ActionCategory int
-
-const (
-	NavigationCategory ActionCategory = iota
-	ConfigurationCategory
-	OperationCategory
-	ApplicationCategory
-)
-
-// ActionID identifies an operator intent. The workspace exposes which actions
-// currently exist; the ribbon layer maps them to presentation.
-type ActionID int
-
-const (
-	ActionSelect ActionID = iota
-	ActionInspect
-	ActionSwitchView
-	ActionConfigureRequest
-	ActionRun
-	ActionCancel
-	ActionNextField
-	ActionSwitchMethod
-	ActionAdjustConcurrency
-	ActionNextHeader
-	ActionAddHeader
-	ActionDeleteHeader
-	ActionBack
-	ActionQuit
-	ActionConfirmQuit
-	ActionCtrlCQuit
-	ActionQQuit
-	ActionDismissCancel
-)
-
-// Action is a behavioral intent — not a presentation object.
-// The workspace produces actions; the ribbon derives presentation from them.
-type Action struct {
-	ID       ActionID
-	Category ActionCategory
-	Enabled  bool
-}
-
-// configItem represents a single configuration value in the Context region.
-// The contract is Identity, Value, Validity — presentation is a shell concern.
-type configItem struct {
-	Identity string
-	Value    string
-	Valid    bool
-}
-
-// ShellState is an immutable snapshot of the shell-level state produced once
-// per frame. Every shell renderer consumes this instead of reading model
-// fields independently, eliminating duplicate state lookups.
-type ShellState struct {
-	Orientation   string
-	Configuration []configItem
-	Actions       []Action
-}
-
-// actionBinding maps an operator intent (ActionID) to its presentation in the
-// operator ribbon. This is the single source of truth for shortcut-to-intent
-// mapping. All [Ctrl+R], [Esc], [Tab], etc. live here.
-type actionBinding struct {
-	Key      string
-	Label    string
-	Category ActionCategory
-}
-
-var actionBindings = map[ActionID]actionBinding{
-	ActionSelect:            {"↑↓", "Select", NavigationCategory},
-	ActionInspect:           {"Enter", "Inspect", NavigationCategory},
-	ActionSwitchView:        {"Tab", "Views", NavigationCategory},
-	ActionConfigureRequest:  {"e", "Request", ConfigurationCategory},
-	ActionRun:               {"Ctrl+R", "Run", OperationCategory},
-	ActionCancel:            {"Ctrl+X", "Cancel", OperationCategory},
-	ActionNextField:         {"Tab", "Next Field", ConfigurationCategory},
-	ActionSwitchMethod:      {"←→", "Method", ConfigurationCategory},
-	ActionAdjustConcurrency: {"↑↓", "Adjust", ConfigurationCategory},
-	ActionNextHeader:        {"Tab", "Next", ConfigurationCategory},
-	ActionAddHeader:         {"Ctrl+N", "Header", ConfigurationCategory},
-	ActionDeleteHeader:      {"Ctrl+D", "Delete", ConfigurationCategory},
-	ActionBack:              {"Esc", "Back", ApplicationCategory},
-	ActionQuit:              {"q", "Quit", ApplicationCategory},
-	ActionConfirmQuit:       {"Enter", "Quit", ApplicationCategory},
-	ActionCtrlCQuit:         {"Ctrl+C", "Quit", ApplicationCategory},
-	ActionQQuit:             {"q", "Quit", ApplicationCategory},
-	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory},
-}
-
-func (m Model) orientationLabel() string {
-	switch {
-	case m.dialog == dialogConfirmQuit:
-		return "QUIT"
-	case m.dialog == dialogRequest:
-		return "REQUEST"
-	case m.mode == modeInspect:
-		return "INSPECT"
-	default:
-		return "OBSERVE"
-	}
-}
-
 func (m Model) Actions() []Action {
 	switch {
 	case m.dialog == dialogConfirmQuit:
@@ -192,22 +62,8 @@ func (m Model) requestActions() []Action {
 		{ActionBack, ApplicationCategory, true},
 		{ActionRun, OperationCategory, true},
 	}
-	switch m.activeDomain {
-	case domainRequest:
-		domainActions = append([]Action{
-			{ActionNextField, ConfigurationCategory, true},
-			{ActionSwitchMethod, ConfigurationCategory, true},
-		}, domainActions...)
-	case domainPayload:
-		domainActions = append([]Action{
-			{ActionNextField, ConfigurationCategory, true},
-			{ActionAddHeader, ConfigurationCategory, true},
-			{ActionDeleteHeader, ConfigurationCategory, true},
-		}, domainActions...)
-	case domainExec:
-		domainActions = append([]Action{
-			{ActionAdjustConcurrency, ConfigurationCategory, true},
-		}, domainActions...)
+	if d, ok := domainRegistry[m.activeDomain]; ok {
+		domainActions = append(d.Actions(m), domainActions...)
 	}
 	return domainActions
 }
@@ -227,18 +83,19 @@ func (m Model) Configuration() []configItem {
 
 func (m Model) ShellState() ShellState {
 	return ShellState{
-		Orientation:   m.orientationLabel(),
+		Orientation:   orientationLabel(m),
 		Configuration: m.Configuration(),
 		Actions:       m.Actions(),
 	}
 }
 
 func (m Model) View() string {
-	if m.width == 0 {
+	w, h := m.shell.Dimensions()
+	if w == 0 {
 		return "Pulse is starting..."
 	}
 
-	layout := computeShellLayout(m.width, m.height)
+	layout := m.shell.Layout()
 	state := m.ShellState()
 
 	var sb strings.Builder
@@ -246,13 +103,13 @@ func (m Model) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Context.Width)))
 	sb.WriteString("\n")
-	sb.WriteString(m.renderCurrentSurface(layout.Workspace))
+	sb.WriteString(m.resolveSurface().Render(layout.Workspace))
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Command.Width)))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderRibbon(state, layout.Command.Width))
 
-	return styleBase.Width(layout.Context.Width).Height(m.height).Render(sb.String())
+	return styleBase.Width(layout.Context.Width).Height(h).Render(sb.String())
 }
 
 func (m Model) renderCurrentSurface(region Region) string {
@@ -369,16 +226,28 @@ func accentOrMuted(name string, active bool) string {
 	return styleMuted.Render(name)
 }
 
-func (m Model) renderRequestDomain(b *strings.Builder) {
+func (m Model) renderRequest(region Region) string {
+	var b strings.Builder
+	b.WriteString(identityCell("REQUEST", false))
 	b.WriteString("\n")
-	b.WriteString(accentOrMuted("Request", m.activeDomain == domainRequest))
+	b.WriteString(m.renderRequestDomain())
+	b.WriteString(m.renderPayloadDomain())
+	b.WriteString(m.renderRunDomain())
+
+	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+}
+
+func (m Model) renderRequestDomain() string {
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(accentOrMuted("Request", m.activeDomain == DomainRequest))
 	b.WriteString("\n")
 
 	methods := runconfig.AllowedMethods()
 	var methodLine string
 	for i, method := range methods {
 		sel := i == m.methodIndex
-		focus := m.activeDomain == domainRequest && m.requestField == reqFieldMethod
+		focus := m.activeDomain == DomainRequest && m.requestField == reqFieldMethod
 		if sel && focus {
 			methodLine += lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorDark)).Render(" " + method + " ")
 		} else if sel {
@@ -389,7 +258,7 @@ func (m Model) renderRequestDomain(b *strings.Builder) {
 	}
 
 	methodLabel := "Method"
-	if m.activeDomain == domainRequest && m.requestField == reqFieldMethod {
+	if m.activeDomain == DomainRequest && m.requestField == reqFieldMethod {
 		methodLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("Method")
 	} else {
 		methodLabel = styleMuted.Render("Method")
@@ -398,20 +267,23 @@ func (m Model) renderRequestDomain(b *strings.Builder) {
 	b.WriteString(fmt.Sprintf("  %s\n    %s\n", methodLabel, methodLine))
 
 	urlLabel := "URL"
-	if m.activeDomain == domainRequest && m.requestField == reqFieldURL {
+	if m.activeDomain == DomainRequest && m.requestField == reqFieldURL {
 		urlLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Render("URL")
 	} else {
 		urlLabel = styleMuted.Render("URL")
 	}
 	b.WriteString(fmt.Sprintf("  %s\n    %s\n", urlLabel, m.urlInput.View()))
+
+	return b.String()
 }
 
-func (m Model) renderPayloadDomain(b *strings.Builder) {
+func (m Model) renderPayloadDomain() string {
+	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(accentOrMuted("Payload", m.activeDomain == domainPayload))
+	b.WriteString(accentOrMuted("Payload", m.activeDomain == DomainPayload))
 	b.WriteString("\n")
 
-	headersActive := m.activeDomain == domainPayload && m.selectedHead != bodyFocus
+	headersActive := m.activeDomain == DomainPayload && m.selectedHead != bodyFocus
 	b.WriteString(accentOrMuted("  HEADERS  ctrl+n add  ctrl+d remove", headersActive))
 	b.WriteString("\n")
 
@@ -429,7 +301,7 @@ func (m Model) renderPayloadDomain(b *strings.Builder) {
 		}
 	}
 
-	bodyActive := m.activeDomain == domainPayload && m.selectedHead == bodyFocus
+	bodyActive := m.activeDomain == DomainPayload && m.selectedHead == bodyFocus
 	bodyLen := len(m.bodyInput.Value())
 	bodyLabel := "  BODY"
 	if bodyLen > 0 {
@@ -438,15 +310,18 @@ func (m Model) renderPayloadDomain(b *strings.Builder) {
 	b.WriteString(accentOrMuted(bodyLabel, bodyActive))
 	b.WriteString("\n")
 	b.WriteString("  " + m.bodyInput.View())
+
+	return b.String()
 }
 
-func (m Model) renderExecDomain(b *strings.Builder) {
+func (m Model) renderRunDomain() string {
+	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(accentOrMuted("Execution", m.activeDomain == domainExec))
+	b.WriteString(accentOrMuted("Execution", m.activeDomain == DomainExec))
 	b.WriteString("\n")
 
 	ccText := strings.TrimSpace(m.ccInput.View())
-	active := m.activeDomain == domainExec
+	active := m.activeDomain == DomainExec
 	ccLabel := accentOrMuted("  Concurrency", active)
 	if active {
 		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
@@ -454,18 +329,8 @@ func (m Model) renderExecDomain(b *strings.Builder) {
 		ccVal := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText)).Render(ccText)
 		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccVal, runconfig.MaxConcurrency))
 	}
-}
 
-func (m Model) renderRequest(region Region) string {
-	var b strings.Builder
-	b.WriteString(identityCell("REQUEST", false))
-	b.WriteString("\n")
-
-	m.renderRequestDomain(&b)
-	m.renderPayloadDomain(&b)
-	m.renderExecDomain(&b)
-
-	return styleBase.Copy().Width(region.Width).Height(region.Height).Render(b.String())
+	return b.String()
 }
 
 func (m Model) renderRibbon(state ShellState, width int) string {

@@ -17,14 +17,6 @@ import (
 	"github.com/divijg19/Pulse/internal/stream"
 )
 
-type requestDomain int
-
-const (
-	domainRequest requestDomain = iota
-	domainPayload
-	domainExec
-)
-
 const (
 	subfocusKey      = 0
 	subfocusValue    = 1
@@ -64,14 +56,14 @@ type headerRow struct {
 }
 
 type Model struct {
-	width  int
-	height int
+	shell     Shell
+	workspace Workspace
 
 	mode   mode
 	dialog dialog
 	view   view
 
-	activeDomain requestDomain
+	activeDomain DomainType
 	methodIndex  int
 	requestField int
 	urlInput     textinput.Model
@@ -130,10 +122,12 @@ func NewModel() Model {
 	body.SetWidth(defaultBodyWidth)
 
 	return Model{
+		shell:        NewShell(),
+		workspace:    NewWorkspace(),
 		mode:         modeObserve,
 		dialog:       dialogNone,
 		view:         viewTimeline,
-		activeDomain: domainRequest,
+		activeDomain: DomainRequest,
 		methodIndex:  0,
 		requestField: reqFieldURL,
 		urlInput:     url,
@@ -157,14 +151,13 @@ func (m *Model) setBodyWidths(totalWidth int) {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.shell.Resize(msg.Width, msg.Height)
 		m.setBodyWidths(msg.Width)
 		return m, nil
 	case startupMsg:
-		if m.width == 0 {
-			m.width = 80
-			m.height = 24
+		w, _ := m.shell.Dimensions()
+		if w == 0 {
+			m.shell.Resize(80, 24)
 			m.setBodyWidths(80)
 		}
 		return m, nil
@@ -254,11 +247,11 @@ func (m Model) handleRequestKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.activeDomain {
-	case domainRequest:
+	case DomainRequest:
 		return m.handleRequestDomainKey(msg)
-	case domainPayload:
+	case DomainPayload:
 		return m.handlePayloadDomainKey(msg)
-	case domainExec:
+	case DomainExec:
 		return m.handleExecDomainKey(msg)
 	}
 	return m, nil
@@ -267,9 +260,9 @@ func (m Model) handleRequestKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) advanceDomain(forward bool) (tea.Model, tea.Cmd) {
 	if forward {
 		switch m.activeDomain {
-		case domainRequest:
+		case DomainRequest:
 			if m.requestField == reqFieldURL {
-				m.activeDomain = domainPayload
+				m.activeDomain = DomainPayload
 				m.selectedHead = 0
 				m.headerSubfocus = subfocusKey
 				if len(m.headers) == 0 {
@@ -280,30 +273,30 @@ func (m Model) advanceDomain(forward bool) (tea.Model, tea.Cmd) {
 				m.requestField = reqFieldURL
 				m.urlInput.Focus()
 			}
-		case domainPayload:
+		case DomainPayload:
 			if m.selectedHead == bodyFocus {
-				m.activeDomain = domainExec
+				m.activeDomain = DomainExec
 				m.ccInput.Focus()
 			} else {
 				m.selectedHead = bodyFocus
 				m.focusPayloadBody()
 			}
-		case domainExec:
-			m.activeDomain = domainRequest
+		case DomainExec:
+			m.activeDomain = DomainRequest
 			m.requestField = reqFieldMethod
 			m.blurAll()
 		}
 	} else {
 		switch m.activeDomain {
-		case domainRequest:
+		case DomainRequest:
 			if m.requestField == reqFieldMethod {
-				m.activeDomain = domainExec
+				m.activeDomain = DomainExec
 				m.ccInput.Focus()
 			} else {
 				m.requestField = reqFieldMethod
 				m.blurAll()
 			}
-		case domainPayload:
+		case DomainPayload:
 			if m.selectedHead == bodyFocus {
 				if len(m.headers) == 0 {
 					m.headers = append(m.headers, newHeaderRow())
@@ -312,12 +305,12 @@ func (m Model) advanceDomain(forward bool) (tea.Model, tea.Cmd) {
 				m.headerSubfocus = subfocusKey
 				m.focusPayloadKey()
 			} else {
-				m.activeDomain = domainRequest
+				m.activeDomain = DomainRequest
 				m.requestField = reqFieldURL
 				m.urlInput.Focus()
 			}
-		case domainExec:
-			m.activeDomain = domainPayload
+		case DomainExec:
+			m.activeDomain = DomainPayload
 			m.selectedHead = bodyFocus
 			m.focusPayloadBody()
 		}
@@ -479,13 +472,15 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "pgup":
 		if len(m.results) > 0 {
-			pageSize := max(5, m.height/2)
+			_, h := m.shell.Dimensions()
+			pageSize := max(5, h/2)
 			m.selected = max(0, m.selected-pageSize)
 		}
 		return m, nil
 	case "pgdown":
 		if len(m.results) > 0 {
-			pageSize := max(5, m.height/2)
+			_, h := m.shell.Dimensions()
+			pageSize := max(5, h/2)
 			m.selected = min(len(m.results)-1, m.selected+pageSize)
 		}
 		return m, nil
@@ -503,7 +498,7 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "e":
 		m.dialog = dialogRequest
 		m.blurAll()
-		m.activeDomain = domainRequest
+		m.activeDomain = DomainRequest
 		m.requestField = reqFieldURL
 		m.urlInput.Focus()
 		return m, nil
@@ -512,11 +507,8 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+x":
 		return m.cancelRun(), nil
 	case "q", "ctrl+c":
-		if m.running {
-			m.dialog = dialogConfirmQuit
-			return m, nil
-		}
-		return m, tea.Quit
+		m.dialog = dialogConfirmQuit
+		return m, nil
 	}
 	return m, nil
 }
