@@ -22,11 +22,11 @@ var (
 	styleAccent    = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
 	styleError     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 
-	styleModeCell = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorBg)).
-			Background(lipgloss.Color(colorAccent)).
-			Bold(true).
-			Padding(0, 1)
+	styleWorkspaceBadge = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorBg)).
+				Background(lipgloss.Color(colorAccent)).
+				Bold(true).
+				Padding(0, 1)
 
 	stylePrimaryAction = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorAccent)).

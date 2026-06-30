@@ -73,7 +73,7 @@ func (m Model) Configuration() []configItem {
 	items := []configItem{
 		{"Method", runconfig.AllowedMethods()[m.methodIndex], true},
 		{"URL", m.urlInput.Value(), m.urlInput.Value() != ""},
-		{"CC", strings.TrimSpace(m.ccInput.Value()), true},
+		{"Concurrency", strings.TrimSpace(m.concurrencyInput.Value()), true},
 	}
 	if ps != "—" {
 		items = append(items, configItem{"Payload", ps, true})
@@ -100,14 +100,21 @@ func (m Model) View() string {
 
 	layout := m.shell.Layout()
 	state := m.ShellState()
+	orientation := state.Orientation
 
 	var sb strings.Builder
 	sb.WriteString(m.renderTopBar(state, layout.Context.Width))
 	sb.WriteString("\n")
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Context.Width)))
 	sb.WriteString("\n")
-	sb.WriteString(m.renderWorkspace(layout, w))
+
+	ws := layout.Workspace
+	ws.Border = BorderFull
+	ws.Title = orientation
+	inner := Region{Type: WorkspaceRegion, Width: ws.Width - 4, Height: ws.Height - 2}
+	sb.WriteString(ws.RenderBordered(m.renderWorkspaceContent(inner, w)))
 	sb.WriteString("\n")
+
 	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Command.Width)))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderStatusline(state, layout.Command.Width))
@@ -115,20 +122,20 @@ func (m Model) View() string {
 	return styleBase.Width(layout.Context.Width).Height(h).Render(sb.String())
 }
 
-func (m Model) renderWorkspace(layout ShellLayout, width int) string {
-	context := m.renderContextRegion(layout.Workspace)
+func (m Model) renderWorkspaceContent(region Region, width int) string {
+	context := m.renderContextRegion(region)
 	if context == "" || width < contextThreshold {
-		return m.resolveSurface().Render(layout.Workspace)
+		return m.resolveSurface().Render(region)
 	}
 
-	ctxWidth := min(contextMinWidth, max(contextMinWidth, layout.Workspace.Width/3))
-	primaryWidth := layout.Workspace.Width - ctxWidth - 1
+	ctxWidth := min(contextMinWidth, max(contextMinWidth, region.Width/3))
+	primaryWidth := region.Width - ctxWidth - 1
 	if primaryWidth < 40 {
-		return m.resolveSurface().Render(layout.Workspace)
+		return m.resolveSurface().Render(region)
 	}
 
-	primary := m.resolveSurface().Render(Region{Type: WorkspaceRegion, Width: primaryWidth, Height: layout.Workspace.Height})
-	contextPanel := m.renderContextRegion(Region{Type: ContextRegion, Width: ctxWidth, Height: layout.Workspace.Height})
+	primary := m.resolveSurface().Render(Region{Type: WorkspaceRegion, Width: primaryWidth, Height: region.Height})
+	contextPanel := m.renderContextRegion(Region{Type: ContextRegion, Width: ctxWidth, Height: region.Height})
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, primary, " ", contextPanel)
 }
@@ -229,8 +236,8 @@ func (m Model) renderTopBar(state ShellState, width int) string {
 			left = c.Value
 		case "URL":
 			left += " " + truncateURL(c.Value, 40)
-		case "CC":
-			right = "CC " + c.Value
+		case "Concurrency":
+			right = "C " + c.Value
 		case "Payload":
 			if width >= 100 {
 				right += " · Payload " + c.Value
@@ -261,13 +268,15 @@ func (m Model) renderReady(region Region) string {
 
 	identity := renderWorkspaceBadge("OBSERVE")
 
-	content := fmt.Sprintf("%s    %s\n\nCC %d\n\n%s",
+	content := fmt.Sprintf("%s    %s\n\nC %d\n\n%s",
 		method, url, cc, payloadLabel)
 
 	var b strings.Builder
 	b.WriteString(identity)
 	b.WriteString("\n\n")
 	b.WriteString(content)
+	b.WriteString("\n")
+	b.WriteString(styleMuted.Render("Ready — configure a request to begin"))
 
 	return regionStyle(region).Render(b.String())
 }
@@ -394,7 +403,7 @@ func (m Model) renderExecDomain(width int) string {
 	b.WriteString(domainHeader("Execution", width, m.activeDomain == DomainExec))
 	b.WriteString("\n")
 
-	ccText := strings.TrimSpace(m.ccInput.View())
+	ccText := strings.TrimSpace(m.concurrencyInput.View())
 	active := m.activeDomain == DomainExec
 	ccLabel := accentOrMuted("  Concurrency", active)
 	if active {
@@ -408,7 +417,7 @@ func (m Model) renderExecDomain(width int) string {
 }
 
 func renderWorkspaceBadge(label string) string {
-	return styleModeCell.Render(label)
+	return styleWorkspaceBadge.Render(label)
 }
 
 func renderMethodPill(method string, selected bool, focused bool) string {
