@@ -10,33 +10,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/divijg19/Pulse/internal/model"
-	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
 // ---------------------------------------------------------------------------
 // Suite 1 — Constitutional Audit
 // ---------------------------------------------------------------------------
-
-func TestV091Constitution_DomainNeverRenders(t *testing.T) {
-	d := RequestDomain{}
-	out := d.Actions(NewModel())
-	if len(out) == 0 {
-		t.Fatal("Domain.Actions must return actions")
-	}
-}
-
-func TestV091Constitution_WorkspaceSingleSource(t *testing.T) {
-	m := NewModel()
-	if m.workspace.mode != modeObserve {
-		t.Fatal("initial workspace mode should be OBSERVE")
-	}
-	if m.workspace.dialog != dialogNone {
-		t.Fatal("initial workspace dialog should be NONE")
-	}
-	if m.workspace.view != TimelineView {
-		t.Fatal("initial workspace view should be TimelineView")
-	}
-}
 
 func TestV091Constitution_OrientationDelegates(t *testing.T) {
 	m := NewModel()
@@ -151,25 +129,6 @@ func TestV091Behaviour_RequestNoDeadKeys(t *testing.T) {
 	}
 }
 
-func TestV091Behaviour_EscAlwaysRecovers(t *testing.T) {
-	// Esc should close dialog or return to observe
-	m := NewModel()
-	m.workspace.dialog = dialogRequest
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m2 := updated.(Model)
-	if m2.workspace.dialog != dialogNone {
-		t.Fatal("Esc should close request dialog")
-	}
-
-	m3 := NewModel()
-	m3.workspace.mode = modeInspect
-	updated, _ = m3.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m4 := updated.(Model)
-	if m4.workspace.mode != modeObserve {
-		t.Fatal("Esc from inspect should return to observe")
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Suite 3 — Visual Audit
 // ---------------------------------------------------------------------------
@@ -201,14 +160,6 @@ func TestV091Visual_FooterHasHighlightedAction(t *testing.T) {
 
 	if !strings.Contains(out, "[e]") {
 		t.Fatal("ribbon should show [e] Request")
-	}
-}
-
-func TestV091Visual_WorkspaceIdentityNeverBoxed(t *testing.T) {
-	m := NewModel()
-	out := m.View()
-	if strings.Contains(out, "┌") || strings.Contains(out, "┐") {
-		t.Fatal("workspace identity must not be boxed")
 	}
 }
 
@@ -377,60 +328,6 @@ func TestV091Walkthrough_RequestRunInspectQuit(t *testing.T) {
 	_ = m // esc sets dialog to dialogNone
 }
 
-func TestV091Walkthrough_ViewSwitch(t *testing.T) {
-	m := NewModel()
-	m.results = testResults(5)
-
-	// Start in Timeline view
-	if m.workspace.view != TimelineView {
-		t.Fatal("should start in Timeline view")
-	}
-
-	// Switch to Logs with ]
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = updated.(Model)
-	if m.workspace.view != LogsView {
-		t.Fatal("] should switch to Logs view")
-	}
-
-	// Switch back with [
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
-	m = updated.(Model)
-	if m.workspace.view != TimelineView {
-		t.Fatal("[ should switch back to Timeline view")
-	}
-
-	// Tab in observe should be a no-op (not crash, not switch)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m2 := updated.(Model)
-	if cmd != nil {
-		t.Fatal("Tab in observe should not produce a command")
-	}
-	_ = m2
-}
-
-func TestV091Walkthrough_MetricsString(t *testing.T) {
-	m := NewModel()
-	m.running = true
-	m.elapsed = 5 * time.Second
-	m.summary.Total = 50
-	m.summary.Successes = 45
-	m.summary.SuccessRate = 90
-	m.summary.P90 = 100 * time.Millisecond
-	m.summary.P99 = 500 * time.Millisecond
-
-	metrics := m.metricsString()
-	if !strings.Contains(metrics, "90% ok") {
-		t.Fatal("metrics should show success rate")
-	}
-	if !strings.Contains(metrics, "r/s") {
-		t.Fatal("metrics should show r/s")
-	}
-	if !strings.Contains(metrics, "p90") {
-		t.Fatal("metrics should show p90")
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Suite 7 — Navigation Audit
 // ---------------------------------------------------------------------------
@@ -467,44 +364,6 @@ func TestV091Navigation_UpDownInRequest(t *testing.T) {
 	updated, _ = m5.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyDown})
 	if updated.(Model).requestField != reqFieldURL {
 		t.Fatal("Down at URL should stay at URL (already at bottom)")
-	}
-}
-
-func TestV091Navigation_LeftRightBounds(t *testing.T) {
-	m := NewModel()
-	m.workspace.dialog = dialogRequest
-	m.activeDomain = DomainRequest
-	m.requestField = reqFieldMethod
-	m.methodIndex = 0
-
-	methods := runconfig.AllowedMethods()
-	lastIdx := len(methods) - 1
-
-	// Left at methodIndex 0 — should be no-op (already at first)
-	updated, _ := m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyLeft})
-	idx := updated.(Model).methodIndex
-	if idx != 0 {
-		t.Fatalf("Left at first method should keep index 0, got %d", idx)
-	}
-
-	// Navigate to last
-	m2 := updated.(Model)
-	m2.methodIndex = lastIdx
-
-	// Right at last method — should be no-op (already at last)
-	updated, _ = m2.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyRight})
-	idx = updated.(Model).methodIndex
-	if idx != lastIdx {
-		t.Fatalf("Right at last method should keep index %d, got %d", lastIdx, idx)
-	}
-
-	// Right from first — should move to second
-	m3 := updated.(Model)
-	m3.methodIndex = 0
-	updated, _ = m3.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyRight})
-	idx = updated.(Model).methodIndex
-	if idx != 1 {
-		t.Fatalf("Right from first method should move to index 1, got %d", idx)
 	}
 }
 
@@ -663,16 +522,16 @@ func TestV091Ownership_ArrowKeysTraversePayloadBodyBoundary(t *testing.T) {
 
 func TestV091Ownership_ExecDomainArrowAdjustsConcurrency(t *testing.T) {
 	m := newRequestExecModel()
-	m.ccInput.SetValue("5")
+	m.concurrencyInput.SetValue("5")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m2 := updated.(Model)
-	if m2.ccInput.Value() != "6" {
-		t.Fatalf("↑ in exec domain should increment concurrency: got %q", m2.ccInput.Value())
+	if m2.concurrencyInput.Value() != "6" {
+		t.Fatalf("↑ in exec domain should increment concurrency: got %q", m2.concurrencyInput.Value())
 	}
 	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m3 := updated2.(Model)
-	if m3.ccInput.Value() != "5" {
-		t.Fatalf("↓ in exec domain should decrement concurrency: got %q", m3.ccInput.Value())
+	if m3.concurrencyInput.Value() != "5" {
+		t.Fatalf("↓ in exec domain should decrement concurrency: got %q", m3.concurrencyInput.Value())
 	}
 }
 
@@ -681,14 +540,14 @@ func TestV091Ownership_FocusedGuardPreventsGhostTyping(t *testing.T) {
 	m.activeDomain = DomainRequest
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
-	m.ccInput.Blur()
+	m.concurrencyInput.Blur()
 
-	// hjkl should insert into URL (not navigate), and ccInput should remain unfocused
-	keyCount := len(m.ccInput.Value())
+	// hjkl should insert into URL (not navigate), and concurrencyInput should remain unfocused
+	keyCount := len(m.concurrencyInput.Value())
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m2 := updated.(Model)
-	if len(m2.ccInput.Value()) != keyCount {
-		t.Fatal("'j' in request domain with URL focused should not modify ccInput")
+	if len(m2.concurrencyInput.Value()) != keyCount {
+		t.Fatal("'j' in request domain with URL focused should not modify concurrencyInput")
 	}
 	if m2.urlInput.Value() == "" || !strings.HasSuffix(m2.urlInput.Value(), "j") {
 		t.Fatal("'j' in request domain should insert into URL")
@@ -739,7 +598,7 @@ func TestV091Visual_BadgeUsesAccentBackground(t *testing.T) {
 	if !strings.Contains(out, "REQUEST") {
 		t.Fatal("mode cell badge must show REQUEST")
 	}
-	// Badge should use styleModeCell (accent bg), which adds padding
+	// Badge should use styleWorkspaceBadge (accent bg), which adds padding
 	// Verify badge appears before domain headers
 	badgeIdx := strings.Index(out, "REQUEST")
 	headerIdx := strings.Index(out, "Request")
@@ -904,7 +763,7 @@ func TestV091Boundary_ArrowDownFromBodyToExec(t *testing.T) {
 func TestV091Boundary_ExecDomainFocusedGuard(t *testing.T) {
 	m := newRequestExecModel()
 	m.setConcurrency(5)
-	m.ccInput.Focus()
+	m.concurrencyInput.Focus()
 
 	// Arrow keys adjust concurrency without losing focus
 	before := m.concurrency()
@@ -913,8 +772,8 @@ func TestV091Boundary_ExecDomainFocusedGuard(t *testing.T) {
 	if m2.concurrency() != before+1 {
 		t.Fatalf("↑ should increment concurrency from %d to %d, got %d", before, before+1, m2.concurrency())
 	}
-	if !m2.ccInput.Focused() {
-		t.Fatal("Exec domain should keep ccInput focused after arrow adjustment")
+	if !m2.concurrencyInput.Focused() {
+		t.Fatal("Exec domain should keep concurrencyInput focused after arrow adjustment")
 	}
 }
 

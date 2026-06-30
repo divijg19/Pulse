@@ -57,7 +57,7 @@ func TestRenderReady(t *testing.T) {
 	if !contains(t, out, "httpbin") {
 		t.Fatal("Ready should show URL")
 	}
-	if !contains(t, out, "CC 10") {
+	if !contains(t, out, "C 10") {
 		t.Fatal("Ready should show concurrency")
 	}
 	if !contains(t, out, "Payload") {
@@ -113,12 +113,12 @@ func TestRenderTopBar_ShowsPayloadSummary(t *testing.T) {
 	}
 }
 
-func TestRenderTopBar_ShowsCC(t *testing.T) {
+func TestRenderTopBar_ShowsConcurrency(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 24)
 	out := m.renderTopBar(m.ShellState(), 100)
-	if !contains(t, out, "CC") {
-		t.Fatal("top bar should show CC")
+	if !contains(t, out, "C ") {
+		t.Fatal("top bar should show concurrency")
 	}
 }
 
@@ -884,7 +884,7 @@ func TestRenderRequest_ExecDomain_Focused(t *testing.T) {
 	m.shell.Resize(100, 24)
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
-	m.ccInput.Focus()
+	m.concurrencyInput.Focus()
 	m.setConcurrency(7)
 
 	out := m.renderRequest(Region{Width: 100, Height: 20})
@@ -894,8 +894,8 @@ func TestRenderRequest_ExecDomain_Focused(t *testing.T) {
 	if !contains(t, out, "1–100") {
 		t.Fatal("should show range")
 	}
-	if !m.ccInput.Focused() {
-		t.Fatal("ccInput should be focused when dialog is open")
+	if !m.concurrencyInput.Focused() {
+		t.Fatal("concurrencyInput should be focused when dialog is open")
 	}
 }
 
@@ -1510,8 +1510,8 @@ func TestConfiguration_MethodAndURL(t *testing.T) {
 	if cfg[1].Identity != "URL" || cfg[1].Value == "" {
 		t.Fatal("Configuration[1] should be URL with a value")
 	}
-	if cfg[2].Identity != "CC" || cfg[2].Value == "" {
-		t.Fatal("Configuration[2] should be CC with a value")
+	if cfg[2].Identity != "Concurrency" || cfg[2].Value == "" {
+		t.Fatal("Configuration[2] should be Concurrency with a value")
 	}
 }
 

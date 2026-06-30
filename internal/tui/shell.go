@@ -1,13 +1,5 @@
 package tui
 
-// Region is a rectangular area within a layout. Each Region has a type that
-// identifies its role in the composition.
-type Region struct {
-	Type   RegionType
-	Width  int
-	Height int
-}
-
 // ShellLayout divides the terminal into the three permanent Shell regions.
 type ShellLayout struct {
 	Context   Region

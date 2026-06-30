@@ -121,8 +121,8 @@ func newRequestExecModel() Model {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
-	m.ccInput.SetValue("10")
-	m.ccInput.Focus()
+	m.concurrencyInput.SetValue("10")
+	m.concurrencyInput.Focus()
 	return m
 }
 

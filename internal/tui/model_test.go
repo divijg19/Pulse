@@ -454,17 +454,17 @@ func TestStartupMsg_AfterWindowSize(t *testing.T) {
 
 func TestConcurrency_ParseInvalid(t *testing.T) {
 	m := NewModel()
-	m.ccInput.SetValue("abc")
+	m.concurrencyInput.SetValue("abc")
 	if got := m.concurrency(); got != 10 {
 		t.Fatalf("invalid concurrency should fallback to default, got %d", got)
 	}
 
-	m.ccInput.SetValue("")
+	m.concurrencyInput.SetValue("")
 	if got := m.concurrency(); got != 10 {
 		t.Fatalf("empty concurrency should fallback to default, got %d", got)
 	}
 
-	m.ccInput.SetValue("7")
+	m.concurrencyInput.SetValue("7")
 	if got := m.concurrency(); got != 7 {
 		t.Fatalf("valid concurrency should be 7, got %d", got)
 	}
@@ -630,7 +630,7 @@ func TestRequestDialog_ExecDomain_OpenClose(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
-	m.ccInput.Focus()
+	m.concurrencyInput.Focus()
 
 	if m.workspace.dialog != dialogRequest {
 		t.Fatal("request dialog should be active")
@@ -813,7 +813,7 @@ func TestRequestDialog_ExecDomain_EscCloses(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
-	m.ccInput.Focus()
+	m.concurrencyInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
@@ -826,7 +826,7 @@ func TestRequestDialog_ExecDomain_EnterKeepsOpen(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
-	m.ccInput.Focus()
+	m.concurrencyInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
@@ -906,12 +906,12 @@ func TestRequestDialog_ExecDomain_TypesDigits(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
-	m.ccInput.Focus()
+	m.concurrencyInput.Focus()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
 	m = updated.(Model)
 
-	if !strings.Contains(m.ccInput.Value(), "5") {
+	if !strings.Contains(m.concurrencyInput.Value(), "5") {
 		t.Fatal("CC input should contain typed digit")
 	}
 }
