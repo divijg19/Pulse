@@ -11,6 +11,15 @@ import (
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
+const sentinelEmpty = "—"
+
+const (
+	gapSection      = "\n\n"
+	indentField     = "  "
+	indentNested    = "    "
+	inlineSeparator = " · "
+)
+
 func (m Model) Actions() []Action {
 	switch {
 	case m.workspace.dialog == dialogConfirmQuit:
@@ -75,7 +84,7 @@ func (m Model) Configuration() []configItem {
 		{"URL", m.urlInput.Value(), m.urlInput.Value() != ""},
 		{"Concurrency", strings.TrimSpace(m.concurrencyInput.Value()), true},
 	}
-	if ps != "—" {
+	if ps != sentinelEmpty {
 		items = append(items, configItem{"Payload", ps, true})
 	}
 	return items
@@ -111,7 +120,8 @@ func (m Model) View() string {
 	ws := layout.Workspace
 	ws.Border = BorderFull
 	ws.Title = orientation
-	inner := Region{Type: WorkspaceRegion, Width: ws.Width - 4, Height: ws.Height - 2}
+	ws.Padding = 1
+	inner := Region{Type: WorkspaceRegion, Width: ws.Width - 2 - 2*ws.Padding, Height: ws.Height - 2}
 	sb.WriteString(ws.RenderBordered(m.renderWorkspaceContent(inner, w)))
 	sb.WriteString("\n")
 
@@ -163,34 +173,34 @@ func (m Model) renderObserveContext(region Region) string {
 	reqURL := m.effectiveURL(result)
 
 	var b strings.Builder
-	b.WriteString(accentOrMuted("Selected Request", true))
-	b.WriteString("\n\n")
-	b.WriteString(fmt.Sprintf("  %s %s\n", method, truncateURL(reqURL, region.Width-12)))
-	b.WriteString(fmt.Sprintf("  %s\n", renderStatusBadge(result)))
-	b.WriteString(fmt.Sprintf("  Latency: %s\n", formatDuration(result.Latency)))
+	b.WriteString(accentOrMuted("Selection", true))
+	b.WriteString(gapSection)
+	b.WriteString(fmt.Sprintf(indentField+"%s %s\n", method, truncateURL(reqURL, region.Width-12)))
+	b.WriteString(fmt.Sprintf(indentField+"%s\n", renderStatusBadge(result)))
+	b.WriteString(fmt.Sprintf(indentField+"Latency: %s\n", formatDuration(result.Latency)))
 	return regionStyle(region).Render(b.String())
 }
 
 func (m Model) renderInspectContext(region Region) string {
 	var b strings.Builder
-	b.WriteString(accentOrMuted("Metrics", false))
-	b.WriteString("\n\n")
-	b.WriteString(fmt.Sprintf("  Duration: %s\n", formatDuration(m.elapsed)))
-	b.WriteString(fmt.Sprintf("  Requests: %d\n", len(m.results)))
+	b.WriteString(accentOrMuted("Run Metrics", false))
+	b.WriteString(gapSection)
+	b.WriteString(fmt.Sprintf(indentField+"Duration: %s\n", formatDuration(m.elapsed)))
+	b.WriteString(fmt.Sprintf(indentField+"Requests: %d\n", len(m.results)))
 	if metrics := m.metricsString(); metrics != "" {
-		b.WriteString(fmt.Sprintf("  %s\n", metrics))
+		b.WriteString(fmt.Sprintf(indentField+"%s\n", metrics))
 	}
 	return regionStyle(region).Render(b.String())
 }
 
 func (m Model) renderRequestContext(region Region) string {
 	var b strings.Builder
-	b.WriteString(accentOrMuted("Preview", false))
-	b.WriteString("\n\n")
-	b.WriteString(fmt.Sprintf("  Method: %s\n", runconfig.AllowedMethods()[m.methodIndex]))
-	b.WriteString(fmt.Sprintf("  URL: %s\n", truncateURL(m.urlInput.Value(), region.Width-8)))
-	b.WriteString(fmt.Sprintf("  CC: %d\n", m.concurrency()))
-	b.WriteString(fmt.Sprintf("  Payload: %s\n", m.payloadSummary()))
+	b.WriteString(accentOrMuted("Configuration", false))
+	b.WriteString(gapSection)
+	b.WriteString(fmt.Sprintf(indentField+"Method: %s\n", runconfig.AllowedMethods()[m.methodIndex]))
+	b.WriteString(fmt.Sprintf(indentField+"URL: %s\n", truncateURL(m.urlInput.Value(), region.Width-8)))
+	b.WriteString(fmt.Sprintf(indentField+"C: %d\n", m.concurrency()))
+	b.WriteString(fmt.Sprintf(indentField+"Payload: %s\n", m.payloadSummary()))
 	return regionStyle(region).Render(b.String())
 }
 
@@ -216,7 +226,7 @@ func (m Model) payloadSummary() string {
 	hasBody := m.bodyInput.Value() != ""
 	switch {
 	case h == 0 && !hasBody:
-		return "—"
+		return sentinelEmpty
 	case h > 0 && hasBody:
 		return fmt.Sprintf("%dH+B", h)
 	case h > 0:
@@ -264,19 +274,19 @@ func (m Model) renderReady(region Region) string {
 	url := m.urlInput.Value()
 	cc := m.concurrency()
 
-	payloadLabel := "Payload " + m.payloadSummary()
-
-	identity := renderWorkspaceBadge("OBSERVE")
-
-	content := fmt.Sprintf("%s    %s\n\nC %d\n\n%s",
-		method, url, cc, payloadLabel)
+	payloadLabel := m.payloadSummary()
 
 	var b strings.Builder
-	b.WriteString(identity)
-	b.WriteString("\n\n")
-	b.WriteString(content)
-	b.WriteString("\n")
-	b.WriteString(styleMuted.Render("Ready — configure a request to begin"))
+	b.WriteString(styleMuted.Render("Ready"))
+	b.WriteString(gapSection)
+	b.WriteString(accentOrMuted("Current Request", true))
+	b.WriteString(gapSection)
+	b.WriteString("Method\n" + method + gapSection)
+	b.WriteString("URL\n" + url + gapSection)
+	b.WriteString(fmt.Sprintf("Concurrency\n%d"+gapSection, cc))
+	b.WriteString("Payload\n" + payloadLabel + gapSection)
+	b.WriteString("Status\n")
+	b.WriteString(styleMuted.Render("Ready to execute"))
 
 	return regionStyle(region).Render(b.String())
 }
@@ -346,7 +356,7 @@ func (m Model) renderRequestDomain(width int) string {
 		methodLabel = styleMuted.Render("Method")
 	}
 
-	b.WriteString(fmt.Sprintf("  %s\n    %s\n", methodLabel, methodLine))
+	b.WriteString(fmt.Sprintf(indentField+"%s\n"+indentNested+"%s\n", methodLabel, methodLine))
 
 	urlLabel := "URL"
 	if m.activeDomain == DomainRequest && m.requestField == reqFieldURL {
@@ -354,7 +364,7 @@ func (m Model) renderRequestDomain(width int) string {
 	} else {
 		urlLabel = styleMuted.Render("URL")
 	}
-	b.WriteString(fmt.Sprintf("  %s\n    %s\n", urlLabel, m.urlInput.View()))
+	b.WriteString(fmt.Sprintf(indentField+"%s\n"+indentNested+"%s\n", urlLabel, m.urlInput.View()))
 
 	return b.String()
 }
@@ -366,18 +376,18 @@ func (m Model) renderPayloadDomain(width int) string {
 	b.WriteString("\n")
 
 	headersActive := m.activeDomain == DomainPayload && m.selectedHead != bodyFocus
-	b.WriteString(accentOrMuted("  HEADERS  ctrl+n add  ctrl+d remove", headersActive))
+	b.WriteString(accentOrMuted(indentField+"HEADERS  ctrl+n add  ctrl+d remove", headersActive))
 	b.WriteString("\n")
 
 	if len(m.headers) == 0 {
-		b.WriteString(styleMuted.Render("    No headers configured."))
+		b.WriteString(styleMuted.Render(indentNested + "No headers configured."))
 	} else {
 		for i, header := range m.headers {
 			key := header.Key.View()
 			value := header.Value.View()
 			sel := i == m.selectedHead
 			cursor := rowCursor(sel)
-			line := fmt.Sprintf("  %s %s: %s", cursor, key, value)
+			line := fmt.Sprintf(indentField+"%s %s: %s", cursor, key, value)
 			b.WriteString(rowStyle(sel).Render(line))
 			b.WriteString("\n")
 		}
@@ -385,13 +395,13 @@ func (m Model) renderPayloadDomain(width int) string {
 
 	bodyActive := m.activeDomain == DomainPayload && m.selectedHead == bodyFocus
 	bodyLen := len(m.bodyInput.Value())
-	bodyLabel := "  BODY"
+	bodyLabel := indentField + "BODY"
 	if bodyLen > 0 {
-		bodyLabel = fmt.Sprintf("  BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
+		bodyLabel = fmt.Sprintf(indentField+"BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
 	}
 	b.WriteString(accentOrMuted(bodyLabel, bodyActive))
 	b.WriteString("\n")
-	b.WriteString("  " + m.bodyInput.View())
+	b.WriteString(indentField + m.bodyInput.View())
 	b.WriteString("\n")
 
 	return b.String()
@@ -405,12 +415,12 @@ func (m Model) renderExecDomain(width int) string {
 
 	ccText := strings.TrimSpace(m.concurrencyInput.View())
 	active := m.activeDomain == DomainExec
-	ccLabel := accentOrMuted("  Concurrency", active)
+	ccLabel := accentOrMuted(indentField+"Concurrency", active)
 	if active {
-		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
+		b.WriteString(fmt.Sprintf("%s: %s  (1-%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
 	} else {
 		ccVal := styleBase.Foreground(lipgloss.Color(colorText)).Render(ccText)
-		b.WriteString(fmt.Sprintf("%s: %s  (1–%d)\n", ccLabel, ccVal, runconfig.MaxConcurrency))
+		b.WriteString(fmt.Sprintf("%s: %s  (1-%d)\n", ccLabel, ccVal, runconfig.MaxConcurrency))
 	}
 
 	return b.String()
@@ -513,8 +523,8 @@ func buildActionStrip(actions []Action, level Density) string {
 		return ""
 	}
 
-	groupGap := "    "
-	withinSep := " · "
+	groupGap := indentNested
+	withinSep := inlineSeparator
 	if level >= DensityRelaxed {
 		groupGap = " "
 	}
@@ -625,7 +635,7 @@ func (m Model) renderResultList(region Region, identity string, emptyRunning str
 	var b strings.Builder
 
 	b.WriteString(identityCell(identity))
-	b.WriteString("\n\n")
+	b.WriteString(gapSection)
 
 	remaining := region.Height - 2
 	if metrics := m.metricsString(); metrics != "" {
@@ -668,7 +678,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	latency := formatDuration(result.Latency)
 	method := m.effectiveMethod(result)
 
-	barWidth := max(6, width-38)
+	barWidth := max(6, width-34)
 	filled := 0
 	if maxLatency > 0 {
 		filled = int(float64(result.Latency) / float64(maxLatency) * float64(barWidth))
@@ -680,8 +690,8 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	barColor := statusColor(result.Status)
 	bar := renderLatencyBar(filled, barWidth, barColor)
 
-	line := fmt.Sprintf("%s %3d %-4s %-12s %s %s",
-		rowCursor(selected), index+1, method, status, bar, latency)
+	line := fmt.Sprintf("%s %-4s %-12s %s %s",
+		rowCursor(selected), method, status, bar, latency)
 
 	if isErrorResult(result) {
 		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
@@ -695,8 +705,8 @@ func (m Model) renderLogs(region Region) string {
 			status := resultStatus(result)
 			method := m.effectiveMethod(result)
 			reqURL := m.effectiveURL(result)
-			line := fmt.Sprintf("%s %3d %-4s %-10s %-8s %s",
-				rowCursor(selected), index+1, method, status, formatDuration(result.Latency), truncate(reqURL, width-33))
+			line := fmt.Sprintf("%s %-4s %-10s %-8s %s",
+				rowCursor(selected), method, status, formatDuration(result.Latency), truncate(reqURL, width-29))
 			if isErrorResult(result) {
 				return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
 			}
@@ -717,20 +727,19 @@ func (m Model) renderInspect(region Region) string {
 		return styleSectionLine.Render("── " + label + " ──")
 	}
 
-	identity := identityCell(fmt.Sprintf("Inspector - Result #%d", m.selected+1))
+	identity := identityCell(fmt.Sprintf("Result %d", m.selected+1))
 
 	lines := []string{
 		identity,
-		"",
-		fmt.Sprintf("  %s %s", method, truncate(reqURL, region.Width-12)),
-		"",
+		gapSection,
+		fmt.Sprintf("%s %s", method, truncate(reqURL, region.Width-4)),
 		renderStatusBadge(result),
 		fmt.Sprintf("Latency: %s", formatDuration(result.Latency)),
 	}
 	if result.Error != "" {
 		lines = append(lines, styleError.Render("Error: "+result.Error))
 	}
-	lines = append(lines, "", sectionLine("HEADERS"))
+	lines = append(lines, gapSection, sectionLine("HEADERS"))
 
 	if len(result.ResponseHeaders) == 0 {
 		lines = append(lines, styleMuted.Render("No headers captured."))
@@ -745,7 +754,7 @@ func (m Model) renderInspect(region Region) string {
 		}
 	}
 
-	lines = append(lines, "", sectionLine("BODY"))
+	lines = append(lines, gapSection, sectionLine("BODY"))
 	body := result.ResponseBody
 	if body == "" {
 		body = styleMuted.Render("No body captured.")

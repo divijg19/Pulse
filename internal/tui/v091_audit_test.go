@@ -13,7 +13,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Suite 1 — Constitutional Audit
+// Suite 1  --  Constitutional Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Constitution_OrientationDelegates(t *testing.T) {
@@ -48,7 +48,7 @@ func TestV091Constitution_SurfacesAreNamedTypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 2 — Behaviour Audit
+// Suite 2  --  Behaviour Audit
 // ---------------------------------------------------------------------------
 
 func keyMsgRune(r rune) tea.KeyMsg {
@@ -130,7 +130,7 @@ func TestV091Behaviour_RequestNoDeadKeys(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 3 — Visual Audit
+// Suite 3  --  Visual Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Visual_DomainHeadersUseCenteredRules(t *testing.T) {
@@ -159,20 +159,20 @@ func TestV091Visual_FooterHasHighlightedAction(t *testing.T) {
 	out := m.renderStatusline(m.ShellState(), 100)
 
 	if !strings.Contains(out, "[e]") {
-		t.Fatal("ribbon should show [e] Request")
+		t.Fatal("ribbon should show [e] Configure")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Suite 4 — Composition Audit
+// Suite 4  --  Composition Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Composition_ContextPanelAtWideWidths(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(160, 40)
 	out := m.View()
-	if !strings.Contains(out, "Selected Request") {
-		t.Fatal("wide terminal should show Selected Request context panel")
+	if !strings.Contains(out, "Selection") {
+		t.Fatal("wide terminal should show context panel")
 	}
 }
 
@@ -210,7 +210,7 @@ func TestV091Composition_ContextPanelAtAllSurfaces(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 5 — Information Architecture Audit
+// Suite 5  --  Information Architecture Audit
 // ---------------------------------------------------------------------------
 
 func TestV091IA_WorkspaceIdentityVisible(t *testing.T) {
@@ -246,13 +246,13 @@ func TestV091IA_ActiveDomainVisuallyDistinct(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 6 — Operator Walkthrough
+// Suite 6  --  Operator Walkthrough
 // ---------------------------------------------------------------------------
 
 func TestV091Walkthrough_RequestRunInspectQuit(t *testing.T) {
 	m := NewModel()
 
-	// 1. Start — should show OBSERVE identity
+	// 1. Start  --  should show OBSERVE identity
 	m.shell.Resize(100, 30)
 	if !strings.Contains(m.View(), "OBSERVE") {
 		t.Fatal("initial state should show OBSERVE")
@@ -329,7 +329,7 @@ func TestV091Walkthrough_RequestRunInspectQuit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 7 — Navigation Audit
+// Suite 7  --  Navigation Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Navigation_UpDownInRequest(t *testing.T) {
@@ -345,7 +345,7 @@ func TestV091Navigation_UpDownInRequest(t *testing.T) {
 		t.Fatal("Up from URL should move to Method field")
 	}
 
-	// Up again at Method — should stay at Method (already at top)
+	// Up again at Method  --  should stay at Method (already at top)
 	updated, _ = m2.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyUp})
 	m3 := updated.(Model)
 	if m3.requestField != reqFieldMethod {
@@ -359,7 +359,7 @@ func TestV091Navigation_UpDownInRequest(t *testing.T) {
 		t.Fatal("Down from Method should move to URL field")
 	}
 
-	// Down at URL — should stay at URL (already at bottom)
+	// Down at URL  --  should stay at URL (already at bottom)
 	m5 := m4.(Model)
 	updated, _ = m5.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyDown})
 	if updated.(Model).requestField != reqFieldURL {
@@ -385,7 +385,7 @@ func TestV091Navigation_BlurAllBeforeDomainTransition(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 8 — Visual Rhythm Audit
+// Suite 8  --  Visual Rhythm Audit
 // ---------------------------------------------------------------------------
 
 func TestV091VisualRhythm_SectionLines(t *testing.T) {
@@ -444,7 +444,7 @@ func TestV091VisualRhythm_IdentityPrecedesFirstDomain(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 9 — Interaction Ownership Audit
+// Suite 9  --  Interaction Ownership Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Ownership_ArrowKeysNeverProduceTextInRequestDomain(t *testing.T) {
@@ -466,7 +466,7 @@ func TestV091Ownership_VimKeysInsertTextInURL(t *testing.T) {
 	if !strings.HasSuffix(m2.urlInput.Value(), "k") {
 		t.Fatal("'k' should insert 'k' into URL when URL is focused")
 	}
-	// Now press 'j' at end of URL — should insert 'j', not navigate
+	// Now press 'j' at end of URL  --  should insert 'j', not navigate
 	m2.urlInput.SetCursor(len(m2.urlInput.Value()))
 	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m3 := updated2.(Model)
@@ -587,7 +587,7 @@ func TestV091Ownership_AdvanceDomainGranularTab(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 10 — Visual Hierarchy Audit
+// Suite 10  --  Visual Hierarchy Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Visual_BadgeUsesAccentBackground(t *testing.T) {
@@ -614,21 +614,20 @@ func TestV091Visual_DomainHeaderUsesWeightNotBox(t *testing.T) {
 	if !strings.Contains(out, "━") {
 		t.Fatal("active domain header should use heavy weight ━")
 	}
-	// No left accent bar — that's v0.9.2 Regions
 	if strings.Contains(out, "▎") {
-		t.Fatal("v0.9.1 must not use left accent bar (▎) — that's v0.9.2")
+		t.Fatal("active domain header must not use left accent bar")
 	}
 }
 
-func TestV091Visual_ModeCellStatusCellSeparate(t *testing.T) {
+func TestV091Visual_BadgeStatusSeparate(t *testing.T) {
 	m := newRequestModel()
 	m.shell.Resize(100, 24)
 	out := m.renderStatusline(m.ShellState(), 100)
-	// Mode cell: should contain workspace badge
+	// Ribbon badge should contain workspace identity
 	if !strings.Contains(out, "REQUEST") {
-		t.Fatal("statusline mode cell should contain REQUEST")
+		t.Fatal("ribbon badge should contain REQUEST")
 	}
-	// Status cell: should contain operational state (Editing for Request dialog)
+	// Ribbon status should contain operational state (Editing for Request dialog)
 	if !strings.Contains(out, "Editing") {
 		t.Fatal("statusline should contain operational status (Editing)")
 	}
@@ -637,30 +636,30 @@ func TestV091Visual_ModeCellStatusCellSeparate(t *testing.T) {
 func TestV091Visual_ThreeLevelTypography(t *testing.T) {
 	m := newRequestModel()
 	out := m.View()
-	// Level 1: Badge "REQUEST" — must appear
+	// Level 1: Badge "REQUEST"  --  must appear
 	if !strings.Contains(out, "REQUEST") {
 		t.Fatal("Level 1 typography (badge) must be visible")
 	}
-	// Level 2: Domain header "Request" — must use ━/─ weight
+	// Level 2: Domain header "Request"  --  must use ━/─ weight
 	if !strings.Contains(out, "━") && !strings.Contains(out, "─") {
 		t.Fatal("Level 2 typography (domain header) must use heavy/light rules")
 	}
-	// Level 3: Section labels (like URL label) — must appear
+	// Level 3: Section labels (like URL label)  --  must appear
 	if !strings.Contains(out, "URL") {
 		t.Fatal("Level 3 typography (section label) must be visible")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Suite 11 — Adaptive Layout Audit
+// Suite 11  --  Adaptive Layout Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Adaptive_WidePrimaryAndContext(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(160, 40)
 	out := m.View()
-	if !strings.Contains(out, "Selected Request") {
-		t.Fatal("wide terminal (≥140) must show context panel")
+	if !strings.Contains(out, "Selection") {
+		t.Fatal("wide terminal (>=140) must show context panel")
 	}
 	if !strings.Contains(out, "Timeline") {
 		t.Fatal("wide terminal must show primary content")
@@ -671,7 +670,7 @@ func TestV091Adaptive_MediumPrimaryOnly(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(120, 40)
 	out := m.View()
-	if strings.Contains(out, "Selected Request") {
+	if strings.Contains(out, "Selection") {
 		t.Fatal("medium terminal (<140) must NOT show context panel")
 	}
 	if len(out) == 0 {
@@ -704,7 +703,7 @@ func TestV091Adaptive_AllSurfacesAtAllLayouts(t *testing.T) {
 					m.shell.Resize(s.w, s.h)
 					out := m.View()
 					if len(out) == 0 {
-						t.Fatal("empty output — surface must render")
+						t.Fatal("empty output  --  surface must render")
 					}
 					// Visual width invariant: every line must match the layout width,
 					// which may exceed the requested terminal width (shell imposes a minimum of 72)
@@ -721,7 +720,7 @@ func TestV091Adaptive_AllSurfacesAtAllLayouts(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 12 — Boundary Traversal Audit
+// Suite 12  --  Boundary Traversal Audit
 // ---------------------------------------------------------------------------
 
 func TestV091Boundary_ReverseTabFromBodyToHeaders(t *testing.T) {
@@ -800,7 +799,7 @@ func TestV091Boundary_ArrowDownAtUrlToPayload(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Suite 13 — Responsive Statusline Invariants
+// Suite 13  --  Responsive Statusline Invariants
 // ---------------------------------------------------------------------------
 
 type responsiveTestCase struct {
