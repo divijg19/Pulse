@@ -912,7 +912,7 @@ func TestRequestDialog_ExecDomain_TypesDigits(t *testing.T) {
 	m = updated.(Model)
 
 	if !strings.Contains(m.concurrencyInput.Value(), "5") {
-		t.Fatal("CC input should contain typed digit")
+		t.Fatal("concurrencyInput should contain typed digit")
 	}
 }
 

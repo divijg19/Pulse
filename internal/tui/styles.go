@@ -40,6 +40,9 @@ var (
 	styleSectionLine = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorMuted))
 
+	styleHeading = lipgloss.NewStyle().
+			Bold(true)
+
 	styleDomainActive = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorAccent))
 

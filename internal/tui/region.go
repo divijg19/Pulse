@@ -60,7 +60,11 @@ func (r Region) renderPadded(content string) string {
 }
 
 func (r Region) renderBoxed(content string) string {
-	innerW := r.Width - 4
+	borderPad := r.Padding
+	if borderPad < 0 {
+		borderPad = 0
+	}
+	innerW := r.Width - 2 - 2*borderPad
 	if innerW < 1 {
 		innerW = 1
 	}
@@ -68,10 +72,11 @@ func (r Region) renderBoxed(content string) string {
 	if innerH < 0 {
 		innerH = 0
 	}
+	pad := strings.Repeat(" ", borderPad)
 
 	var b strings.Builder
 
-	// Top border: ┌──┬──┐ or ┌─────┐
+	// Top border: title centered inside ┌──┐, or plain ┌─────┐
 	topRule := strings.Repeat("─", innerW)
 	if r.Title != "" {
 		title := " " + r.Title + " "
@@ -89,22 +94,18 @@ func (r Region) renderBoxed(content string) string {
 		b.WriteString("┌" + topRule + "┐\n")
 	}
 
-	// Content lines.
+	// Content lines: │ pad content padspaces pad │
 	contentLines := strings.Split(content, "\n")
 	for i := 0; i < innerH; i++ {
 		if i < len(contentLines) {
 			line := contentLines[i]
-			if r.Padding > 0 {
-				pad := strings.Repeat(" ", r.Padding)
-				line = pad + line
-			}
 			padWidth := innerW - lipgloss.Width(line)
 			if padWidth < 0 {
 				padWidth = 0
 			}
-			b.WriteString("│ " + line + strings.Repeat(" ", padWidth) + " │\n")
+			b.WriteString("│" + pad + line + strings.Repeat(" ", padWidth) + pad + "│\n")
 		} else {
-			b.WriteString("│" + strings.Repeat(" ", innerW+2) + "│\n")
+			b.WriteString("│" + strings.Repeat(" ", innerW+2*borderPad) + "│\n")
 		}
 	}
 

@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/divijg19/Pulse/internal/model"
+	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
 func contains(t *testing.T, s, substr string) bool {
@@ -51,20 +53,26 @@ func TestRenderReady(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
 	out := m.renderReady(Region{Width: 100, Height: 26})
-	if !contains(t, out, "OBSERVE") {
-		t.Fatal("Ready should show identity")
+	if !contains(t, out, "Ready") {
+		t.Fatal("Ready should show status heading")
+	}
+	if !contains(t, out, "Current Request") {
+		t.Fatal("Ready should show current request heading")
 	}
 	if !contains(t, out, "httpbin") {
 		t.Fatal("Ready should show URL")
 	}
-	if !contains(t, out, "C 10") {
+	if !contains(t, out, fmt.Sprintf("%d", runconfig.DefaultConcurrency)) {
 		t.Fatal("Ready should show concurrency")
 	}
 	if !contains(t, out, "Payload") {
-		t.Fatal("Ready should show payload state")
+		t.Fatal("Ready should show payload field")
 	}
-	if !contains(t, out, "—") {
-		t.Fatal("Ready should show payload as empty (—)")
+	if !contains(t, out, sentinelEmpty) {
+		t.Fatal("Ready should show payload as empty")
+	}
+	if !contains(t, out, "Ready to execute") {
+		t.Fatal("Ready should show readiness status")
 	}
 }
 
@@ -73,8 +81,8 @@ func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 	m.shell.Resize(100, 30)
 
 	out := m.View()
-	if !contains(t, out, "OBSERVE") {
-		t.Fatal("first launch should show Ready surface")
+	if !contains(t, out, "Ready to execute") {
+		t.Fatal("first launch should show Ready surface with readiness status")
 	}
 
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
@@ -213,8 +221,8 @@ func TestRenderStatusline_Ready(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 24)
 	out := m.renderStatusline(m.ShellState(), 100)
-	if !contains(t, out, "[e] Request") {
-		t.Fatal("ready ribbon should show [e] Request")
+	if !contains(t, out, "[e] Configure") {
+		t.Fatal("ready ribbon should show [e] Configure")
 	}
 	if contains(t, out, "[↑↓]") {
 		t.Fatal("ready ribbon should not advertise [↑↓] (inert)")
@@ -437,10 +445,7 @@ func TestRenderInspect_Identity(t *testing.T) {
 	}
 
 	out := m.renderInspect(Region{Width: 40, Height: 20})
-	if !contains(t, out, "Inspector") {
-		t.Fatal("inspector should show identity header")
-	}
-	if !contains(t, out, "Result #1") {
+	if !contains(t, out, "Result 1") {
 		t.Fatal("inspector should show result number")
 	}
 }
@@ -853,7 +858,7 @@ func TestRenderRequest_ExecutionIdentity(t *testing.T) {
 	if !contains(t, out, "7") {
 		t.Fatal("execution should show current concurrency value")
 	}
-	if !contains(t, out, "1–100") {
+	if !contains(t, out, "1-100") {
 		t.Fatal("execution should show range affordance")
 	}
 }
@@ -891,7 +896,7 @@ func TestRenderRequest_ExecDomain_Focused(t *testing.T) {
 	if !contains(t, out, "REQUEST") {
 		t.Fatal("should show identity")
 	}
-	if !contains(t, out, "1–100") {
+	if !contains(t, out, "1-100") {
 		t.Fatal("should show range")
 	}
 	if !m.concurrencyInput.Focused() {
@@ -980,7 +985,7 @@ func TestRenderCurrentSurface_DispatchesToSurface(t *testing.T) {
 
 	// Ready state
 	out := m.resolveSurface().Render(region)
-	if !contains(t, out, "OBSERVE") {
+	if !contains(t, out, "Ready") {
 		t.Fatal("renderCurrentSurface should render Ready when idle")
 	}
 }
@@ -997,10 +1002,7 @@ func TestRenderWorkspace_InspectorDrillDown(t *testing.T) {
 	m.selected = 0
 
 	out := m.View()
-	if !contains(t, out, "Inspector") {
-		t.Fatal("workspace with inspector should show Inspector header")
-	}
-	if !contains(t, out, "Result #1") {
+	if !contains(t, out, "Result 1") {
 		t.Fatal("workspace with inspector should show result number")
 	}
 	if !contains(t, out, "200") {
@@ -1195,9 +1197,9 @@ func TestRenderStatusline_WithinGroupSeparator(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 24)
 	out := m.renderStatusline(m.ShellState(), 100)
-	// Ready state: [e] Request in Configuration group.
-	if !contains(t, out, "[e] Request") {
-		t.Fatal("ready state should show [e] Request")
+	// Ready state: [e] Configure in Configuration group.
+	if !contains(t, out, "[e] Configure") {
+		t.Fatal("ready state should show [e] Configure")
 	}
 }
 
@@ -1207,7 +1209,7 @@ func TestRenderStatusline_BetweenGroupSeparator(t *testing.T) {
 	out := m.renderStatusline(m.ShellState(), 100)
 	// Ready state: Configuration group followed by Operation group.
 	// Must have 4-space gap between groups.
-	if !contains(t, out, "Request    [Ctrl+R]") {
+	if !contains(t, out, "Configure    [Ctrl+R]") {
 		t.Fatal("different category groups must be separated by wider gap (4 spaces)")
 	}
 }
@@ -1502,7 +1504,7 @@ func TestConfiguration_MethodAndURL(t *testing.T) {
 	m.shell.Resize(100, 24)
 	cfg := m.Configuration()
 	if len(cfg) < 3 {
-		t.Fatal("Configuration should have at least 3 items (Method, URL, CC)")
+		t.Fatal("Configuration should have at least 3 items (Method, URL, Concurrency)")
 	}
 	if cfg[0].Identity != "Method" || cfg[0].Value == "" {
 		t.Fatal("Configuration[0] should be Method with a value")

@@ -41,7 +41,7 @@ const (
 	ActionDismissCancel
 )
 
-// Action is a behavioral intent — not a presentation object.
+// Action is a behavioral intent -- not a presentation object.
 type Action struct {
 	ID       ActionID
 	Category ActionCategory
@@ -86,7 +86,7 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionSelect:            {"↑↓", "Select", NavigationCategory, PriorityHigh},
 	ActionInspect:           {"Enter", "Inspect", NavigationCategory, PriorityHigh},
 	ActionSwitchView:        {"Tab", "Views", NavigationCategory, PriorityMedium},
-	ActionConfigureRequest:  {"e", "Request", ConfigurationCategory, PriorityCritical},
+	ActionConfigureRequest:  {"e", "Configure", ConfigurationCategory, PriorityCritical},
 	ActionRun:               {"Ctrl+R", "Run", OperationCategory, PriorityCritical},
 	ActionCancel:            {"Ctrl+X", "Cancel", OperationCategory, PriorityCritical},
 	ActionNextField:         {"Tab", "Next Field", ConfigurationCategory, PriorityHigh},

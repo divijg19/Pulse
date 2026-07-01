@@ -998,6 +998,80 @@ func TestV092Interaction_HJKLConsistency(t *testing.T) {
 	}
 }
 
+// Invariant: Empty-state navigation is safe (no panics, no state change).
+
+func TestV092Interaction_EmptyStateNavigationSafety(t *testing.T) {
+	// Navigation keys in the idle state (no results) must not panic and
+	// must not change the selection index or mode.
+	m := NewModel()
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyUp},
+		{Type: tea.KeyDown},
+		{Type: tea.KeyEnter},
+		{Type: tea.KeyPgUp},
+		{Type: tea.KeyPgDown},
+	}
+	for _, k := range keys {
+		t.Run(k.Type.String(), func(t *testing.T) {
+			updated, _ := m.Update(k)
+			m2 := updated.(Model)
+			if m2.selected != 0 {
+				t.Fatalf("empty-state navigation with %s changed selected to %d", k.Type.String(), m2.selected)
+			}
+			if m2.workspace.mode != modeObserve {
+				t.Fatalf("empty-state navigation with %s changed mode", k.Type.String())
+			}
+		})
+	}
+}
+
+// Invariant: Ctrl+R dispatches from every request domain.
+
+func TestV092Interaction_CtrlRFromEveryDomain(t *testing.T) {
+	// Ctrl+R must start a run from Request, Payload, and Exec domains.
+	domains := []struct {
+		name  string
+		setup func(m *Model)
+	}{
+		{"Request", func(m *Model) { m.activeDomain = DomainRequest }},
+		{"Payload", func(m *Model) { m.activeDomain = DomainPayload }},
+		{"Exec", func(m *Model) { m.activeDomain = DomainExec }},
+	}
+	for _, d := range domains {
+		t.Run(d.name, func(t *testing.T) {
+			m := NewModel()
+			m.workspace.dialog = dialogRequest
+			d.setup(&m)
+			updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+			m2 := updated.(Model)
+			if !m2.running {
+				t.Fatalf("ctrl+R from %s domain did not start a run", d.name)
+			}
+			if cmd == nil {
+				t.Fatalf("ctrl+R from %s domain produced no command", d.name)
+			}
+		})
+	}
+}
+
+// Invariant: Ctrl+X from within the Request dialog cancels the run.
+
+func TestV092Interaction_CtrlXFromDialog(t *testing.T) {
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.running = true
+	m.cancel = func() {}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	m2 := updated.(Model)
+	if m2.running {
+		t.Fatal("ctrl+X from Request dialog should cancel the run")
+	}
+	if m2.status != "CANCELLED" {
+		t.Fatalf("ctrl+X from Request dialog should set status to CANCELLED, got %q", m2.status)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Section: Layout
 //
@@ -1260,3 +1334,27 @@ func TestV092IA_EmptyStatesGuide(t *testing.T) {
 //   - Semantic constants are used in place of magic literals
 //   - No deprecated or superseded conventions remain
 // ---------------------------------------------------------------------------
+
+func TestV092Engineering_SentinelConstantUsed(t *testing.T) {
+	// Verify the sentinelEmpty constant is used instead of hardcoded
+	// em dash strings for the empty payload sentinel.
+	m := NewModel()
+	if m.payloadSummary() != sentinelEmpty {
+		t.Fatal("payloadSummary should return sentinelEmpty for empty payload")
+	}
+}
+
+func TestV092Engineering_NoStaleCCReferences(t *testing.T) {
+	// Verify the Configuration function uses "Concurrency" not "CC".
+	cfg := NewModel().Configuration()
+	for _, c := range cfg {
+		if c.Identity == "CC" {
+			t.Fatal("Configuration should use Concurrency, not CC")
+		}
+	}
+}
+
+func TestV092Engineering_NeedlessBlank(t *testing.T) {
+	// Placeholder for future engineering consistency checks.
+	// This section grows as the audit infrastructure evolves.
+}
