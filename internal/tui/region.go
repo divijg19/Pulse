@@ -76,17 +76,22 @@ func (r Region) renderBoxed(content string) string {
 
 	var b strings.Builder
 
-	// Top border: title centered inside ┌──┐, or plain ┌─────┐
-	topRule := strings.Repeat("─", innerW)
+	// The border dashes span the full width between walls, including
+	// any side padding.
+	borderDashWidth := innerW + 2*borderPad
+	if borderDashWidth < 0 {
+		borderDashWidth = 0
+	}
+	topRule := strings.Repeat("─", borderDashWidth)
 	if r.Title != "" {
 		title := " " + r.Title + " "
 		titleLen := lipgloss.Width(title)
-		if titleLen > innerW {
-			title = title[:innerW]
-			titleLen = innerW
+		if titleLen > borderDashWidth {
+			title = title[:borderDashWidth]
+			titleLen = borderDashWidth
 		}
-		leftCount := (innerW - titleLen) / 2
-		rightCount := innerW - titleLen - leftCount
+		leftCount := (borderDashWidth - titleLen) / 2
+		rightCount := borderDashWidth - titleLen - leftCount
 		leftRule := strings.Repeat("─", leftCount)
 		rightRule := strings.Repeat("─", rightCount)
 		b.WriteString("┌" + leftRule + title + rightRule + "┐\n")
@@ -109,8 +114,8 @@ func (r Region) renderBoxed(content string) string {
 		}
 	}
 
-	// Bottom border: └─────┘
-	b.WriteString("└" + strings.Repeat("─", innerW) + "┘\n")
+	// Bottom border: └─────┘ (same width as top border)
+	b.WriteString("└" + strings.Repeat("─", borderDashWidth) + "┘\n")
 
 	return r.styleBase().Render(strings.TrimSuffix(b.String(), "\n"))
 }

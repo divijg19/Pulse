@@ -20,6 +20,17 @@ const (
 	inlineSeparator = " · "
 )
 
+const (
+	timelineFixedWidth  = 34
+	logsFixedWidth      = 29
+	contextRowWidth     = 12
+	contextURLWidth     = 8
+	minPanelWidth       = 28
+	defaultBodySplitDiv = 2
+	topBarURLWidth      = 40
+	topBarMinLeft       = 12
+)
+
 func (m Model) Actions() []Action {
 	switch {
 	case m.workspace.dialog == dialogConfirmQuit:
@@ -175,7 +186,7 @@ func (m Model) renderObserveContext(region Region) string {
 	var b strings.Builder
 	b.WriteString(accentOrMuted("Selection", true))
 	b.WriteString(gapSection)
-	b.WriteString(fmt.Sprintf(indentField+"%s %s\n", method, truncateURL(reqURL, region.Width-12)))
+	b.WriteString(fmt.Sprintf(indentField+"%s %s\n", method, truncateURL(reqURL, region.Width-contextRowWidth)))
 	b.WriteString(fmt.Sprintf(indentField+"%s\n", renderStatusBadge(result)))
 	b.WriteString(fmt.Sprintf(indentField+"Latency: %s\n", formatDuration(result.Latency)))
 	return regionStyle(region).Render(b.String())
@@ -198,7 +209,7 @@ func (m Model) renderRequestContext(region Region) string {
 	b.WriteString(accentOrMuted("Configuration", false))
 	b.WriteString(gapSection)
 	b.WriteString(fmt.Sprintf(indentField+"Method: %s\n", runconfig.AllowedMethods()[m.methodIndex]))
-	b.WriteString(fmt.Sprintf(indentField+"URL: %s\n", truncateURL(m.urlInput.Value(), region.Width-8)))
+	b.WriteString(fmt.Sprintf(indentField+"URL: %s\n", truncateURL(m.urlInput.Value(), region.Width-contextURLWidth)))
 	b.WriteString(fmt.Sprintf(indentField+"C: %d\n", m.concurrency()))
 	b.WriteString(fmt.Sprintf(indentField+"Payload: %s\n", m.payloadSummary()))
 	return regionStyle(region).Render(b.String())
@@ -245,7 +256,7 @@ func (m Model) renderTopBar(state ShellState, width int) string {
 		case "Method":
 			left = c.Value
 		case "URL":
-			left += " " + truncateURL(c.Value, 40)
+			left += " " + truncateURL(c.Value, topBarURLWidth)
 		case "Concurrency":
 			right = "C " + c.Value
 		case "Payload":
@@ -256,7 +267,7 @@ func (m Model) renderTopBar(state ShellState, width int) string {
 	}
 
 	maxLeft := width - lipgloss.Width(right) - 3
-	if maxLeft < 12 {
+	if maxLeft < topBarMinLeft {
 		maxLeft = 12
 	}
 	leftTruncated := truncate(left, maxLeft)
@@ -273,18 +284,48 @@ func (m Model) renderReady(region Region) string {
 	method := runconfig.AllowedMethods()[m.methodIndex]
 	url := m.urlInput.Value()
 	cc := m.concurrency()
-
 	payloadLabel := m.payloadSummary()
+
+	isDefaultMethod := m.methodIndex == 0
+	isDefaultURL := url == "" || url == defaultURL
+	isDefaultCC := cc == runconfig.DefaultConcurrency
 
 	var b strings.Builder
 	b.WriteString(styleMuted.Render("Ready"))
 	b.WriteString(gapSection)
 	b.WriteString(accentOrMuted("Current Request", true))
 	b.WriteString(gapSection)
-	b.WriteString("Method\n" + method + gapSection)
-	b.WriteString("URL\n" + url + gapSection)
-	b.WriteString(fmt.Sprintf("Concurrency\n%d"+gapSection, cc))
-	b.WriteString("Payload\n" + payloadLabel + gapSection)
+
+	b.WriteString("Method\n")
+	if isDefaultMethod {
+		b.WriteString(styleMuted.Render(method))
+	} else {
+		b.WriteString(method)
+	}
+	b.WriteString(gapSection)
+
+	b.WriteString("URL\n")
+	if url == "" {
+		b.WriteString(styleMuted.Render(sentinelEmpty))
+	} else if isDefaultURL {
+		b.WriteString(styleMuted.Render(url))
+	} else {
+		b.WriteString(url)
+	}
+	b.WriteString(gapSection)
+
+	b.WriteString("Concurrency\n")
+	if isDefaultCC {
+		b.WriteString(styleMuted.Render(fmt.Sprintf("%d", cc)))
+	} else {
+		b.WriteString(fmt.Sprintf("%d", cc))
+	}
+	b.WriteString(gapSection)
+
+	b.WriteString("Payload\n")
+	b.WriteString(payloadLabel)
+	b.WriteString(gapSection)
+
 	b.WriteString("Status\n")
 	b.WriteString(styleMuted.Render("Ready to execute"))
 
@@ -376,7 +417,7 @@ func (m Model) renderPayloadDomain(width int) string {
 	b.WriteString("\n")
 
 	headersActive := m.activeDomain == DomainPayload && m.selectedHead != bodyFocus
-	b.WriteString(accentOrMuted(indentField+"HEADERS  ctrl+n add  ctrl+d remove", headersActive))
+	b.WriteString(accentOrMuted(indentField+"HEADERS", headersActive))
 	b.WriteString("\n")
 
 	if len(m.headers) == 0 {
@@ -677,8 +718,12 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	status := resultStatus(result)
 	latency := formatDuration(result.Latency)
 	method := m.effectiveMethod(result)
+	reqURL := m.effectiveURL(result)
 
-	barWidth := max(6, width-34)
+	remaining := width - timelineFixedWidth
+	barWidth := max(6, remaining/2)
+	urlWidth := max(10, remaining-barWidth)
+
 	filled := 0
 	if maxLatency > 0 {
 		filled = int(float64(result.Latency) / float64(maxLatency) * float64(barWidth))
@@ -690,8 +735,8 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	barColor := statusColor(result.Status)
 	bar := renderLatencyBar(filled, barWidth, barColor)
 
-	line := fmt.Sprintf("%s %-4s %-12s %s %s",
-		rowCursor(selected), method, status, bar, latency)
+	line := fmt.Sprintf("%s %-4s %-12s %s %s %s",
+		rowCursor(selected), method, status, bar, latency, truncateURL(reqURL, urlWidth))
 
 	if isErrorResult(result) {
 		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
@@ -706,12 +751,70 @@ func (m Model) renderLogs(region Region) string {
 			method := m.effectiveMethod(result)
 			reqURL := m.effectiveURL(result)
 			line := fmt.Sprintf("%s %-4s %-10s %-8s %s",
-				rowCursor(selected), method, status, formatDuration(result.Latency), truncate(reqURL, width-29))
+				rowCursor(selected), method, status, formatDuration(result.Latency), truncate(reqURL, width-logsFixedWidth))
 			if isErrorResult(result) {
 				return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
 			}
 			return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
 		})
+}
+
+func (m Model) renderInspectSummary(result model.Result, method, reqURL string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("%s %s", method, reqURL))
+	b.WriteString("\n")
+	b.WriteString(renderStatusBadge(result))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("Latency: %s", formatDuration(result.Latency)))
+	if result.Error != "" {
+		b.WriteString("\n")
+		b.WriteString(styleError.Render("Error: " + result.Error))
+	}
+	return b.String()
+}
+
+func (m Model) renderInspectHeadersText(result model.Result, maxLines int) string {
+	var b strings.Builder
+	if len(result.ResponseHeaders) == 0 {
+		b.WriteString(styleMuted.Render("No headers captured."))
+	} else {
+		keys := make([]string, 0, len(result.ResponseHeaders))
+		for key := range result.ResponseHeaders {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		lines := 0
+		for _, key := range keys {
+			if maxLines > 0 && lines >= maxLines {
+				b.WriteString(styleMuted.Render("..."))
+				break
+			}
+			b.WriteString(fmt.Sprintf("%s: %s", key, result.ResponseHeaders[key]))
+			b.WriteString("\n")
+			lines++
+		}
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func (m Model) renderInspectBodyText(result model.Result, maxLines int) string {
+	body := result.ResponseBody
+	if body == "" {
+		return styleMuted.Render("No body captured.")
+	}
+	bodyLines := strings.Split(body, "\n")
+	var b strings.Builder
+	for i, bline := range bodyLines {
+		if maxLines > 0 && i >= maxLines {
+			b.WriteString(styleMuted.Render("... (truncated)"))
+			break
+		}
+		b.WriteString(bline)
+		if i < len(bodyLines)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
 }
 
 func (m Model) renderInspect(region Region) string {
@@ -722,55 +825,63 @@ func (m Model) renderInspect(region Region) string {
 	result := m.results[m.selected]
 	method := m.effectiveMethod(result)
 	reqURL := m.effectiveURL(result)
+	identity := identityCell(fmt.Sprintf("Result %d", m.selected+1))
+
+	summaryBlock := m.renderInspectSummary(result, method, reqURL)
 
 	sectionLine := func(label string) string {
 		return styleSectionLine.Render("── " + label + " ──")
 	}
 
-	identity := identityCell(fmt.Sprintf("Result %d", m.selected+1))
+	switch {
+	case region.Width >= 90:
+		summaryW := region.Width * 25 / 100
+		headersW := region.Width * 35 / 100
+		bodyW := region.Width - summaryW - headersW - 2
 
-	lines := []string{
-		identity,
-		gapSection,
-		fmt.Sprintf("%s %s", method, truncate(reqURL, region.Width-4)),
-		renderStatusBadge(result),
-		fmt.Sprintf("Latency: %s", formatDuration(result.Latency)),
-	}
-	if result.Error != "" {
-		lines = append(lines, styleError.Render("Error: "+result.Error))
-	}
-	lines = append(lines, gapSection, sectionLine("HEADERS"))
+		summaryRendered := lipgloss.NewStyle().Width(summaryW).Render(
+			identity + "\n\n" + summaryBlock)
+		headersRendered := lipgloss.NewStyle().Width(headersW).Render(
+			sectionLine("HEADERS") + "\n" + m.renderInspectHeadersText(result, region.Height-2))
+		bodyRendered := lipgloss.NewStyle().Width(bodyW).Render(
+			sectionLine("BODY") + "\n" + m.renderInspectBodyText(result, region.Height-2))
 
-	if len(result.ResponseHeaders) == 0 {
-		lines = append(lines, styleMuted.Render("No headers captured."))
-	} else {
-		keys := make([]string, 0, len(result.ResponseHeaders))
-		for key := range result.ResponseHeaders {
-			keys = append(keys, key)
+		combined := lipgloss.JoinHorizontal(lipgloss.Top, summaryRendered, " ", headersRendered, " ", bodyRendered)
+		return regionStyle(region).Render(combined)
+
+	case region.Width >= 60:
+		summaryH := 6
+		halfW := (region.Width - 1) / 2
+		remainingH := region.Height - summaryH - 2
+
+		top := lipgloss.NewStyle().Width(region.Width).Render(
+			identity + "\n\n" + summaryBlock)
+
+		headersRendered := lipgloss.NewStyle().Width(halfW).Render(
+			sectionLine("HEADERS") + "\n" + m.renderInspectHeadersText(result, remainingH-1))
+		bodyRendered := lipgloss.NewStyle().Width(region.Width - halfW - 1).Render(
+			sectionLine("BODY") + "\n" + m.renderInspectBodyText(result, remainingH-1))
+
+		bottom := lipgloss.JoinHorizontal(lipgloss.Top, headersRendered, " ", bodyRendered)
+		combined := top + "\n" + bottom
+		return regionStyle(region).Render(combined)
+
+	default:
+		lines := []string{
+			identity,
+			gapSection,
+			summaryBlock,
+			gapSection,
+			sectionLine("HEADERS"),
 		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			lines = append(lines, truncate(fmt.Sprintf("%s: %s", key, result.ResponseHeaders[key]), region.Width-4))
-		}
-	}
+		headersText := m.renderInspectHeadersText(result, region.Height-8)
+		lines = append(lines, headersText)
+		lines = append(lines, gapSection, sectionLine("BODY"))
+		bodyText := m.renderInspectBodyText(result, region.Height-10)
+		lines = append(lines, bodyText)
 
-	lines = append(lines, gapSection, sectionLine("BODY"))
-	body := result.ResponseBody
-	if body == "" {
-		body = styleMuted.Render("No body captured.")
+		return regionStyle(region).Render(strings.Join(lines, "\n"))
 	}
-	bodyLines := strings.Split(body, "\n")
-	for i, bline := range bodyLines {
-		if len(lines) >= region.Height-2 {
-			if i < len(bodyLines)-1 {
-				lines = append(lines, styleMuted.Render("... (truncated)"))
-			}
-			break
-		}
-		lines = append(lines, truncate(bline, region.Width-4))
-	}
-
-	return regionStyle(region).Render(strings.Join(lines, "\n"))
 }
 
 func resultStatus(result model.Result) string {

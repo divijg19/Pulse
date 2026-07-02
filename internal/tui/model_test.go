@@ -33,11 +33,11 @@ func TestMethodSelection(t *testing.T) {
 func TestConcurrencyClamping(t *testing.T) {
 	m := NewModel()
 	m.setConcurrency(500)
-	if got := m.concurrency(); got != 100 {
+	if got := m.concurrency(); got != runconfig.MaxConcurrency {
 		t.Fatalf("concurrency high clamp = %d", got)
 	}
 	m.setConcurrency(-10)
-	if got := m.concurrency(); got != 1 {
+	if got := m.concurrency(); got != runconfig.MinConcurrency {
 		t.Fatalf("concurrency low clamp = %d", got)
 	}
 }
