@@ -26,6 +26,8 @@ const (
 
 	reqFieldMethod = 0
 	reqFieldURL    = 1
+
+	defaultURL = "https://httpbin.org/delay/1"
 )
 
 type mode int
@@ -92,8 +94,8 @@ type startupMsg struct{}
 
 func NewModel() Model {
 	url := textinput.New()
-	url.Placeholder = "https://httpbin.org/delay/1"
-	url.SetValue("https://httpbin.org/delay/1")
+	url.Placeholder = defaultURL
+	url.SetValue(defaultURL)
 	url.Prompt = ""
 	url.CharLimit = 2048
 
@@ -129,8 +131,8 @@ func (m Model) Init() tea.Cmd {
 
 func (m *Model) setBodyWidths(totalWidth int) {
 	innerWidth := totalWidth - 4
-	leftWidth := max(28, innerWidth/2-2)
-	rightWidth := max(28, innerWidth-leftWidth-3)
+	leftWidth := max(minPanelWidth, innerWidth/defaultBodySplitDiv-2)
+	rightWidth := max(minPanelWidth, innerWidth-leftWidth-3)
 	m.bodyInput.SetWidth(max(10, rightWidth-6))
 }
 

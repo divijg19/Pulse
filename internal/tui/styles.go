@@ -15,8 +15,8 @@ const (
 
 var (
 	styleBase      = lipgloss.NewStyle().Background(lipgloss.Color(colorBg)).Foreground(lipgloss.Color(colorText))
-	styleTopBar    = styleBase.Copy().Bold(true)
-	styleRibbon    = styleBase.Copy().Background(lipgloss.Color(colorDark))
+	styleTopBar    = styleBase.Bold(true)
+	styleRibbon    = styleBase.Background(lipgloss.Color(colorDark))
 	styleSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 	styleMuted     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 	styleAccent    = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
@@ -40,9 +40,6 @@ var (
 	styleSectionLine = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorMuted))
 
-	styleHeading = lipgloss.NewStyle().
-			Bold(true)
-
 	styleDomainActive = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorAccent))
 
@@ -51,7 +48,7 @@ var (
 )
 
 func regionStyle(region Region) lipgloss.Style {
-	return styleBase.Copy().Width(region.Width).Height(region.Height)
+	return styleBase.Width(region.Width).Height(region.Height)
 }
 
 func statusColor(status int) string {
