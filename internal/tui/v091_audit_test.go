@@ -18,8 +18,8 @@ import (
 
 func TestV091Constitution_OrientationDelegates(t *testing.T) {
 	m := NewModel()
-	if got := orientationLabel(m); got != "OBSERVE" {
-		t.Fatalf("orientationLabel = %q, want OBSERVE", got)
+	if got := orientationLabel(m); got != "READY" {
+		t.Fatalf("orientationLabel = %q, want READY", got)
 	}
 }
 
@@ -220,7 +220,7 @@ func TestV091IA_WorkspaceIdentityVisible(t *testing.T) {
 			m := c.Setup()
 			m.shell.Resize(100, 30)
 			out := m.View()
-			labels := []string{"OBSERVE", "REQUEST", "INSPECT", "QUIT"}
+			labels := []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT"}
 			found := false
 			for _, label := range labels {
 				if strings.Contains(out, label) {
@@ -229,7 +229,7 @@ func TestV091IA_WorkspaceIdentityVisible(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Fatal("workspace must show identity label (OBSERVE/REQUEST/INSPECT/QUIT)")
+				t.Fatal("workspace must show identity label (READY/OBSERVE/REQUEST/INSPECT/QUIT)")
 			}
 		})
 	}
@@ -252,10 +252,10 @@ func TestV091IA_ActiveDomainVisuallyDistinct(t *testing.T) {
 func TestV091Walkthrough_RequestRunInspectQuit(t *testing.T) {
 	m := NewModel()
 
-	// 1. Start  --  should show OBSERVE identity
+	// 1. Start  --  should show READY identity
 	m.shell.Resize(100, 30)
-	if !strings.Contains(m.View(), "OBSERVE") {
-		t.Fatal("initial state should show OBSERVE")
+	if !strings.Contains(m.View(), "READY") {
+		t.Fatal("initial state should show READY")
 	}
 
 	// 2. Press e to open REQUEST dialog
@@ -811,7 +811,7 @@ type responsiveTestCase struct {
 
 func responsiveTestCases() []responsiveTestCase {
 	return []responsiveTestCase{
-		{"Ready", func(m *Model) {}, "OBSERVE", "Ready"},
+		{"Ready", func(m *Model) {}, "READY", "Ready"},
 		{"Running", func(m *Model) { m.running = true }, "OBSERVE", "Running"},
 		{"WithResults", func(m *Model) {
 			m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}

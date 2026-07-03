@@ -600,10 +600,10 @@ func TestV092Constitution_WorkspaceSingleSource(t *testing.T) {
 		t.Fatalf("initial view = %d (expected TimelineView=%d)", m.workspace.view, TimelineView)
 	}
 
-	// orientationLabel delegates to Workspace.Orientation().
+	// orientationLabel may refine the idle Observe workspace into READY.
 	label := orientationLabel(m)
-	if label != "OBSERVE" {
-		t.Fatalf("orientationLabel = %q (expected OBSERVE)", label)
+	if label != "READY" {
+		t.Fatalf("orientationLabel = %q (expected READY)", label)
 	}
 
 	// Changing workspace state changes orientation.
@@ -1279,7 +1279,7 @@ func TestV092IA_EverySurfaceHasOrientation(t *testing.T) {
 		setup    func(m *Model)
 		expected string
 	}{
-		{"idle", func(m *Model) {}, "OBSERVE"},
+		{"idle", func(m *Model) {}, "READY"},
 		{"request dialog", func(m *Model) { m.workspace.dialog = dialogRequest }, "REQUEST"},
 		{"inspect mode", func(m *Model) { m.workspace.mode = modeInspect }, "INSPECT"},
 		{"quit dialog", func(m *Model) { m.workspace.dialog = dialogConfirmQuit }, "QUIT"},

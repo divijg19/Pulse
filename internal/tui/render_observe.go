@@ -1,0 +1,112 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/divijg19/Pulse/internal/model"
+)
+
+func (m Model) renderResultList(region Region, identity string, emptyRunning string, rowFn func(result model.Result, index int, selected bool, width int) string) string {
+	var b strings.Builder
+
+	b.WriteString(identityCell(identity))
+	b.WriteString(gapSection)
+
+	remaining := region.Height - 2
+	if metrics := m.metricsString(); metrics != "" {
+		b.WriteString(styleMuted.Width(region.Width).Render(metrics))
+		b.WriteString("\n")
+		remaining--
+	}
+
+	if remaining <= 0 {
+		return regionStyle(region).Render(b.String())
+	}
+
+	if len(m.results) == 0 {
+		msg := m.renderEmptyState(emptyRunning)
+		b.WriteString(styleMuted.Render(msg))
+		return regionStyle(region).Render(b.String())
+	}
+
+	start := visibleWindow(len(m.results), m.selected, remaining)
+	rows := make([]string, 0, min(len(m.results)-start, remaining))
+	for i := start; i < len(m.results) && len(rows) < remaining; i++ {
+		result := m.results[i]
+		sel := i == m.selected
+		rows = append(rows, rowFn(result, i, sel, region.Width))
+	}
+	b.WriteString(strings.Join(rows, "\n"))
+
+	return regionStyle(region).Render(b.String())
+}
+
+func (m Model) renderTimeline(region Region) string {
+	return m.renderResultList(region, "Timeline · Completed", "Waiting for completions...",
+		func(result model.Result, index int, selected bool, width int) string {
+			return m.renderTimelineRow(index, result, m.summary.MaxLatency, width, selected)
+		})
+}
+
+func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time.Duration, width int, selected bool) string {
+	status := resultStatus(result)
+	latency := formatLatency(result.Latency)
+	method := m.effectiveMethod(result)
+	reqURL := m.effectiveURL(result)
+
+	remaining := width - timelineFixedWidth
+	barWidth := max(6, remaining/2)
+	urlWidth := max(10, remaining-barWidth)
+
+	filled := 0
+	if maxLatency > 0 {
+		filled = int(float64(result.Latency) / float64(maxLatency) * float64(barWidth))
+		if filled > barWidth {
+			filled = barWidth
+		}
+	}
+
+	barColor := statusColor(result.Status)
+	bar := renderLatencyBar(filled, barWidth, barColor)
+
+	line := fmt.Sprintf("%s %-12s %-4s %s %s %s",
+		rowCursor(selected), status, method, bar, latency, truncateURL(reqURL, urlWidth))
+
+	if isErrorResult(result) {
+		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
+	}
+	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
+}
+
+func (m Model) renderLogs(region Region) string {
+	return m.renderResultList(region, "Logs · Sequence", "No events captured yet...",
+		func(result model.Result, index int, selected bool, width int) string {
+			stamp := result.Timestamp.Format("15:04:05")
+			if result.Timestamp.IsZero() {
+				stamp = "--:--:--"
+			}
+			method := m.effectiveMethod(result)
+			reqURL := m.effectiveURL(result)
+			line := fmt.Sprintf("%s #%03d %s %-4s %-10s %s %s",
+				rowCursor(selected), index+1, stamp, method, resultStatus(result), formatLatency(result.Latency), truncate(reqURL, width-logsFixedWidth-7))
+			if result.Error != "" {
+				line = fmt.Sprintf("%s · %s", line, result.Error)
+			}
+			if isErrorResult(result) {
+				return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
+			}
+			return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
+		})
+}
+
+func (m Model) renderEmptyState(runningMsg string) string {
+	if !m.running {
+		if strings.TrimSpace(m.urlInput.Value()) == "" {
+			return "Enter a URL to begin"
+		}
+		return "Ready"
+	}
+	return runningMsg
+}

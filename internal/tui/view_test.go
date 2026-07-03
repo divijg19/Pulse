@@ -22,8 +22,8 @@ func TestView_Idle(t *testing.T) {
 	if !contains(t, out, "GET") {
 		t.Fatal("View should contain method")
 	}
-	if !contains(t, out, "OBSERVE") {
-		t.Fatal("View should contain OBSERVE identity in Ready surface")
+	if !contains(t, out, "READY") {
+		t.Fatal("View should contain READY identity in Ready surface")
 	}
 }
 
@@ -53,8 +53,8 @@ func TestRenderReady(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
 	out := m.renderReady(Region{Width: 100, Height: 26})
-	if !contains(t, out, "Ready") {
-		t.Fatal("Ready should show status heading")
+	if !contains(t, out, "Prepare") {
+		t.Fatal("Ready should show Prepare purpose")
 	}
 	if !contains(t, out, "Current Request") {
 		t.Fatal("Ready should show current request heading")
@@ -87,7 +87,7 @@ func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out = m.View()
-	if contains(t, out, "▶  Ready") {
+	if contains(t, out, "Ready to execute") {
 		t.Fatal("after results exist, Ready should not appear")
 	}
 }
@@ -212,7 +212,7 @@ func TestRenderStatusline_Normal(t *testing.T) {
 	if !contains(t, out, "[↑↓]") {
 		t.Fatal("post-run ribbon should show scroll hint key")
 	}
-	if !contains(t, out, "[Tab]") {
+	if !contains(t, out, "[[]]") {
 		t.Fatal("post-run ribbon should show view switch key")
 	}
 }
@@ -266,8 +266,8 @@ func TestRenderStatusline_RunningWithResults(t *testing.T) {
 	if !contains(t, out, "[Enter] Inspect") {
 		t.Fatal("running ribbon should show [Enter] Inspect")
 	}
-	if !contains(t, out, "[Tab] Views") {
-		t.Fatal("running ribbon should show [Tab] Views")
+	if !contains(t, out, "[[]] View") {
+		t.Fatal("running ribbon should show [[]] View")
 	}
 	if !contains(t, out, "[Ctrl+X]") {
 		t.Fatal("running ribbon should show [Ctrl+X] Cancel")
@@ -353,8 +353,8 @@ func TestRenderTimeline_Empty(t *testing.T) {
 	if !contains(t, out, "Timeline") {
 		t.Fatal("empty timeline should show Timeline identity")
 	}
-	if !contains(t, out, "▶  Ready") {
-		t.Fatal("empty timeline should show '▶  Ctrl+R to run'")
+	if !contains(t, out, "Ready") {
+		t.Fatal("empty timeline should show Ready state")
 	}
 }
 
@@ -402,8 +402,8 @@ func TestRenderLogs_Empty(t *testing.T) {
 	if !contains(t, out, "Logs") {
 		t.Fatal("empty logs should show Logs identity")
 	}
-	if !contains(t, out, "▶  Ready") {
-		t.Fatal("empty logs should show '▶  Ctrl+R to run'")
+	if !contains(t, out, "Ready") {
+		t.Fatal("empty logs should show Ready state")
 	}
 }
 
@@ -657,8 +657,8 @@ func TestRenderTimeline_RunningEmpty(t *testing.T) {
 	if !contains(t, out, "Timeline") {
 		t.Fatal("running empty timeline should show Timeline identity")
 	}
-	if !contains(t, out, "⏳  Waiting for results...") {
-		t.Fatal("running empty timeline should show '⏳  Waiting for results...'")
+	if !contains(t, out, "Waiting for completions...") {
+		t.Fatal("running empty timeline should show completion waiting state")
 	}
 }
 
@@ -687,8 +687,8 @@ func TestRenderTimeline_IdleWithURL(t *testing.T) {
 	if !contains(t, out, "Timeline") {
 		t.Fatal("idle empty timeline should show Timeline identity")
 	}
-	if !contains(t, out, "▶  Ready") {
-		t.Fatal("idle empty timeline with URL should show '▶  Ctrl+R to run'")
+	if !contains(t, out, "Ready") {
+		t.Fatal("idle empty timeline with URL should show Ready state")
 	}
 }
 
@@ -702,8 +702,8 @@ func TestRenderLogs_RunningEmpty(t *testing.T) {
 	if !contains(t, out, "Logs") {
 		t.Fatal("running empty logs should show Logs identity")
 	}
-	if !contains(t, out, "📭  No results yet...") {
-		t.Fatal("running empty logs should show '📭  No results yet...'")
+	if !contains(t, out, "No events captured yet...") {
+		t.Fatal("running empty logs should show sequence waiting state")
 	}
 }
 
@@ -732,8 +732,8 @@ func TestRenderLogs_IdleWithURL(t *testing.T) {
 	if !contains(t, out, "Logs") {
 		t.Fatal("idle empty logs should show Logs identity")
 	}
-	if !contains(t, out, "▶  Ready") {
-		t.Fatal("idle empty logs with URL should show '▶  Ctrl+R to run'")
+	if !contains(t, out, "Ready") {
+		t.Fatal("idle empty logs with URL should show Ready state")
 	}
 }
 
@@ -1134,7 +1134,7 @@ func TestOrientationLabel_AllStates(t *testing.T) {
 		setup  func(m *Model)
 		expect string
 	}{
-		{"Ready", func(m *Model) {}, "OBSERVE"},
+		{"Ready", func(m *Model) {}, "READY"},
 		{"WithResults", func(m *Model) { m.results = []model.Result{{Status: 200}} }, "OBSERVE"},
 		{"RunningEmpty", func(m *Model) { m.running = true }, "OBSERVE"},
 		{"RunningWithResults", func(m *Model) { m.running = true; m.results = []model.Result{{Status: 200}} }, "OBSERVE"},
@@ -1310,7 +1310,7 @@ func TestShellInvariant_WorkspaceNoShortcuts(t *testing.T) {
 // TestShellInvariant_RibbonHasOrientation verifies every ribbon output starts
 // with a known orientation label (the Shell Column).
 func TestShellInvariant_RibbonHasOrientation(t *testing.T) {
-	labels := []string{"OBSERVE", "REQUEST", "INSPECT", "QUIT"}
+	labels := []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT"}
 	hasLabel := func(out string) bool {
 		for _, l := range labels {
 			if contains(t, out, l) {
@@ -1575,5 +1575,245 @@ func TestVisibleWindow(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("visibleWindow(%d,%d,%d) = %d (expected %d)", tc.total, tc.selected, tc.height, got, tc.expected)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Validation Visibility
+// ---------------------------------------------------------------------------
+
+func TestRenderRequest_ValidationVisibility(t *testing.T) {
+	t.Run("shows validation block when errMsg set", func(t *testing.T) {
+		m := NewModel()
+		m.errMsg = "INVALID URL"
+		m.shell.Resize(100, 30)
+		out := m.renderRequest(Region{Width: 80, Height: 24})
+		if !contains(t, out, "Validation") {
+			t.Fatal("renderRequest should show Validation heading when errMsg is set")
+		}
+		if !contains(t, out, "INVALID URL") {
+			t.Fatal("renderRequest should show the error message")
+		}
+		if !contains(t, out, "Adjust the request and run again.") {
+			t.Fatal("renderRequest should show recovery guidance")
+		}
+	})
+
+	t.Run("omits validation block when errMsg empty", func(t *testing.T) {
+		m := NewModel()
+		m.errMsg = ""
+		m.shell.Resize(100, 30)
+		out := m.renderRequest(Region{Width: 80, Height: 24})
+		if contains(t, out, "Validation") {
+			t.Fatal("renderRequest must NOT show Validation heading when errMsg is empty")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Rendering Vocabulary
+// ---------------------------------------------------------------------------
+
+func TestRenderBodyPreview(t *testing.T) {
+	t.Run("empty body shows placeholder", func(t *testing.T) {
+		got := renderBodyPreview("", 10)
+		if !contains(t, got, "No body captured.") {
+			t.Fatal("empty body should show placeholder")
+		}
+	})
+
+	t.Run("JSON body is formatted", func(t *testing.T) {
+		got := renderBodyPreview(`{"a":1,"b":2}`, 10)
+		if !contains(t, got, `"a"`) || !contains(t, got, `"b"`) {
+			t.Fatal("JSON body should be formatted and show keys")
+		}
+	})
+
+	t.Run("truncation shows ellipsis", func(t *testing.T) {
+		body := "line1\nline2\nline3\nline4\nline5"
+		got := renderBodyPreview(body, 3)
+		if !contains(t, got, "... (truncated)") {
+			t.Fatal("body exceeding maxLines should show truncation indicator")
+		}
+	})
+
+	t.Run("plain text within max lines is not truncated", func(t *testing.T) {
+		body := "line1\nline2"
+		got := renderBodyPreview(body, 5)
+		if contains(t, got, "truncated") {
+			t.Fatal("body within maxLines must not show truncation")
+		}
+	})
+}
+
+func TestFormatLatency(t *testing.T) {
+	tt := []struct {
+		duration time.Duration
+		expected string
+	}{
+		{0, "0.00s"},
+		{-1 * time.Nanosecond, "0.00s"},
+		{500 * time.Millisecond, "0.50s"},
+		{1 * time.Second, "1.00s"},
+		{90 * time.Second, "1m 30s"},
+	}
+	for _, tc := range tt {
+		got := formatLatency(tc.duration)
+		if got != tc.expected {
+			t.Errorf("formatLatency(%v) = %q (expected %q)", tc.duration, got, tc.expected)
+		}
+	}
+}
+
+func TestRenderMetadata(t *testing.T) {
+	t.Run("renders key-value pair", func(t *testing.T) {
+		got := renderMetadata("Key", "Value")
+		if !contains(t, got, "Key") || !contains(t, got, "Value") {
+			t.Fatal("renderMetadata should contain label and value")
+		}
+		if !contains(t, got, ":") {
+			t.Fatal("renderMetadata should contain colon separator")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Workspace Constitution — Regression Tests
+// ---------------------------------------------------------------------------
+
+func TestWorkspaceConstitution_Ready(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	out := m.View()
+
+	if !contains(t, out, "READY") {
+		t.Fatal("Constitution: Ready must show READY identity")
+	}
+	if !contains(t, out, "Prepare") {
+		t.Fatal("Constitution: Ready must show Prepare purpose")
+	}
+	if !contains(t, out, "Current Request") {
+		t.Fatal("Constitution: Ready must answer 'what to look at first'")
+	}
+	if !contains(t, out, "[Ctrl+R]") {
+		t.Fatal("Constitution: Ready next action must be Run")
+	}
+	if !contains(t, out, "[e] Configure") {
+		t.Fatal("Constitution: Ready must offer Configuration before running")
+	}
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("Constitution: Ready must show exit path")
+	}
+}
+
+func TestWorkspaceConstitution_Timeline(t *testing.T) {
+	m := NewModel()
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	m.shell.Resize(100, 30)
+	out := m.View()
+
+	if !contains(t, out, "Timeline") {
+		t.Fatal("Constitution: Timeline must show identity")
+	}
+	if !contains(t, out, "200") {
+		t.Fatal("Constitution: Timeline must show result status")
+	}
+	if !contains(t, out, "[Enter] Inspect") {
+		t.Fatal("Constitution: Timeline next action must be Inspect")
+	}
+	if !contains(t, out, "[[]] View") {
+		t.Fatal("Constitution: Timeline must offer view switching")
+	}
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("Constitution: Timeline must show exit path")
+	}
+}
+
+func TestWorkspaceConstitution_Logs(t *testing.T) {
+	m := NewModel()
+	m.workspace.view = LogsView
+	m.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	m.shell.Resize(100, 30)
+	out := m.View()
+
+	if !contains(t, out, "Logs") {
+		t.Fatal("Constitution: Logs must show identity")
+	}
+	if !contains(t, out, "[Enter] Inspect") {
+		t.Fatal("Constitution: Logs next action must be Inspect")
+	}
+	if !contains(t, out, "[[]] View") {
+		t.Fatal("Constitution: Logs must offer view switching")
+	}
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("Constitution: Logs must show exit path")
+	}
+}
+
+func TestWorkspaceConstitution_Inspect(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.results = []model.Result{
+		{
+			Status:          200,
+			Latency:         100 * time.Millisecond,
+			ResponseHeaders: map[string]string{"Content-Type": "application/json"},
+			ResponseBody:    `{"ok": true}`,
+		},
+	}
+	m.selected = 0
+	m.shell.Resize(100, 30)
+	out := m.View()
+
+	if !contains(t, out, "INSPECT") {
+		t.Fatal("Constitution: Inspect must show INSPECT identity in ribbon")
+	}
+	if !contains(t, out, "WHAT HAPPENED") {
+		t.Fatal("Constitution: Inspect must show WHAT HAPPENED investigation section")
+	}
+	if !contains(t, out, "WHY") {
+		t.Fatal("Constitution: Inspect must show WHY investigation section")
+	}
+	if !contains(t, out, "EXACTLY WHAT CAME BACK") {
+		t.Fatal("Constitution: Inspect must show EXACTLY WHAT CAME BACK section")
+	}
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("Constitution: Inspect next action must be Back")
+	}
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("Constitution: Inspect must show exit path")
+	}
+}
+
+func TestWorkspaceConstitution_Request(t *testing.T) {
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.shell.Resize(100, 30)
+	out := m.View()
+
+	if !contains(t, out, "REQUEST") {
+		t.Fatal("Constitution: Request must show REQUEST identity")
+	}
+	if !contains(t, out, "Request") {
+		t.Fatal("Constitution: Request dialog must show Request domain header")
+	}
+	if !contains(t, out, "Payload") {
+		t.Fatal("Constitution: Request dialog must show Payload domain")
+	}
+	if !contains(t, out, "Execution") {
+		t.Fatal("Constitution: Request dialog must show Execution domain")
+	}
+	if !contains(t, out, "[Tab]") {
+		t.Fatal("Constitution: Request next action must be Tab navigation")
+	}
+	if !contains(t, out, "[Ctrl+R]") {
+		t.Fatal("Constitution: Request must show Run action")
+	}
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("Constitution: Request must show recovery/exit path")
 	}
 }

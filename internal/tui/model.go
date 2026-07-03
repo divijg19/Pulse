@@ -778,16 +778,3 @@ func newHeaderRow() headerRow {
 
 	return headerRow{Key: key, Value: value}
 }
-
-func formatDuration(duration time.Duration) string {
-	if duration <= 0 {
-		return "0.00s"
-	}
-	secs := duration.Seconds()
-	if secs >= 60 {
-		mins := int(secs) / 60
-		left := secs - float64(mins*60)
-		return fmt.Sprintf("%dm %.0fs", mins, left)
-	}
-	return fmt.Sprintf("%.2fs", secs)
-}

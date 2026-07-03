@@ -85,7 +85,7 @@ type actionBinding struct {
 var actionBindings = map[ActionID]actionBinding{
 	ActionSelect:            {"↑↓", "Select", NavigationCategory, PriorityHigh},
 	ActionInspect:           {"Enter", "Inspect", NavigationCategory, PriorityHigh},
-	ActionSwitchView:        {"Tab", "Views", NavigationCategory, PriorityMedium},
+	ActionSwitchView:        {"[]", "View", NavigationCategory, PriorityMedium},
 	ActionConfigureRequest:  {"e", "Configure", ConfigurationCategory, PriorityCritical},
 	ActionRun:               {"Ctrl+R", "Run", OperationCategory, PriorityCritical},
 	ActionCancel:            {"Ctrl+X", "Cancel", OperationCategory, PriorityCritical},
@@ -138,5 +138,8 @@ func computeShellLayout(totalWidth, totalHeight int) ShellLayout {
 }
 
 func orientationLabel(m Model) string {
+	if m.workspace.dialog == dialogNone && m.workspace.mode == modeObserve && !m.running && len(m.results) == 0 {
+		return "READY"
+	}
 	return m.workspace.Orientation()
 }
