@@ -21,6 +21,7 @@ const (
 const (
 	timelineFixedWidth  = 34
 	logsFixedWidth      = 29
+	logsFixedSuffix     = 7
 	contextRowWidth     = 12
 	contextURLWidth     = 8
 	minPanelWidth       = 28
@@ -42,7 +43,8 @@ func (m Model) Actions() []Action {
 		return m.requestActions()
 	case m.workspace.mode == modeInspect:
 		return []Action{
-			{ActionSelect, NavigationCategory, true},
+			{ActionZoneNext, NavigationCategory, true},
+			{ActionZoneScroll, NavigationCategory, true},
 			{ActionBack, ApplicationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
@@ -118,23 +120,18 @@ func (m Model) View() string {
 
 	layout := m.shell.Layout()
 	state := m.ShellState()
-	orientation := state.Orientation
 
 	var sb strings.Builder
-	sb.WriteString(m.renderTopBar(state, layout.Context.Width))
 	sb.WriteString("\n")
-	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Context.Width)))
+	sb.WriteString(m.renderTopBar(state, layout.Context.Width))
 	sb.WriteString("\n")
 
 	ws := layout.Workspace
 	ws.Border = BorderFull
-	ws.Title = orientation
-	ws.Padding = 1
-	inner := Region{Type: WorkspaceRegion, Width: ws.Width - 2 - 2*ws.Padding, Height: ws.Height - 2}
-	sb.WriteString(ws.RenderBordered(m.renderWorkspaceContent(inner, w)))
-	sb.WriteString("\n")
-
-	sb.WriteString(styleSeparator.Render(strings.Repeat("─", layout.Command.Width)))
+	ws.Title = state.Orientation
+	ws.PaddingX = 1
+	ws.PaddingY = 1
+	sb.WriteString(ws.RenderBordered(m.renderWorkspaceContent(ws.ContentRegion(), w)))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderStatusline(state, layout.Command.Width))
 
@@ -147,7 +144,10 @@ func (m Model) renderWorkspaceContent(region Region, width int) string {
 		return m.resolveSurface().Render(region)
 	}
 
-	ctxWidth := min(contextMinWidth, max(contextMinWidth, region.Width/3))
+	ctxWidth := region.Width / 3
+	if ctxWidth < contextMinWidth {
+		ctxWidth = contextMinWidth
+	}
 	primaryWidth := region.Width - ctxWidth - 1
 	if primaryWidth < 40 {
 		return m.resolveSurface().Render(region)
@@ -188,6 +188,7 @@ func (m Model) payloadSummary() string {
 }
 
 func (m Model) renderTopBar(state ShellState, width int) string {
+	const leftPad = " "
 	cfg := state.Configuration
 	left := ""
 	right := ""
@@ -206,17 +207,17 @@ func (m Model) renderTopBar(state ShellState, width int) string {
 		}
 	}
 
-	maxLeft := width - lipgloss.Width(right) - 3
+	maxLeft := width - 1 - lipgloss.Width(right) - 3
 	if maxLeft < topBarMinLeft {
 		maxLeft = 12
 	}
 	leftTruncated := truncate(left, maxLeft)
-	padding := width - lipgloss.Width(leftTruncated) - lipgloss.Width(right)
+	padding := width - 1 - lipgloss.Width(leftTruncated) - lipgloss.Width(right)
 	if padding < 1 {
 		padding = 1
 	}
 
-	line := leftTruncated + strings.Repeat(" ", padding) + right
+	line := leftPad + leftTruncated + strings.Repeat(" ", padding) + right
 	return styleTopBar.Width(width).Render(line)
 }
 
@@ -387,8 +388,14 @@ func renderRibbon(layout RibbonLayout, width int) string {
 	rs := lipgloss.Width(rightSep)
 	padding := max(0, width-lipgloss.Width(layout.Badge)-lipgloss.Width(layout.Status)-ls-rs-lipgloss.Width(layout.Actions))
 
-	line := layout.Badge + leftSep + layout.Actions + strings.Repeat(" ", padding) + rightSep + layout.Status
-	return styleRibbon.Width(width).Render(line)
+	var rb strings.Builder
+	rb.WriteString(layout.Badge)
+	rb.WriteString(leftSep)
+	rb.WriteString(layout.Actions)
+	rb.WriteString(strings.Repeat(" ", padding))
+	rb.WriteString(rightSep)
+	rb.WriteString(layout.Status)
+	return styleRibbon.Width(width).Render(rb.String())
 }
 
 func (m Model) renderStatusline(state ShellState, width int) string {

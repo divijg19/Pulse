@@ -18,16 +18,19 @@ import (
 )
 
 const (
-	subfocusKey      = 0
-	subfocusValue    = 1
-	bodyFocus        = -1
-	defaultBodyWidth = 48
-	maxTUIBodyBytes  = 1 << 20
+	subfocusKey     = 0
+	subfocusValue   = 1
+	bodyFocus       = -1
+	maxTUIBodyBytes = 1 << 20
 
 	reqFieldMethod = 0
 	reqFieldURL    = 1
 
 	defaultURL = "https://httpbin.org/delay/1"
+
+	zoneWhatHappened = 0
+	zoneWhy          = 1
+	zoneBody         = 2
 )
 
 type mode int
@@ -76,6 +79,9 @@ type Model struct {
 	status    string
 	errMsg    string
 	summary   metrics.Summary
+
+	inspectZone       int
+	inspectBodyOffset int
 }
 
 type resultMsg struct {
@@ -110,7 +116,7 @@ func NewModel() Model {
 	body.Prompt = ""
 	body.CharLimit = 1 << 20
 	body.SetHeight(3)
-	body.SetWidth(defaultBodyWidth)
+	body.SetWidth(48)
 
 	return Model{
 		shell:            NewShell(),
@@ -171,7 +177,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventErrorMsg:
 		m.elapsed = time.Since(m.startedAt)
 		m.running = false
-		m.status = "ERROR: " + msg.Err
+		m.errMsg = "ERROR: " + strings.ToUpper(msg.Err)
+		m.status = "ERROR: " + strings.ToUpper(msg.Err)
 		return m, nil
 	case runFinishedMsg:
 		m.elapsed = time.Since(m.startedAt)
@@ -179,6 +186,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "COMPLETE"
 		}
 		m.running = false
+		m.errMsg = ""
 		if m.cancel != nil {
 			m.cancel()
 		}
@@ -188,6 +196,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case tea.MouseMsg:
+		return m, nil
+	case error:
+		m.errMsg = strings.ToUpper(msg.Error())
+		m.status = "ERROR: " + strings.ToUpper(msg.Error())
 		return m, nil
 	}
 
@@ -326,15 +338,13 @@ func (m Model) advanceDomainBackward() (tea.Model, tea.Cmd) {
 
 func (m Model) handleRequestDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up":
+	case "up", "k":
 		if m.requestField == reqFieldURL {
 			m.focusMethod()
 		}
 		return m, nil
-	case "k":
-		if m.requestField == reqFieldMethod {
-			return m, nil
-		}
+	case "j":
+		fallthrough
 	case "down":
 		if m.requestField == reqFieldMethod {
 			m.focusURL()
@@ -348,11 +358,6 @@ func (m Model) handleRequestDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focusPayloadKey()
 		}
 		return m, nil
-	case "j":
-		if m.requestField == reqFieldMethod {
-			m.focusURL()
-			return m, nil
-		}
 	case "left", "h":
 		if m.requestField == reqFieldMethod && m.methodIndex > 0 {
 			m.methodIndex--
@@ -385,6 +390,8 @@ func (m Model) handlePayloadDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handlePayloadBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "k":
+		fallthrough
 	case "up":
 		if len(m.headers) > 0 {
 			m.selectedHead = len(m.headers) - 1
@@ -395,8 +402,8 @@ func (m Model) handlePayloadBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focusURL()
 		}
 		return m, nil
-	case "k", "j":
-		return m, nil
+	case "j":
+		fallthrough
 	case "down":
 		m.focusConcurrency()
 		return m, nil
@@ -419,7 +426,7 @@ func (m Model) handlePayloadHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focusPayloadKey()
 		return m, nil
 	case "ctrl+d":
-		if len(m.headers) > 0 {
+		if len(m.headers) > 0 && m.selectedHead >= 0 {
 			m.headers = append(m.headers[:m.selectedHead], m.headers[m.selectedHead+1:]...)
 			if len(m.headers) == 0 {
 				m.selectedHead = bodyFocus
@@ -598,6 +605,8 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if len(m.results) > 0 {
 			m.workspace.mode = modeInspect
+			m.inspectBodyOffset = 0
+			m.inspectZone = zoneWhatHappened
 		}
 		return m, nil
 	case "tab", "shift+tab", "left", "right", "h", "l":
@@ -624,30 +633,6 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.workspace.mode = modeObserve
-		return m, nil
-	case "up", "k":
-		if m.selected > 0 {
-			m.selected--
-		}
-		return m, nil
-	case "down", "j":
-		if m.selected < len(m.results)-1 {
-			m.selected++
-		}
-		return m, nil
-	case "q", "ctrl+c":
-		m.workspace.dialog = dialogConfirmQuit
-		return m, nil
-	case "tab", "shift+tab", "left", "right", "h", "l":
-		return m, nil
-	}
-	return m, nil
-}
-
 func (m Model) startRun() (Model, tea.Cmd) {
 	if m.running {
 		return m, nil
@@ -663,8 +648,9 @@ func (m Model) startRun() (Model, tea.Cmd) {
 
 	validated, err := runconfig.Validate(req)
 	if err != nil {
-		m.errMsg = strings.ToUpper(err.Error())
-		m.status = strings.ToUpper(err.Error())
+		errStr := strings.ToUpper(err.Error())
+		m.errMsg = errStr
+		m.status = errStr
 		return m, nil
 	}
 
@@ -691,9 +677,21 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.errMsg = ""
 	m.status = "RUNNING"
 	m.summary = metrics.Summary{}
+	m.inspectBodyOffset = 0
+	m.inspectZone = zoneWhatHappened
 
 	go func() {
 		defer hub.Remove(eventCh)
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case eventCh <- model.Event{
+					Type: fmt.Sprintf("engine panic: %v", r),
+				}:
+				default:
+				}
+			}
+		}()
 		engine.ExecuteConcurrent(ctx, validated, hub)
 	}()
 
@@ -709,6 +707,7 @@ func (m Model) cancelRun() Model {
 		m.cancel()
 		m.status = "CANCELLED"
 		m.running = false
+		m.blurAll()
 	}
 	return m
 }

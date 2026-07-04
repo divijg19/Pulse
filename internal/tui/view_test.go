@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
@@ -1646,25 +1647,6 @@ func TestRenderBodyPreview(t *testing.T) {
 	})
 }
 
-func TestFormatLatency(t *testing.T) {
-	tt := []struct {
-		duration time.Duration
-		expected string
-	}{
-		{0, "0.00s"},
-		{-1 * time.Nanosecond, "0.00s"},
-		{500 * time.Millisecond, "0.50s"},
-		{1 * time.Second, "1.00s"},
-		{90 * time.Second, "1m 30s"},
-	}
-	for _, tc := range tt {
-		got := formatLatency(tc.duration)
-		if got != tc.expected {
-			t.Errorf("formatLatency(%v) = %q (expected %q)", tc.duration, got, tc.expected)
-		}
-	}
-}
-
 func TestRenderMetadata(t *testing.T) {
 	t.Run("renders key-value pair", func(t *testing.T) {
 		got := renderMetadata("Key", "Value")
@@ -1778,8 +1760,8 @@ func TestWorkspaceConstitution_Inspect(t *testing.T) {
 	if !contains(t, out, "WHY") {
 		t.Fatal("Constitution: Inspect must show WHY investigation section")
 	}
-	if !contains(t, out, "EXACTLY WHAT CAME BACK") {
-		t.Fatal("Constitution: Inspect must show EXACTLY WHAT CAME BACK section")
+	if !contains(t, out, "RESPONSE") {
+		t.Fatal("Constitution: Inspect must show RESPONSE section")
 	}
 	if !contains(t, out, "[Esc] Back") {
 		t.Fatal("Constitution: Inspect next action must be Back")
@@ -1815,5 +1797,265 @@ func TestWorkspaceConstitution_Request(t *testing.T) {
 	}
 	if !contains(t, out, "[Esc] Back") {
 		t.Fatal("Constitution: Request must show recovery/exit path")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// v0.9.6 Inquiry Constitution — investigation workspace
+// ---------------------------------------------------------------------------
+
+func TestInvestigation_PromotedMetadata(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.selected = 0
+	m.results = []model.Result{
+		{
+			Status:  200,
+			Latency: 100 * time.Millisecond,
+			ResponseHeaders: map[string]string{
+				"Content-Type":     "application/json",
+				"Content-Encoding": "gzip",
+			},
+			ResponseBody: `{"ok": true}`,
+		},
+	}
+
+	out := m.renderInspect(Region{Width: 40, Height: 20})
+	if !contains(t, out, "Content-Type: application/json") {
+		t.Fatal("Promoted metadata should show Content-Type")
+	}
+	if !contains(t, out, "Encoding: gzip") {
+		t.Fatal("Promoted metadata should show Content-Encoding")
+	}
+	if !contains(t, out, "Content-Length") {
+		t.Fatal("Promoted metadata should show Content-Length")
+	}
+}
+
+func TestInvestigation_BinaryContent(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.selected = 0
+	m.results = []model.Result{
+		{
+			Status:  200,
+			Latency: 100 * time.Millisecond,
+			ResponseHeaders: map[string]string{
+				"Content-Type": "image/png",
+			},
+			ResponseBody: "\x89PNG\r\n\x1a\n",
+		},
+	}
+
+	out := m.renderInspectBody(m.results[0], 10, 40)
+	if !contains(t, out, "Binary content") {
+		t.Fatal("binary body should show 'Binary content' indicator")
+	}
+	if !contains(t, out, "image/png") {
+		t.Fatal("binary body should show content type")
+	}
+}
+
+func TestInvestigation_BodyScrolling(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.inspectZone = zoneBody
+	m.selected = 0
+	m.results = []model.Result{
+		{
+			Status:       200,
+			Latency:      100 * time.Millisecond,
+			ResponseBody: "line1\nline2\nline3\nline4\nline5",
+		},
+	}
+
+	// Scroll down twice
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+
+	// Render with 3 visible lines starting at offset 2
+	out := m.renderInspectBody(m.results[0], 3, 40)
+	if !contains(t, out, "line3") {
+		t.Fatal("scrolled body should show line3")
+	}
+	if !contains(t, out, "line5") {
+		t.Fatal("scrolled body should show line5")
+	}
+	if contains(t, out, "line1") {
+		t.Fatal("scrolled body should NOT show line1 (scrolled past)")
+	}
+}
+
+func TestInvestigation_Continuity(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+		{Status: 404, Latency: 20 * time.Millisecond},
+	}
+	m.selected = 1
+
+	// Esc should return to Observe and preserve selection
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.workspace.mode != modeObserve {
+		t.Fatal("Esc should return to Observe mode")
+	}
+	if m.selected != 1 {
+		t.Fatalf("Esc should preserve selection, got %d", m.selected)
+	}
+}
+
+func TestInvestigation_ZoneNavigation(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+	}
+
+	// Verify zone emphasis renders differently for active vs inactive
+	out := m.renderInspect(Region{Width: 40, Height: 20})
+	if !contains(t, out, "WHAT HAPPENED") {
+		t.Fatal("WHAT HAPPENED zone should be visible")
+	}
+
+	// Tab to WHY zone
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.inspectZone != zoneWhy {
+		t.Fatal("Tab should advance to WHY zone")
+	}
+
+	// Tab to BODY zone
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.inspectZone != zoneBody {
+		t.Fatal("Tab should advance to BODY zone")
+	}
+
+	// Tab wraps back to WHAT HAPPENED
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.inspectZone != zoneWhatHappened {
+		t.Fatal("Tab should wrap to WHAT HAPPENED zone")
+	}
+}
+
+func TestInvestigation_NarrowLayoutZonePresence(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.selected = 0
+	m.results = []model.Result{
+		{
+			Status:  200,
+			Latency: 100 * time.Millisecond,
+			ResponseHeaders: map[string]string{
+				"Content-Type":     "application/json",
+				"Content-Encoding": "gzip",
+				"Content-Length":   "456",
+			},
+			ResponseBody: `{"key": "value"}`,
+		},
+	}
+
+	// Narrow layout (Width < 60) with multi-line "what" content
+	// (method+url + status + 3 promoted metadata = 5 lines).
+	// Content-derived heights must preserve all three investigation zones.
+	out := m.renderInspect(Region{Width: 40, Height: 20})
+	if !contains(t, out, "WHAT HAPPENED") {
+		t.Fatal("narrow layout must show WHAT HAPPENED section")
+	}
+	if !contains(t, out, "WHY") {
+		t.Fatal("content-derived height must preserve WHY section")
+	}
+	if !contains(t, out, "RESPONSE") {
+		t.Fatal("content-derived height must preserve RESPONSE section")
+	}
+
+	// Verify minimal content doesn't panic or produce empty output
+	m2 := NewModel()
+	m2.workspace.mode = modeInspect
+	m2.selected = 0
+	m2.results = []model.Result{
+		{Status: 200, Latency: 100 * time.Millisecond},
+	}
+	outMin := m2.renderInspect(Region{Width: 40, Height: 10})
+	if outMin == "" {
+		t.Fatal("narrow layout with minimal content must not produce empty output")
+	}
+}
+
+func TestHeaderDeleteSafety(t *testing.T) {
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.selectedHead = bodyFocus
+	m.focusPayloadBody()
+
+	// ctrl+d with bodyFocus (-1) selectedHead must not panic
+	// (regression: missing guard would slice m.headers[:bodyFocus])
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = updated.(Model)
+
+	// State should be unchanged — still at body focus, no headers
+	if m.selectedHead != bodyFocus {
+		t.Fatal("ctrl+d with body focus must not change selectedHead")
+	}
+	if len(m.headers) != 0 {
+		t.Fatal("ctrl+d with empty headers must not add headers")
+	}
+}
+
+func TestInvestigationStateResetOnEnter(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeObserve
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+	}
+	m.selected = 0
+
+	// Set stale inspect state
+	m.inspectZone = zoneBody
+	m.inspectBodyOffset = 5
+
+	// Enter inspect mode — must reset zone and offset
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.workspace.mode != modeInspect {
+		t.Fatal("enter should switch to inspect mode")
+	}
+	if m.inspectZone != zoneWhatHappened {
+		t.Fatal("enter inspect must reset inspectZone to whatHappened")
+	}
+	if m.inspectBodyOffset != 0 {
+		t.Fatal("enter inspect must reset inspectBodyOffset to 0")
+	}
+}
+
+func TestInvestigationStateResetOnStartRun(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeObserve
+	m.urlInput.SetValue("https://example.com/api")
+	m.setConcurrency(1)
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+	}
+
+	// Set stale inspect state
+	m.inspectZone = zoneBody
+	m.inspectBodyOffset = 5
+
+	// Start a new run — must reset zone and offset
+	started, cmd := m.startRun()
+	if cmd == nil {
+		t.Fatal("startRun should return a command")
+	}
+	if started.inspectZone != zoneWhatHappened {
+		t.Fatal("startRun must reset inspectZone to whatHappened")
+	}
+	if started.inspectBodyOffset != 0 {
+		t.Fatal("startRun must reset inspectBodyOffset to 0")
 	}
 }

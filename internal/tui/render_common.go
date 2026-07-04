@@ -23,12 +23,8 @@ func formatDuration(duration time.Duration) string {
 	return fmt.Sprintf("%.2fs", secs)
 }
 
-func formatLatency(duration time.Duration) string {
-	return formatDuration(duration)
-}
-
 func renderMethod(method string) string {
-	return styleAccent.Render(method)
+	return styleMethod.Render(method)
 }
 
 func renderMetadata(label, value string) string {

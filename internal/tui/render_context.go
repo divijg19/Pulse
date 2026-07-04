@@ -34,7 +34,7 @@ func (m Model) renderObserveContext(region Region) string {
 	b.WriteString(gapSection)
 	b.WriteString(fmt.Sprintf(indentField+"%s %s\n", method, truncateURL(reqURL, region.Width-contextRowWidth)))
 	b.WriteString(fmt.Sprintf(indentField+"%s\n", renderStatusBadge(result)))
-	b.WriteString(fmt.Sprintf(indentField+"Latency: %s\n", formatLatency(result.Latency)))
+	b.WriteString(fmt.Sprintf(indentField+"Latency: %s\n", formatDuration(result.Latency)))
 	return regionStyle(region).Render(b.String())
 }
 

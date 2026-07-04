@@ -45,8 +45,9 @@ func TestStyleRibbon(t *testing.T) {
 	if got := styleRibbon.GetForeground(); got != lipgloss.Color(colorText) {
 		t.Errorf("styleRibbon foreground = %q, want %q", got, colorText)
 	}
-	if got := styleRibbon.GetBackground(); got != lipgloss.Color(colorDark) {
-		t.Errorf("styleRibbon background = %q, want %q", got, colorDark)
+	// Ribbon uses base background — quieter, anchors without floating
+	if got := styleRibbon.GetBackground(); got != lipgloss.Color(colorBg) {
+		t.Errorf("styleRibbon background = %q, want %q", got, colorBg)
 	}
 }
 

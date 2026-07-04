@@ -20,10 +20,10 @@ func TestRegionBoxed_RawWidthsMatch(t *testing.T) {
 			name := fmt.Sprintf("width=%d padding=%d", w, p)
 			t.Run(name, func(t *testing.T) {
 				r := Region{
-					Width:   w,
-					Height:  5,
-					Border:  BorderFull,
-					Padding: p,
+					Width:    w,
+					Height:   5,
+					Border:   BorderFull,
+					PaddingX: p,
 				}
 
 				rendered := r.renderBoxed("content")
@@ -76,11 +76,11 @@ func TestRegionBoxed_RawWidthsMatch(t *testing.T) {
 
 func TestRegionBoxed_TitledCorners(t *testing.T) {
 	r := Region{
-		Width:   40,
-		Height:  5,
-		Border:  BorderFull,
-		Padding: 1,
-		Title:   "OBSERVE",
+		Width:    40,
+		Height:   5,
+		Border:   BorderFull,
+		PaddingX: 1,
+		Title:    "OBSERVE",
 	}
 
 	rendered := r.renderBoxed("content")

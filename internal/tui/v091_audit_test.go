@@ -85,15 +85,13 @@ func TestV091Behaviour_InspectNoDeadKeys(t *testing.T) {
 	m := NewModel()
 	m.workspace.mode = modeInspect
 	m.results = testResults(1)
-	tabKeys := []tea.KeyMsg{
-		keyMsgKey(tea.KeyTab),
-		keyMsgKey(tea.KeyShiftTab),
+	leftRightKeys := []tea.KeyMsg{
 		keyMsgKey(tea.KeyLeft),
 		keyMsgKey(tea.KeyRight),
 		keyMsgRune('h'),
 		keyMsgRune('l'),
 	}
-	for _, key := range tabKeys {
+	for _, key := range leftRightKeys {
 		updated, cmd := m.handleInspectKey(key)
 		m2 := updated.(Model)
 		if cmd != nil {
@@ -102,6 +100,19 @@ func TestV091Behaviour_InspectNoDeadKeys(t *testing.T) {
 		if m2.workspace.mode != modeInspect {
 			t.Fatal("key should stay in inspect mode")
 		}
+	}
+
+	// Tab and Shift+Tab now cycle investigation zones — verify they work
+	m2 := m
+	updated, _ := m2.handleInspectKey(keyMsgKey(tea.KeyTab))
+	m2 = updated.(Model)
+	if m2.inspectZone != zoneWhy {
+		t.Fatalf("Tab should advance to WHY zone, got %d", m2.inspectZone)
+	}
+	updated, _ = m2.handleInspectKey(keyMsgKey(tea.KeyShiftTab))
+	m2 = updated.(Model)
+	if m2.inspectZone != zoneWhatHappened {
+		t.Fatalf("Shift+Tab should go back to WHAT HAPPENED zone, got %d", m2.inspectZone)
 	}
 }
 
@@ -459,19 +470,27 @@ func TestV091Ownership_ArrowKeysNeverProduceTextInRequestDomain(t *testing.T) {
 	}
 }
 
-func TestV091Ownership_VimKeysInsertTextInURL(t *testing.T) {
+func TestV091Ownership_VimKeysNavigateInURL(t *testing.T) {
 	m := newRequestModel()
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	m2 := updated.(Model)
-	if !strings.HasSuffix(m2.urlInput.Value(), "k") {
-		t.Fatal("'k' should insert 'k' into URL when URL is focused")
+	// 'k' on URL field should navigate to Method (like up), not insert text
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	m2m := m2.(Model)
+	if m2m.requestField != reqFieldMethod {
+		t.Fatal("'k' on URL should navigate to Method field")
 	}
-	// Now press 'j' at end of URL  --  should insert 'j', not navigate
-	m2.urlInput.SetCursor(len(m2.urlInput.Value()))
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	m3 := updated2.(Model)
-	if !strings.HasSuffix(m3.urlInput.Value(), "j") {
-		t.Fatal("'j' should insert 'j' into URL when URL is focused")
+	// 'j' on Method field should navigate to URL (like down), not insert text
+	m3, _ := m2m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m3m := m3.(Model)
+	if m3m.requestField != reqFieldURL {
+		t.Fatal("'j' on Method should navigate to URL field")
+	}
+	// 'j' on URL field should cross to Payload domain, not insert text
+	m3m.requestField = reqFieldURL
+	m3m.urlInput.Focus()
+	m4, _ := m3m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m4m := m4.(Model)
+	if m4m.activeDomain != DomainPayload {
+		t.Fatal("'j' on URL should cross to Payload domain")
 	}
 }
 
@@ -542,15 +561,19 @@ func TestV091Ownership_FocusedGuardPreventsGhostTyping(t *testing.T) {
 	m.urlInput.Focus()
 	m.concurrencyInput.Blur()
 
-	// hjkl should insert into URL (not navigate), and concurrencyInput should remain unfocused
+	// 'j' on URL field should navigate to Payload domain, not insert into URL
 	keyCount := len(m.concurrencyInput.Value())
+	urlBefore := m.urlInput.Value()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m2 := updated.(Model)
+	if m2.activeDomain != DomainPayload {
+		t.Fatal("'j' on URL should navigate to Payload domain")
+	}
+	if m2.urlInput.Value() != urlBefore {
+		t.Fatal("'j' on URL should not modify URL value")
+	}
 	if len(m2.concurrencyInput.Value()) != keyCount {
 		t.Fatal("'j' in request domain with URL focused should not modify concurrencyInput")
-	}
-	if m2.urlInput.Value() == "" || !strings.HasSuffix(m2.urlInput.Value(), "j") {
-		t.Fatal("'j' in request domain should insert into URL")
 	}
 }
 

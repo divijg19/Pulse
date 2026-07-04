@@ -1069,8 +1069,8 @@ func TestRequestDialog_ExecDomain_ClampAtMin(t *testing.T) {
 	}
 }
 
-// Freezes the current Inspect navigation contract for v0.8.x discussion.
-func TestInspectNavigationChangesSelection(t *testing.T) {
+// Freezes the current Inspect navigation contract for v0.9.6.
+func TestInspectNavigation_TabCyclesZones(t *testing.T) {
 	m := NewModel()
 	m.workspace.mode = modeInspect
 	m.results = []model.Result{
@@ -1078,27 +1078,96 @@ func TestInspectNavigationChangesSelection(t *testing.T) {
 		{Status: 404, Latency: 20 * time.Millisecond},
 		{Status: 500, Latency: 30 * time.Millisecond},
 	}
-	m.selected = 1
 
-	// Up arrow should move selection up
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = updated.(Model)
-	if m.selected != 0 {
-		t.Fatalf("up in inspect: selected = %d, want 0", m.selected)
+	// Start at WHAT HAPPENED
+	if m.inspectZone != zoneWhatHappened {
+		t.Fatalf("initial zone = %d, want %d", m.inspectZone, zoneWhatHappened)
 	}
 
-	// Down arrow should move selection down
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Tab should cycle forward
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.selected != 1 {
-		t.Fatalf("down in inspect: selected = %d, want 1", m.selected)
+	if m.inspectZone != zoneWhy {
+		t.Fatalf("after tab: zone = %d, want %d", m.inspectZone, zoneWhy)
 	}
 
-	// Down at last result should stay
-	m.selected = 2
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.inspectZone != zoneBody {
+		t.Fatalf("after second tab: zone = %d, want %d", m.inspectZone, zoneBody)
+	}
+
+	// Tab wraps to start
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.inspectZone != zoneWhatHappened {
+		t.Fatalf("after third tab: zone = %d, want %d", m.inspectZone, zoneWhatHappened)
+	}
+}
+
+func TestInspectNavigation_HomeAndEnd(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond},
+	}
+	m.inspectZone = zoneWhy
+
+	// Home jumps to WHAT HAPPENED
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyHome})
+	m = updated.(Model)
+	if m.inspectZone != zoneWhatHappened {
+		t.Fatalf("home: zone = %d, want %d", m.inspectZone, zoneWhatHappened)
+	}
+
+	// End jumps to BODY
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	m = updated.(Model)
+	if m.inspectZone != zoneBody {
+		t.Fatalf("end: zone = %d, want %d", m.inspectZone, zoneBody)
+	}
+}
+
+func TestInspectNavigation_BodyScrolling(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.inspectZone = zoneBody
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond, ResponseBody: "line1\nline2\nline3"},
+	}
+
+	// Down should increment body offset
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.inspectBodyOffset != 1 {
+		t.Fatalf("down: offset = %d, want 1", m.inspectBodyOffset)
+	}
+
+	// Up should decrement body offset
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.inspectBodyOffset != 0 {
+		t.Fatalf("up: offset = %d, want 0", m.inspectBodyOffset)
+	}
+
+	// Up at offset 0 should stay
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.inspectBodyOffset != 0 {
+		t.Fatalf("up at 0: offset = %d, want 0", m.inspectBodyOffset)
+	}
+
+	// Zone WHAT HAPPENED should not scroll
+	m.inspectZone = zoneWhatHappened
+	m.inspectBodyOffset = 5
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.inspectBodyOffset != 5 {
+		t.Fatalf("up in whatHappened: offset changed to %d", m.inspectBodyOffset)
+	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(Model)
-	if m.selected != 2 {
-		t.Fatalf("down at last in inspect: selected = %d, want 2", m.selected)
+	if m.inspectBodyOffset != 5 {
+		t.Fatalf("down in whatHappened: offset changed to %d", m.inspectBodyOffset)
 	}
 }

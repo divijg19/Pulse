@@ -30,7 +30,6 @@ const (
 	ActionNextField
 	ActionSwitchMethod
 	ActionAdjustConcurrency
-	ActionNextHeader
 	ActionAddHeader
 	ActionDeleteHeader
 	ActionBack
@@ -39,6 +38,8 @@ const (
 	ActionCtrlCQuit
 	ActionQQuit
 	ActionDismissCancel
+	ActionZoneNext
+	ActionZoneScroll
 )
 
 // Action is a behavioral intent -- not a presentation object.
@@ -92,7 +93,6 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionNextField:         {"Tab", "Next Field", ConfigurationCategory, PriorityHigh},
 	ActionSwitchMethod:      {"←→", "Method", ConfigurationCategory, PriorityHigh},
 	ActionAdjustConcurrency: {"↑↓", "Adjust", ConfigurationCategory, PriorityHigh},
-	ActionNextHeader:        {"Tab", "Next", ConfigurationCategory, PriorityHigh},
 	ActionAddHeader:         {"Ctrl+N", "Header", ConfigurationCategory, PriorityHigh},
 	ActionDeleteHeader:      {"Ctrl+D", "Delete", ConfigurationCategory, PriorityLow},
 	ActionBack:              {"Esc", "Back", ApplicationCategory, PriorityCritical},
@@ -101,6 +101,8 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionCtrlCQuit:         {"Ctrl+C", "Quit", ApplicationCategory, PriorityCritical},
 	ActionQQuit:             {"q", "Quit", ApplicationCategory, PriorityCritical},
 	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory, PriorityCritical},
+	ActionZoneNext:          {"Tab", "Next Zone", NavigationCategory, PriorityHigh},
+	ActionZoneScroll:        {"↑↓", "Scroll", NavigationCategory, PriorityMedium},
 }
 
 // Shell is the permanent outer boundary of Pulse. It owns orientation,
@@ -129,7 +131,7 @@ func (s Shell) Layout() ShellLayout {
 
 func computeShellLayout(totalWidth, totalHeight int) ShellLayout {
 	width := max(72, totalWidth)
-	bodyHeight := max(1, totalHeight-5)
+	bodyHeight := max(1, totalHeight-3)
 	return ShellLayout{
 		Context:   Region{Type: ContextRegion, Width: width, Height: 1},
 		Workspace: Region{Type: WorkspaceRegion, Width: width, Height: bodyHeight},
