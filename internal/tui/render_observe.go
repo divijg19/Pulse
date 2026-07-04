@@ -52,7 +52,7 @@ func (m Model) renderTimeline(region Region) string {
 
 func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time.Duration, width int, selected bool) string {
 	status := resultStatus(result)
-	latency := formatLatency(result.Latency)
+	latency := formatDuration(result.Latency)
 	method := m.effectiveMethod(result)
 	reqURL := m.effectiveURL(result)
 
@@ -74,10 +74,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	line := fmt.Sprintf("%s %-12s %-4s %s %s %s",
 		rowCursor(selected), status, method, bar, latency, truncateURL(reqURL, urlWidth))
 
-	if isErrorResult(result) {
-		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
-	}
-	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
+	return renderResultRow(line, result, selected, width)
 }
 
 func (m Model) renderLogs(region Region) string {
@@ -90,14 +87,11 @@ func (m Model) renderLogs(region Region) string {
 			method := m.effectiveMethod(result)
 			reqURL := m.effectiveURL(result)
 			line := fmt.Sprintf("%s #%03d %s %-4s %-10s %s %s",
-				rowCursor(selected), index+1, stamp, method, resultStatus(result), formatLatency(result.Latency), truncate(reqURL, width-logsFixedWidth-7))
+				rowCursor(selected), index+1, stamp, method, resultStatus(result), formatDuration(result.Latency), truncate(reqURL, width-logsFixedWidth-logsFixedSuffix))
 			if result.Error != "" {
 				line = fmt.Sprintf("%s · %s", line, result.Error)
 			}
-			if isErrorResult(result) {
-				return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
-			}
-			return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
+			return renderResultRow(line, result, selected, width)
 		})
 }
 
@@ -109,4 +103,11 @@ func (m Model) renderEmptyState(runningMsg string) string {
 		return "Ready"
 	}
 	return runningMsg
+}
+
+func renderResultRow(line string, result model.Result, selected bool, width int) string {
+	if isErrorResult(result) {
+		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
+	}
+	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
 }

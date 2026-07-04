@@ -14,13 +14,12 @@ const (
 )
 
 var (
-	styleBase      = lipgloss.NewStyle().Background(lipgloss.Color(colorBg)).Foreground(lipgloss.Color(colorText))
-	styleTopBar    = styleBase.Bold(true)
-	styleRibbon    = styleBase.Background(lipgloss.Color(colorDark))
-	styleSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	styleMuted     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	styleAccent    = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
-	styleError     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
+	styleBase   = lipgloss.NewStyle().Background(lipgloss.Color(colorBg)).Foreground(lipgloss.Color(colorText))
+	styleTopBar = styleBase.Bold(true)
+	styleRibbon = styleBase
+	styleMuted  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	styleAccent = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
+	styleError  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 
 	styleWorkspaceBadge = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorBg)).
@@ -37,14 +36,13 @@ var (
 			Foreground(lipgloss.Color(colorMuted)).
 			Bold(true)
 
-	styleSectionLine = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorMuted))
+	styleSectionLine = styleMuted
 
-	styleDomainActive = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorAccent))
+	styleMethod = styleBase.Bold(true)
 
-	styleDomainInactive = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorMuted))
+	styleDomainActive = styleAccent
+
+	styleDomainInactive = styleMuted
 )
 
 func regionStyle(region Region) lipgloss.Style {
@@ -67,18 +65,24 @@ func statusColor(status int) string {
 	return colorMuted
 }
 
+var (
+	rowStyleSelected   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorDark))
+	rowStyleUnselected = lipgloss.NewStyle().Foreground(lipgloss.Color(colorText))
+
+	errorRowStyleSelected   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError)).Background(lipgloss.Color(colorDark)).Bold(true)
+	errorRowStyleUnselected = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
+)
+
 func rowStyle(selected bool) lipgloss.Style {
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText))
 	if selected {
-		style = style.Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorDark))
+		return rowStyleSelected
 	}
-	return style
+	return rowStyleUnselected
 }
 
 func errorRowStyle(selected bool) lipgloss.Style {
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 	if selected {
-		style = style.Background(lipgloss.Color(colorDark)).Bold(true)
+		return errorRowStyleSelected
 	}
-	return style
+	return errorRowStyleUnselected
 }

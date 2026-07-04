@@ -1353,8 +1353,3 @@ func TestV092Engineering_NoStaleCCReferences(t *testing.T) {
 		}
 	}
 }
-
-func TestV092Engineering_NeedlessBlank(t *testing.T) {
-	// Placeholder for future engineering consistency checks.
-	// This section grows as the audit infrastructure evolves.
-}
