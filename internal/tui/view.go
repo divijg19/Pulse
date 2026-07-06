@@ -19,15 +19,13 @@ const (
 )
 
 const (
-	timelineFixedWidth  = 34
-	logsFixedWidth      = 29
-	logsFixedSuffix     = 7
-	contextRowWidth     = 12
-	contextURLWidth     = 8
-	minPanelWidth       = 28
-	defaultBodySplitDiv = 2
-	topBarURLWidth      = 40
-	topBarMinLeft       = 12
+	timelineFixedWidth = 34
+	logsFixedWidth     = 29
+	logsFixedSuffix    = 7
+	contextRowWidth    = 12
+	contextURLWidth    = 8
+	topBarURLWidth     = 40
+	topBarMinLeft      = 12
 )
 
 func (m Model) Actions() []Action {
@@ -41,10 +39,18 @@ func (m Model) Actions() []Action {
 		}
 	case m.workspace.dialog == dialogRequest:
 		return m.requestActions()
+	case m.workspace.mode == modeCompare:
+		return []Action{
+			{ActionZoneNext, NavigationCategory, true},
+			{ActionZoneScroll, NavigationCategory, true},
+			{ActionBack, ApplicationCategory, true},
+			{ActionQuit, ApplicationCategory, true},
+		}
 	case m.workspace.mode == modeInspect:
 		return []Action{
 			{ActionZoneNext, NavigationCategory, true},
 			{ActionZoneScroll, NavigationCategory, true},
+			{ActionCompare, NavigationCategory, true},
 			{ActionBack, ApplicationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
@@ -88,12 +94,27 @@ func (m Model) requestActions() []Action {
 	return domainActions
 }
 
+// stripANSI removes ANSI escape sequences from a string.
+func stripANSI(s string) string {
+	var out strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			continue
+		}
+		out.WriteByte(s[i])
+	}
+	return out.String()
+}
+
 func (m Model) Configuration() []configItem {
 	ps := m.payloadSummary()
 	items := []configItem{
 		{"Method", runconfig.AllowedMethods()[m.methodIndex], true},
 		{"URL", m.urlInput.Value(), m.urlInput.Value() != ""},
-		{"Concurrency", strings.TrimSpace(m.concurrencyInput.Value()), true},
+		{"CC", strings.TrimSpace(m.concurrencyInput.Value()), true},
 	}
 	if ps != sentinelEmpty {
 		items = append(items, configItem{"Payload", ps, true})
@@ -198,8 +219,8 @@ func (m Model) renderTopBar(state ShellState, width int) string {
 			left = c.Value
 		case "URL":
 			left += " " + truncateURL(c.Value, topBarURLWidth)
-		case "Concurrency":
-			right = "C " + c.Value
+		case "CC":
+			right = " CC " + c.Value
 		case "Payload":
 			if width >= 100 {
 				right += " · Payload " + c.Value
@@ -244,6 +265,8 @@ func renderInteractionStatus(m Model) string {
 		return "Editing"
 	case m.workspace.dialog == dialogConfirmQuit:
 		return "Quitting"
+	case m.workspace.mode == modeCompare:
+		return "Comparing"
 	case m.workspace.mode == modeInspect:
 		return "Inspecting"
 	case m.running:
@@ -361,7 +384,7 @@ func chooseRibbonLevel(badge, status string, actions []Action, width int) (Densi
 		actionText := buildActionStrip(actions, level)
 		actionWidth := lipgloss.Width(actionText)
 
-		sepWidth := 11
+		sepWidth := 10
 		if level >= DensityCompact {
 			sepWidth = 2
 		}
@@ -386,7 +409,19 @@ func renderRibbon(layout RibbonLayout, width int) string {
 
 	ls := lipgloss.Width(leftSep)
 	rs := lipgloss.Width(rightSep)
-	padding := max(0, width-lipgloss.Width(layout.Badge)-lipgloss.Width(layout.Status)-ls-rs-lipgloss.Width(layout.Actions))
+	badgeWidth := lipgloss.Width(layout.Badge)
+	actionWidth := lipgloss.Width(layout.Actions)
+	statusWidth := lipgloss.Width(layout.Status)
+
+	availForStatus := max(0, width-badgeWidth-ls-rs-actionWidth)
+	if statusWidth > availForStatus && availForStatus >= 1 {
+		raw := stripANSI(layout.Status)
+		truncated := truncate(raw, availForStatus)
+		layout.Status = styleStatusCell.Render(truncated)
+		statusWidth = lipgloss.Width(layout.Status)
+	}
+
+	padding := max(0, width-badgeWidth-statusWidth-ls-rs-actionWidth)
 
 	var rb strings.Builder
 	rb.WriteString(layout.Badge)
@@ -400,9 +435,9 @@ func renderRibbon(layout RibbonLayout, width int) string {
 
 func (m Model) renderStatusline(state ShellState, width int) string {
 	badge := renderWorkspaceBadge(state.Orientation)
-	status := styleStatusCell.Render(renderInteractionStatus(m))
+	statusText := renderInteractionStatus(m)
+	status := styleStatusCell.Render(statusText)
 	level, actions := chooseRibbonLevel(badge, status, state.Actions, width)
-
 	return renderRibbon(RibbonLayout{Badge: badge, Actions: actions, Status: status, Density: level}, width)
 }
 

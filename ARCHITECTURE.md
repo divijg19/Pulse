@@ -222,7 +222,8 @@ Each workspace surface owns exactly one identity line:
 | Ready | None (launch state) | N/A |
 | Timeline | `Timeline` | Bold + Accent |
 | Logs | `Logs` | Bold + Accent |
-| Inspector | `Inspector - Result #N` | Bold + Accent |
+| Inspect | `INSPECT` | Badge |
+| Compare | `COMPARE` | Badge |
 | Endpoint | `Endpoint` | Muted |
 | Concurrency | `Concurrency` | Muted |
 | Payload | `Payload` | Muted |
@@ -246,7 +247,8 @@ All selection-capable surfaces follow this invariant:
 | Payload body | N/A | ✓ |
 | Endpoint method selector | ✓ | ✓ |
 | Concurrency value | ✓ | ✓ |
-| Inspector | N/A | N/A (read-only) |
+| Inspect | N/A | N/A (read-only) |
+| Compare | N/A | N/A (read-only) |
 
 ### Renderer Dispatch
 

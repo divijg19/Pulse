@@ -184,11 +184,8 @@ func TestV092HeaderMutation_DeleteWhileEditing(t *testing.T) {
 	m.headers = append(m.headers, newHeaderRow(), newHeaderRow())
 
 	// Type into the first header's key field.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}})
 	m = updated.(Model)
-	if cmd != nil {
-		// Drain the command; not relevant to test.
-	}
 
 	// Delete the first header (selectedHead=0).
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
@@ -971,7 +968,9 @@ func TestV092Interaction_HJKLConsistency(t *testing.T) {
 		t.Fatalf("exec: down=%s but j=%s", mDown.concurrencyInput.Value(), mJ.concurrencyInput.Value())
 	}
 
-	// Payload header navigation: left/h and right/l.
+	// Payload header: left/right switch subfocus; h/l move cursor within text.
+	// This is by design: h/l are text-editing keys (consistent with URL/body),
+	// while left/right are field-navigation keys (consistent with Tab semantics).
 	m2 := NewModel()
 	m2.workspace.dialog = dialogRequest
 	m2.activeDomain = DomainPayload
@@ -979,22 +978,39 @@ func TestV092Interaction_HJKLConsistency(t *testing.T) {
 	m2.headerSubfocus = subfocusKey
 	m2.headers = append(m2.headers, newHeaderRow())
 
+	// right switches from key to value subfocus
 	updatedRight, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRight})
-	updatedL, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 	rightModel := updatedRight.(Model)
-	lModel := updatedL.(Model)
-	if rightModel.headerSubfocus != lModel.headerSubfocus {
-		t.Fatalf("payload header: right produces subfocus=%d but l produces subfocus=%d",
-			rightModel.headerSubfocus, lModel.headerSubfocus)
+	if rightModel.headerSubfocus != subfocusValue {
+		t.Fatal("right should switch from key to value subfocus")
 	}
 
+	// l does NOT switch subfocus (it falls through to text input for cursor movement)
+	// Rebuild fresh state and test
+	m3 := NewModel()
+	m3.workspace.dialog = dialogRequest
+	m3.activeDomain = DomainPayload
+	m3.selectedHead = 0
+	m3.headerSubfocus = subfocusKey
+	m3.headers = append(m3.headers, newHeaderRow())
+	updatedL, _ := m3.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	lModel := updatedL.(Model)
+	if lModel.headerSubfocus != subfocusKey {
+		t.Fatal("l should fall through to text input, not switch subfocus")
+	}
+
+	// left from value switches back to key subfocus
 	updatedLeft, _ := rightModel.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	updatedH, _ := lModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
 	leftModel := updatedLeft.(Model)
+	if leftModel.headerSubfocus != subfocusKey {
+		t.Fatal("left should switch from value to key subfocus")
+	}
+
+	// h does NOT switch subfocus (it falls through to text input)
+	updatedH, _ := lModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
 	hModel := updatedH.(Model)
-	if leftModel.headerSubfocus != hModel.headerSubfocus {
-		t.Fatalf("payload header: left produces subfocus=%d but h produces subfocus=%d",
-			leftModel.headerSubfocus, hModel.headerSubfocus)
+	if hModel.headerSubfocus != subfocusKey {
+		t.Fatal("h should fall through to text input, not switch subfocus")
 	}
 }
 
@@ -1344,12 +1360,19 @@ func TestV092Engineering_SentinelConstantUsed(t *testing.T) {
 	}
 }
 
-func TestV092Engineering_NoStaleCCReferences(t *testing.T) {
-	// Verify the Configuration function uses "Concurrency" not "CC".
+func TestV092Engineering_ConfigurationUsesCC(t *testing.T) {
+	// Configuration summaries should use "CC" not "Concurrency".
 	cfg := NewModel().Configuration()
+	found := false
 	for _, c := range cfg {
 		if c.Identity == "CC" {
-			t.Fatal("Configuration should use Concurrency, not CC")
+			found = true
 		}
+		if c.Identity == "Concurrency" {
+			t.Fatal("Configuration should use CC, not Concurrency")
+		}
+	}
+	if !found {
+		t.Fatal("Configuration should contain CC identity")
 	}
 }

@@ -40,6 +40,7 @@ const (
 	ActionDismissCancel
 	ActionZoneNext
 	ActionZoneScroll
+	ActionCompare
 )
 
 // Action is a behavioral intent -- not a presentation object.
@@ -103,6 +104,7 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory, PriorityCritical},
 	ActionZoneNext:          {"Tab", "Next Zone", NavigationCategory, PriorityHigh},
 	ActionZoneScroll:        {"↑↓", "Scroll", NavigationCategory, PriorityMedium},
+	ActionCompare:           {"c", "Compare", NavigationCategory, PriorityLow},
 }
 
 // Shell is the permanent outer boundary of Pulse. It owns orientation,

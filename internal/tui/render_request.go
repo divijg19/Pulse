@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -12,15 +13,6 @@ func (m Model) renderRequest(region Region) string {
 	var b strings.Builder
 	b.WriteString(renderWorkspaceBadge("REQUEST"))
 	b.WriteString("\n")
-	if m.errMsg != "" {
-		b.WriteString("\n")
-		b.WriteString(styleError.Render("Validation"))
-		b.WriteString("\n")
-		b.WriteString(indentField + m.errMsg)
-		b.WriteString("\n")
-		b.WriteString(styleMuted.Render(indentField + "Adjust the request and run again."))
-		b.WriteString("\n")
-	}
 	b.WriteString(m.renderRequestDomain(region.Width))
 	b.WriteString(m.renderPayloadDomain(region.Width))
 	b.WriteString(m.renderExecDomain(region.Width))
@@ -59,33 +51,44 @@ func (m Model) renderPayloadDomain(width int) string {
 	b.WriteString(domainHeader("Payload", width, m.activeDomain == DomainPayload))
 	b.WriteString("\n")
 
+	geo := calculatePayloadGeometry(width)
+
 	headersActive := m.activeDomain == DomainPayload && m.selectedHead != bodyFocus
 	b.WriteString(accentOrMuted(indentField+"HEADERS", headersActive))
 	b.WriteString("\n")
 
 	if len(m.headers) == 0 {
 		b.WriteString(styleMuted.Render(indentNested + "No headers configured."))
+		b.WriteString("\n")
 	} else {
-		for i, header := range m.headers {
-			key := header.Key.View()
-			value := header.Value.View()
+		for i := range m.headers {
+			key := m.headers[i].Key.View()
+			value := m.headers[i].Value.View()
 			sel := i == m.selectedHead
 			cursor := rowCursor(sel)
-			line := fmt.Sprintf(indentField+"%s %s: %s", cursor, key, value)
+			line := fmt.Sprintf(indentNested+"%s %s: %s", cursor, key, value)
 			b.WriteString(rowStyle(sel).Render(line))
 			b.WriteString("\n")
 		}
 	}
 
+	b.WriteString("\n")
+
 	bodyActive := m.activeDomain == DomainPayload && m.selectedHead == bodyFocus
 	bodyLen := len(m.bodyInput.Value())
-	bodyLabel := indentField + "BODY"
+	bodyLabel := "BODY"
 	if bodyLen > 0 {
-		bodyLabel = fmt.Sprintf(indentField+"BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
+		bodyLabel = fmt.Sprintf("BODY (%d KB / %d KB)", bodyLen/1024, maxTUIBodyBytes/1024)
 	}
-	b.WriteString(accentOrMuted(bodyLabel, bodyActive))
+	b.WriteString(indentField + accentOrMuted(bodyLabel, bodyActive))
 	b.WriteString("\n")
-	b.WriteString(indentField + m.bodyInput.View())
+	m.bodyInput.SetWidth(geo.BodyWidth)
+	bodyView := m.bodyInput.View()
+	bodyLines := strings.Split(bodyView, "\n")
+	for i, line := range bodyLines {
+		bodyLines[i] = indentNested + line
+	}
+	b.WriteString(strings.Join(bodyLines, "\n"))
 	b.WriteString("\n")
 
 	return b.String()
@@ -101,6 +104,22 @@ func (m Model) renderExecDomain(width int) string {
 	active := m.activeDomain == DomainExec
 	ccLabel := accentOrMuted(indentField+"Concurrency", active)
 	b.WriteString(fmt.Sprintf("%s: %s  (1-%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
+
+	ccValue, ccErr := strconv.Atoi(ccText)
+	inlineConcurrencyFired := ccErr == nil && (ccValue < runconfig.MinConcurrency || ccValue > runconfig.MaxConcurrency)
+	if inlineConcurrencyFired {
+		b.WriteString(indentNested)
+		b.WriteString(styleError.Render(fmt.Sprintf("Must be between %d and %d", runconfig.MinConcurrency, runconfig.MaxConcurrency)))
+		b.WriteString("\n")
+	}
+
+	if m.errMsg != "" && !inlineConcurrencyFired {
+		b.WriteString("\n")
+		b.WriteString(styleError.Render(indentField + m.errMsg))
+		b.WriteString("\n")
+		b.WriteString(styleMuted.Render(indentField + "Adjust the request and run again."))
+		b.WriteString("\n")
+	}
 
 	return b.String()
 }

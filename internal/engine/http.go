@@ -38,7 +38,8 @@ func ExecuteSingle(ctx context.Context, cli *http.Client, url string, method str
 		return model.Result{Status: 0, Latency: 0, Timestamp: start, Error: err.Error(), RequestMethod: method, RequestURL: url}
 	}
 	defer resp.Body.Close()
-	defer io.Copy(io.Discard, resp.Body)
+	// Drain response body for TCP connection reuse; errors are benign.
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body) }()
 
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
