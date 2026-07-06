@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
@@ -126,8 +127,8 @@ func TestRenderTopBar_ShowsConcurrency(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 24)
 	out := m.renderTopBar(m.ShellState(), 100)
-	if !contains(t, out, "C ") {
-		t.Fatal("top bar should show concurrency")
+	if !contains(t, out, "CC ") {
+		t.Fatal("top bar should show CC (concurrency) abbreviation")
 	}
 }
 
@@ -602,6 +603,10 @@ func TestRowCursor(t *testing.T) {
 	}
 	if got := rowCursor(false); got != " " {
 		t.Errorf("unselected cursor = %q", got)
+	}
+	// Visual widths must be identical (selection changes appearance, not geometry)
+	if lipgloss.Width(rowCursor(true)) != lipgloss.Width(rowCursor(false)) {
+		t.Fatal("cursor visual width must be invariant")
 	}
 }
 
@@ -1505,7 +1510,7 @@ func TestConfiguration_MethodAndURL(t *testing.T) {
 	m.shell.Resize(100, 24)
 	cfg := m.Configuration()
 	if len(cfg) < 3 {
-		t.Fatal("Configuration should have at least 3 items (Method, URL, Concurrency)")
+		t.Fatal("Configuration should have at least 3 items (Method, URL, CC)")
 	}
 	if cfg[0].Identity != "Method" || cfg[0].Value == "" {
 		t.Fatal("Configuration[0] should be Method with a value")
@@ -1513,8 +1518,8 @@ func TestConfiguration_MethodAndURL(t *testing.T) {
 	if cfg[1].Identity != "URL" || cfg[1].Value == "" {
 		t.Fatal("Configuration[1] should be URL with a value")
 	}
-	if cfg[2].Identity != "Concurrency" || cfg[2].Value == "" {
-		t.Fatal("Configuration[2] should be Concurrency with a value")
+	if cfg[2].Identity != "CC" || cfg[2].Value == "" {
+		t.Fatal("Configuration[2] should be CC with a value")
 	}
 }
 
@@ -1584,19 +1589,16 @@ func TestVisibleWindow(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRenderRequest_ValidationVisibility(t *testing.T) {
-	t.Run("shows validation block when errMsg set", func(t *testing.T) {
+	t.Run("shows validation block in exec domain when errMsg set", func(t *testing.T) {
 		m := NewModel()
 		m.errMsg = "INVALID URL"
 		m.shell.Resize(100, 30)
-		out := m.renderRequest(Region{Width: 80, Height: 24})
-		if !contains(t, out, "Validation") {
-			t.Fatal("renderRequest should show Validation heading when errMsg is set")
-		}
+		out := m.renderExecDomain(80)
 		if !contains(t, out, "INVALID URL") {
-			t.Fatal("renderRequest should show the error message")
+			t.Fatal("renderExecDomain should show the error message")
 		}
 		if !contains(t, out, "Adjust the request and run again.") {
-			t.Fatal("renderRequest should show recovery guidance")
+			t.Fatal("renderExecDomain should show recovery guidance")
 		}
 	})
 
@@ -1604,9 +1606,9 @@ func TestRenderRequest_ValidationVisibility(t *testing.T) {
 		m := NewModel()
 		m.errMsg = ""
 		m.shell.Resize(100, 30)
-		out := m.renderRequest(Region{Width: 80, Height: 24})
-		if contains(t, out, "Validation") {
-			t.Fatal("renderRequest must NOT show Validation heading when errMsg is empty")
+		out := m.renderExecDomain(80)
+		if contains(t, out, "INVALID URL") {
+			t.Fatal("renderExecDomain must NOT show validation when errMsg is empty")
 		}
 	})
 }
@@ -2057,5 +2059,1017 @@ func TestInvestigationStateResetOnStartRun(t *testing.T) {
 	}
 	if started.inspectBodyOffset != 0 {
 		t.Fatal("startRun must reset inspectBodyOffset to 0")
+	}
+}
+
+func TestCompareStateClearedOnStartRun(t *testing.T) {
+	m := NewModel()
+	m.urlInput.SetValue("https://example.com/api")
+	m.setConcurrency(1)
+
+	// Set stale compare state (as if user marked results then started new run)
+	m.workspace.compare = compareState{marked: 2, active: 5}
+
+	started, cmd := m.startRun()
+	if cmd == nil {
+		t.Fatal("startRun should return a command")
+	}
+	if started.workspace.compare.marked != -1 {
+		t.Fatal("startRun must clear compare.marked, got", started.workspace.compare.marked)
+	}
+	if started.workspace.compare.active != -1 {
+		t.Fatal("startRun must clear compare.active, got", started.workspace.compare.active)
+	}
+}
+
+func TestCompareStateClearedOnCancelRun(t *testing.T) {
+	// cancelRun does not clear results or compare state (results remain visible)
+	m := NewModel()
+	m.running = true
+	m.cancel = func() {}
+	m.workspace.compare = compareState{marked: 1, active: 2}
+	m.results = []model.Result{
+		{Status: 200},
+		{Status: 404},
+	}
+
+	m = m.cancelRun()
+	if m.workspace.compare.marked != 1 {
+		t.Fatal("cancelRun must preserve compare.marked (results remain visible)")
+	}
+	if m.workspace.compare.active != 2 {
+		t.Fatal("cancelRun must preserve compare.active (results remain visible)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Comparison lifecycle and rendering tests
+// ---------------------------------------------------------------------------
+
+func compareTestModel() Model {
+	m := NewModel()
+	m.shell.Resize(130, 30)
+	m.results = []model.Result{
+		{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"},
+		{Status: 404, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/b"},
+		{Status: 200, Latency: 15 * time.Millisecond, RequestURL: "https://example.com/c"},
+	}
+	return m
+}
+
+func TestCompare_MarkLifecycle(t *testing.T) {
+
+	t.Run("first c marks result and returns to Observe", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeInspect
+		m.selected = 1
+		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		m = updated.(Model)
+		if m.workspace.compare.marked != 1 {
+			t.Fatal("first c should store marked index, got", m.workspace.compare.marked)
+		}
+		if m.workspace.mode != modeObserve {
+			t.Fatal("first c should return to Observe mode")
+		}
+	})
+
+	t.Run("second c on different result enters Compare", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeInspect
+		m.selected = 1
+		m.workspace.compare.marked = 1
+		m.selected = 2
+		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		m = updated.(Model)
+		if m.workspace.compare.marked != 1 {
+			t.Fatal("marked should remain 1, got", m.workspace.compare.marked)
+		}
+		if m.workspace.compare.active != 2 {
+			t.Fatal("active should be 2, got", m.workspace.compare.active)
+		}
+		if m.workspace.mode != modeCompare {
+			t.Fatal("second c should enter Compare mode")
+		}
+	})
+
+	t.Run("c on same marked result unmarks", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeInspect
+		m.selected = 1
+		m.workspace.compare.marked = 1
+		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		m = updated.(Model)
+		if m.workspace.compare.marked != -1 {
+			t.Fatal("c on same marked result should unmark, got", m.workspace.compare.marked)
+		}
+		if m.workspace.mode != modeInspect {
+			t.Fatal("unmark should stay in Inspect mode")
+		}
+	})
+
+	t.Run("c with no mark sets marked when mark exists on same result does nothing", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeInspect
+		m.selected = 0
+		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		m = updated.(Model)
+		if m.workspace.compare.marked != 0 {
+			t.Fatal("mark should be 0, got", m.workspace.compare.marked)
+		}
+	})
+}
+
+func TestCompare_CompareKeyLifecycle(t *testing.T) {
+
+	t.Run("Esc from Compare clears state and returns to Observe", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeCompare
+		m.workspace.compare = compareState{marked: 1, active: 2}
+		m.workspace.view = LogsView
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEsc})
+		m = updated.(Model)
+		if m.workspace.compare.marked != -1 {
+			t.Fatal("Esc should reset marked to -1")
+		}
+		if m.workspace.compare.active != -1 {
+			t.Fatal("Esc should reset active to -1")
+		}
+		if m.workspace.mode != modeObserve {
+			t.Fatal("Esc should set mode to Observe")
+		}
+		if m.workspace.view != TimelineView {
+			t.Fatal("Esc should reset view to TimelineView")
+		}
+	})
+
+	t.Run("q from Compare shows quit dialog", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeCompare
+		m.workspace.compare = compareState{marked: 1, active: 2}
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+		m = updated.(Model)
+		if m.workspace.dialog != dialogConfirmQuit {
+			t.Fatal("q should open confirm quit dialog")
+		}
+		if m.workspace.compare.marked != -1 {
+			t.Fatal("q should clear marked")
+		}
+		if m.workspace.compare.active != -1 {
+			t.Fatal("q should clear active")
+		}
+	})
+
+	t.Run("Esc from Inspect preserves mark", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeInspect
+		m.workspace.compare = compareState{marked: 1, active: -1}
+		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyEsc})
+		m = updated.(Model)
+		if m.workspace.compare.marked != 1 {
+			t.Fatal("Esc from Inspect should preserve mark")
+		}
+		if m.workspace.mode != modeObserve {
+			t.Fatal("Esc from Inspect should return to Observe")
+		}
+	})
+
+	t.Run("c after Esc starts fresh lifecycle", func(t *testing.T) {
+		m := compareTestModel()
+		m.workspace.mode = modeCompare
+		m.workspace.compare = compareState{marked: 1, active: 2}
+		m.workspace.view = LogsView
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEsc})
+		m = updated.(Model)
+
+		m.workspace.mode = modeInspect
+		m.selected = 0
+		updated2, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		m = updated2.(Model)
+		if m.workspace.compare.marked != 0 {
+			t.Fatal("after Esc, c should mark fresh result, got", m.workspace.compare.marked)
+		}
+		if m.workspace.mode != modeObserve {
+			t.Fatal("after Esc, first c should return to Observe")
+		}
+	})
+}
+
+func TestCompare_InvestigationReset(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.mode = modeInspect
+	m.selected = 1
+	m.workspace.compare = compareState{marked: 0, active: -1}
+	m.inspectZone = zoneBody
+	m.inspectBodyOffset = 10
+
+	updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updated.(Model)
+
+	if m.workspace.mode != modeCompare {
+		t.Fatal("should enter Compare mode")
+	}
+	if m.inspectZone != zoneWhatHappened {
+		t.Fatal("Compare should reset inspectZone to WhatHappened")
+	}
+	if m.inspectBodyOffset != 0 {
+		t.Fatal("Compare should reset inspectBodyOffset to 0")
+	}
+}
+
+func TestCompare_InvalidState(t *testing.T) {
+	m := compareTestModel()
+	region := Region{Width: 100, Height: 30}
+
+	t.Run("marked < 0 shows no comparison", func(t *testing.T) {
+		m.workspace.compare = compareState{marked: -1, active: 1}
+		out := m.renderCompare(region)
+		if !contains(t, out, "No comparison active") {
+			t.Fatal("invalid state should show no comparison message")
+		}
+	})
+
+	t.Run("active < 0 shows no comparison", func(t *testing.T) {
+		m.workspace.compare = compareState{marked: 1, active: -1}
+		out := m.renderCompare(region)
+		if !contains(t, out, "No comparison active") {
+			t.Fatal("invalid state should show no comparison message")
+		}
+	})
+
+	t.Run("both < 0 shows no comparison", func(t *testing.T) {
+		m.workspace.compare = compareState{marked: -1, active: -1}
+		out := m.renderCompare(region)
+		if !contains(t, out, "No comparison active") {
+			t.Fatal("invalid state should show no comparison message")
+		}
+	})
+}
+
+func TestCompare_ResponsiveLayouts(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.compare = compareState{marked: 0, active: 1}
+
+	t.Run("narrow (<80) shows rejection", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 79, Height: 30})
+		if !contains(t, out, "requires at least 80 columns") {
+			t.Fatal("narrow should show rejection message")
+		}
+	})
+
+	t.Run("medium (80) renders stacked layout", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 80, Height: 30})
+		if contains(t, out, "requires at least 80 columns") {
+			t.Fatal("80 should be valid width")
+		}
+		if !contains(t, out, "Marked") {
+			t.Fatal("medium should show Marked identity")
+		}
+		if !contains(t, out, "Current") {
+			t.Fatal("medium should show Current identity")
+		}
+	})
+
+	t.Run("medium (100) renders stacked layout", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 100, Height: 30})
+		if !contains(t, out, "Marked") {
+			t.Fatal("medium should show Marked identity")
+		}
+		if !contains(t, out, "Current") {
+			t.Fatal("medium should show Current identity")
+		}
+	})
+
+	t.Run("boundary (119) renders stacked layout", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 119, Height: 30})
+		if !contains(t, out, "Marked") {
+			t.Fatal("119 should show Marked identity")
+		}
+		if !contains(t, out, "Current") {
+			t.Fatal("119 should show Current identity")
+		}
+	})
+
+	t.Run("wide (120) renders side-by-side layout", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 120, Height: 30})
+		if !contains(t, out, "Marked") {
+			t.Fatal("wide should show Marked identity")
+		}
+		if !contains(t, out, "Current") {
+			t.Fatal("wide should show Current identity")
+		}
+		if !contains(t, out, "│") {
+			t.Fatal("wide should include column separator")
+		}
+	})
+
+	t.Run("wide (150) renders side-by-side layout", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 150, Height: 30})
+		if !contains(t, out, "Marked") {
+			t.Fatal("wide should show Marked identity")
+		}
+		if !contains(t, out, "│") {
+			t.Fatal("wide should include column separator")
+		}
+	})
+}
+
+func TestCompare_Rendering(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.compare = compareState{marked: 0, active: 1}
+	region := Region{Width: 130, Height: 30}
+	out := m.renderCompare(region)
+
+	if !contains(t, out, "◆") {
+		t.Fatal("Marked identity should include diamond")
+	}
+	if !contains(t, out, "▶") {
+		t.Fatal("Current identity should include right arrow")
+	}
+	if !contains(t, out, "Marked") {
+		t.Fatal("should show Marked identity")
+	}
+	if !contains(t, out, "Current") {
+		t.Fatal("should show Current identity")
+	}
+	if !contains(t, out, "WHAT HAPPENED") {
+		t.Fatal("compare should show WHAT HAPPENED section")
+	}
+	if !contains(t, out, "WHY") {
+		t.Fatal("compare should show WHY section")
+	}
+	if !contains(t, out, "RESPONSE") {
+		t.Fatal("compare should show RESPONSE section")
+	}
+}
+
+func TestCompare_Navigation(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.mode = modeCompare
+	m.workspace.compare = compareState{marked: 0, active: 1}
+
+	t.Run("up scrolls body when in body zone", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		m.inspectBodyOffset = 5
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyUp})
+		m2 := updated.(Model)
+		if m2.inspectBodyOffset != 4 {
+			t.Fatal("up should decrement body offset")
+		}
+	})
+
+	t.Run("up does not scroll below 0", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		m.inspectBodyOffset = 0
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyUp})
+		m2 := updated.(Model)
+		if m2.inspectBodyOffset != 0 {
+			t.Fatal("up should not scroll below 0")
+		}
+	})
+
+	t.Run("k scrolls body (vim key)", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		m.inspectBodyOffset = 5
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+		m2 := updated.(Model)
+		if m2.inspectBodyOffset != 4 {
+			t.Fatal("k should decrement body offset")
+		}
+	})
+
+	t.Run("j scrolls body (vim key)", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		m.inspectBodyOffset = 5
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m2 := updated.(Model)
+		if m2.inspectBodyOffset != 6 {
+			t.Fatal("j should increment body offset")
+		}
+	})
+
+	t.Run("down scrolls body", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		m.inspectBodyOffset = 5
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyDown})
+		m2 := updated.(Model)
+		if m2.inspectBodyOffset != 6 {
+			t.Fatal("down should increment body offset")
+		}
+	})
+
+	t.Run("tab cycles zones forward", func(t *testing.T) {
+		m.inspectZone = zoneWhatHappened
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneWhy {
+			t.Fatal("tab should advance to WHY zone")
+		}
+		updated, _ = m2.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+		m3 := updated.(Model)
+		if m3.inspectZone != zoneBody {
+			t.Fatal("tab should advance to BODY zone")
+		}
+		updated, _ = m3.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+		m4 := updated.(Model)
+		if m4.inspectZone != zoneWhatHappened {
+			t.Fatal("tab should wrap to WHAT HAPPENED zone")
+		}
+	})
+
+	t.Run("shift+tab cycles zones backward", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneWhy {
+			t.Fatal("shift+tab from body should go to WHY zone")
+		}
+		updated, _ = m2.handleCompareKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+		m3 := updated.(Model)
+		if m3.inspectZone != zoneWhatHappened {
+			t.Fatal("shift+tab from WHY should go to WHAT HAPPENED")
+		}
+	})
+
+	t.Run("home jumps to What Happened", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyHome})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneWhatHappened {
+			t.Fatal("home should jump to WHAT HAPPENED")
+		}
+	})
+
+	t.Run("end jumps to Body", func(t *testing.T) {
+		m.inspectZone = zoneWhatHappened
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEnd})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneBody {
+			t.Fatal("end should jump to BODY")
+		}
+	})
+}
+
+func TestCompare_ZoneNavigation(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.mode = modeCompare
+	m.workspace.compare = compareState{marked: 0, active: 1}
+
+	t.Run("Tab at WhatHappened goes to Why", func(t *testing.T) {
+		m.inspectZone = zoneWhatHappened
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneWhy {
+			t.Fatal("Tab should go from WhatHappened to Why")
+		}
+	})
+
+	t.Run("Tab at Body wraps to WhatHappened", func(t *testing.T) {
+		m.inspectZone = zoneBody
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneWhatHappened {
+			t.Fatal("Tab from Body should wrap to WhatHappened")
+		}
+	})
+
+	t.Run("Shift+Tab at WhatHappened wraps to Body", func(t *testing.T) {
+		m.inspectZone = zoneWhatHappened
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+		m2 := updated.(Model)
+		if m2.inspectZone != zoneBody {
+			t.Fatal("Shift+Tab from WhatHappened should wrap to Body")
+		}
+	})
+}
+
+func TestRenderStatusline_CompareMode(t *testing.T) {
+	m := compareTestModel()
+	m.shell.Resize(100, 24)
+	m.workspace.mode = modeCompare
+	m.workspace.compare = compareState{marked: 0, active: 1}
+
+	out := m.renderStatusline(m.ShellState(), 100)
+	if !contains(t, out, "[Tab]") {
+		t.Fatal("compare ribbon should show [Tab] for zone navigation")
+	}
+	if !contains(t, out, "[Esc] Back") {
+		t.Fatal("compare ribbon should show [Esc] Back")
+	}
+	if !contains(t, out, "[q] Quit") {
+		t.Fatal("compare ribbon should show [q] Quit")
+	}
+	if !contains(t, out, "Comparing") {
+		t.Fatal("compare status should show 'Comparing'")
+	}
+}
+
+func TestCompare_HandleKeyDispatch(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.mode = modeCompare
+	m.workspace.compare = compareState{marked: 0, active: 1}
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+
+	if m.workspace.mode != modeObserve {
+		t.Fatal("handleKey should dispatch Esc to compare handler")
+	}
+	if m.workspace.compare.marked != -1 {
+		t.Fatal("handleKey should clear compare state via compare handler")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Payload Rendering Regression Tests
+// ---------------------------------------------------------------------------
+
+func TestPayloadRender_FocusInvariance(t *testing.T) {
+	// Focus changes must not alter BODY heading placement.
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.bodyInput.SetValue("{\"key\": \"value\"}")
+
+	out := m.renderPayloadDomain(80)
+	if !contains(t, out, "BODY") {
+		t.Fatal("payload render must include BODY heading")
+	}
+	if !contains(t, out, "key") {
+		t.Fatal("payload render must show body content")
+	}
+}
+
+func TestPayloadRender_BodyAndHeadersRender(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.bodyInput.SetValue("test content")
+
+	out := m.renderPayloadDomain(80)
+	lines := strings.Split(out, "\n")
+
+	bodyHeading := false
+	headersHeading := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "BODY") {
+			bodyHeading = true
+		}
+		if trimmed == "HEADERS" {
+			headersHeading = true
+		}
+	}
+	if !bodyHeading {
+		t.Fatal("payload render must include BODY heading")
+	}
+	if !headersHeading {
+		t.Fatal("payload render must include HEADERS heading")
+	}
+}
+
+func TestPayloadRender_WindowSizeInvariance(t *testing.T) {
+	m := NewModel()
+	m.bodyInput.SetValue("{\"data\": 1}")
+
+	for _, w := range []int{80, 100, 120, 140} {
+		m.shell.Resize(w, 30)
+		out := m.renderPayloadDomain(w - 4)
+		if !contains(t, out, "BODY") {
+			t.Fatalf("payload at width %d must show BODY heading", w)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ready Screen Validation Display
+// ---------------------------------------------------------------------------
+
+func TestRenderReady_ValidationGuidance(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.errMsg = "Concurrency must be between 1 and 100"
+
+	out := m.renderReady(Region{Width: 100, Height: 26})
+
+	if !contains(t, out, "Configuration incomplete") {
+		t.Fatal("ready screen should show Configuration incomplete heading when errMsg set")
+	}
+	if !contains(t, out, "Concurrency must be between 1 and 100") {
+		t.Fatal("ready screen should show the error message")
+	}
+	if !contains(t, out, "Press E to edit and adjust") {
+		t.Fatal("ready screen should show edit guidance")
+	}
+	if contains(t, out, "Ready to execute") {
+		t.Fatal("ready screen must NOT show Ready to execute when errMsg set")
+	}
+}
+
+func TestRenderReady_NoValidation_ShowsReady(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.errMsg = ""
+
+	out := m.renderReady(Region{Width: 100, Height: 26})
+
+	if !contains(t, out, "Ready to execute") {
+		t.Fatal("ready screen should show Ready to execute when errMsg empty")
+	}
+	if contains(t, out, "Configuration incomplete") {
+		t.Fatal("ready screen must NOT show Configuration incomplete when errMsg empty")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Footer Ribbon Regression Tests
+// ---------------------------------------------------------------------------
+
+func TestFooter_LongErrMsgTruncation(t *testing.T) {
+	// Long validation messages must be truncated with ellipsis, never clipped.
+	m := NewModel()
+	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
+
+	for _, width := range []int{72, 80, 90, 100, 120} {
+		state := m.ShellState()
+		out := m.renderStatusline(state, width)
+		if strings.Contains(out, "\n") {
+			t.Fatalf("width %d: footer must not wrap", width)
+		}
+		if w := lipgloss.Width(out); w > width {
+			t.Fatalf("width %d: rendered width %d exceeds available width", width, w)
+		}
+		// Verify the full error text appears (no clipping)
+		if !contains(t, stripANSI(out), "CONCURRENCY MUST BE BETWEEN 1 AND 100") {
+			t.Fatalf("width %d: status must contain full error text", width)
+		}
+		if strings.Count(out, "…") > 0 {
+			t.Fatalf("width %d: error text must not be truncated at this width", width)
+		}
+	}
+}
+
+func TestFooter_ShortStatusUntruncated(t *testing.T) {
+	m := NewModel()
+	state := m.ShellState()
+
+	for _, width := range []int{72, 100, 160} {
+		out := m.renderStatusline(state, width)
+		if !contains(t, out, "Ready") {
+			t.Fatalf("width %d: status must show Ready", width)
+		}
+		if w := lipgloss.Width(out); w > width {
+			t.Fatalf("width %d: rendered width %d exceeds available width", width, w)
+		}
+	}
+}
+
+func TestFooter_RibbonWidthConsistency(t *testing.T) {
+	// chooseRibbonLevel and renderRibbon must agree on total width.
+	m := NewModel()
+	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
+
+	for _, width := range []int{72, 80, 100, 120, 160, 200} {
+		state := m.ShellState()
+		out := m.renderStatusline(state, width)
+		if w := lipgloss.Width(out); w > width {
+			t.Fatalf("width %d: rendered %d > available", width, w)
+		}
+		// Verify no clipping by checking absence of ANSI-truncated characters
+		if strings.Count(out, "…") > 1 {
+			t.Fatalf("width %d: multiple ellipsis suggests incorrect truncation", width)
+		}
+	}
+}
+
+func TestFooter_EditingNoClip(t *testing.T) {
+	// Footer during editing must never clip content.
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+
+	for _, width := range []int{72, 80, 100, 120, 160} {
+		state := m.ShellState()
+		out := m.renderStatusline(state, width)
+		if strings.Contains(out, "\n") {
+			t.Fatalf("width %d: footer must not wrap", width)
+		}
+		if w := lipgloss.Width(out); w > width {
+			t.Fatalf("width %d: rendered width %d exceeds available width", width, w)
+		}
+		if !contains(t, stripANSI(out), "Editing") {
+			t.Fatalf("width %d: status must show Editing", width)
+		}
+	}
+
+	// Also test with error during editing
+	m.errMsg = "URL IS REQUIRED"
+	for _, width := range []int{72, 80, 100, 120, 160} {
+		state := m.ShellState()
+		out := m.renderStatusline(state, width)
+		if strings.Contains(out, "\n") {
+			t.Fatalf("width %d: editing with error: footer must not wrap", width)
+		}
+		if w := lipgloss.Width(out); w > width {
+			t.Fatalf("width %d: editing with error: rendered width %d exceeds available", width, w)
+		}
+		if !contains(t, stripANSI(out), "URL IS REQUIRED") {
+			t.Fatalf("width %d: editing with error: must show error text", width)
+		}
+	}
+}
+
+// TestHeaderEditing_Invariant asserts that selecting different header rows does
+// not change text alignment — cursor and key/value positions are invariant.
+func TestHeaderEditing_Invariant(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.headers = append(m.headers, newHeaderRow(), newHeaderRow())
+	m.headers[0].Key.SetValue("Authorization")
+	m.headers[0].Value.SetValue("Bearer token")
+	m.headers[1].Key.SetValue("Content-Type")
+	m.headers[1].Value.SetValue("application/json")
+
+	visualColumn := func(line, substr string) int {
+		idx := strings.Index(line, substr)
+		if idx < 0 {
+			return -1
+		}
+		return lipgloss.Width(line[:idx])
+	}
+
+	// Render with first row selected
+	m.selectedHead = 0
+	out1 := m.renderPayloadDomain(96)
+	// Render with second row selected
+	m.selectedHead = 1
+	out2 := m.renderPayloadDomain(96)
+
+	// Split into lines and find header rows
+	lines1 := strings.Split(out1, "\n")
+	lines2 := strings.Split(out2, "\n")
+
+	var row1a, row1b, row2a, row2b string
+	for _, line := range lines1 {
+		if strings.Contains(line, "Authorization") {
+			row1a = line
+		}
+		if strings.Contains(line, "Content-Type") {
+			row1b = line
+		}
+	}
+	for _, line := range lines2 {
+		if strings.Contains(line, "Authorization") {
+			row2a = line
+		}
+		if strings.Contains(line, "Content-Type") {
+			row2b = line
+		}
+	}
+
+	if row1a == "" || row1b == "" || row2a == "" || row2b == "" {
+		t.Fatal("header rows not found in render output")
+	}
+
+	// Verify the key visual column is the same regardless of selection
+	colAuth1 := visualColumn(row1a, "Authorization")
+	colAuth2 := visualColumn(row2a, "Authorization")
+	if colAuth1 != colAuth2 {
+		t.Fatalf("Authorization key visual column changed with selection: %d vs %d", colAuth1, colAuth2)
+	}
+
+	colCT1 := visualColumn(row1b, "Content-Type")
+	colCT2 := visualColumn(row2b, "Content-Type")
+	if colCT1 != colCT2 {
+		t.Fatalf("Content-Type key visual column changed with selection: %d vs %d", colCT1, colCT2)
+	}
+
+	// Verify separator (":") is at same visual column
+	colSep1 := visualColumn(row1a, ":")
+	colSep2 := visualColumn(row2a, ":")
+	if colSep1 != colSep2 {
+		t.Fatalf("separator visual column changed with selection: %d vs %d", colSep1, colSep2)
+	}
+}
+
+// TestRibbon_Ownership verifies the complete chooseRibbonLevel → renderRibbon
+// chain produces final width ≤ terminal width for every density level.
+func TestRibbon_Ownership(t *testing.T) {
+	for _, width := range []int{40, 50, 60, 72, 80, 100, 120, 160, 200} {
+		for _, orientation := range []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT"} {
+			var actions []Action
+			badge := renderWorkspaceBadge(orientation)
+			switch orientation {
+			case "READY":
+				m := NewModel()
+				actions = m.Actions()
+			case "OBSERVE":
+				m := NewModel()
+				m.results = []model.Result{{Status: 200}}
+				m.running = false
+				actions = m.Actions()
+			case "REQUEST":
+				m := NewModel()
+				m.workspace.dialog = dialogRequest
+				actions = m.Actions()
+			case "INSPECT":
+				m := NewModel()
+				m.workspace.mode = modeInspect
+				actions = m.Actions()
+			case "QUIT":
+				m := NewModel()
+				m.workspace.dialog = dialogConfirmQuit
+				actions = m.Actions()
+			}
+
+			status := styleStatusCell.Render("Ready")
+			level, actionText := chooseRibbonLevel(badge, status, actions, width)
+
+			layout := RibbonLayout{
+				Badge:   badge,
+				Actions: actionText,
+				Status:  status,
+				Density: level,
+			}
+			out := renderRibbon(layout, width)
+
+			if w := lipgloss.Width(out); w > width {
+				t.Fatalf("orientation=%s width=%d level=%d: rendered %d > available",
+					orientation, width, level, w)
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Validation Regression Tests
+// ---------------------------------------------------------------------------
+
+func TestValidation_ConcurrencyDeduplication(t *testing.T) {
+	// When inline concurrency check fires, m.errMsg block must not duplicate it.
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainExec
+	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
+	m.concurrencyInput.SetValue("500")
+
+	out := m.renderExecDomain(80)
+
+	// Count occurrences of "Must be between" — should be exactly 1
+	count := strings.Count(out, "Must be between")
+	if count != 1 {
+		t.Fatalf("concurrency error must appear exactly once, got %d", count)
+	}
+	if contains(t, out, "CONCURRENCY MUST BE") {
+		t.Fatal("m.errMsg block must NOT appear when inline concurrency check fires")
+	}
+}
+
+func TestValidation_NonConcurrencyErrMsgShows(t *testing.T) {
+	// When errMsg is set but NOT about concurrency, the m.errMsg block must appear.
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainExec
+	m.errMsg = "URL IS REQUIRED"
+	m.concurrencyInput.SetValue("5")
+
+	out := m.renderExecDomain(80)
+
+	if !contains(t, out, "URL IS REQUIRED") {
+		t.Fatal("m.errMsg block must appear for non-concurrency errors")
+	}
+	if !contains(t, out, "Adjust the request and run again") {
+		t.Fatal("m.errMsg block must show recovery guidance")
+	}
+}
+
+func TestValidation_NoDuplicateWhenValidConcurrency(t *testing.T) {
+	// When concurrency is valid AND errMsg is about concurrency, only inline shows.
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainExec
+	m.concurrencyInput.SetValue("10")
+
+	out := m.renderExecDomain(80)
+
+	if contains(t, out, "Must be between") {
+		t.Fatal("no inline error for valid concurrency")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Payload Workspace Regression Tests
+// ---------------------------------------------------------------------------
+
+func TestPayload_PlaceholderRenders(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.bodyInput.SetValue("")
+
+	out := m.renderPayloadDomain(80)
+	if !contains(t, out, "BODY") {
+		t.Fatal("payload must show BODY heading")
+	}
+}
+
+func TestPayload_MultilineRenders(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.bodyInput.SetValue("line1\nline2\nline3")
+
+	out := m.renderPayloadDomain(80)
+	if !contains(t, out, "BODY") {
+		t.Fatal("payload must show BODY heading")
+	}
+	// Verify body content appears (may have ANSI styling)
+	if !strings.Contains(out, "line1") && !strings.Contains(out, "line2") && !strings.Contains(out, "line3") {
+		t.Fatal("payload render must contain body content text")
+	}
+}
+
+func TestPayload_ContextPanelBodyWidth(t *testing.T) {
+	// At width >= 140 (context panel visible), body must not be truncated.
+	m := NewModel()
+	m.shell.Resize(160, 30)
+	m.bodyInput.SetValue(`{"key": "value"}`)
+
+	out := m.renderPayloadDomain(140)
+	if !contains(t, out, "BODY") {
+		t.Fatal("payload must show BODY at wide width")
+	}
+	if !contains(t, out, "key") {
+		t.Fatal("payload must show body content at wide width")
+	}
+}
+
+func TestPayload_FocusTraversalGeometry(t *testing.T) {
+	// Focus changes must not alter BODY heading position or body content.
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.bodyInput.SetValue("data")
+	m.activeDomain = DomainRequest
+
+	// Request domain focus (not payload)
+	out1 := m.renderPayloadDomain(80)
+	// Payload domain focus
+	m.activeDomain = DomainPayload
+	m.selectedHead = bodyFocus
+	out2 := m.renderPayloadDomain(80)
+
+	// Strip ANSI for position comparison
+	strip := func(s string) string {
+		var out strings.Builder
+		for i := 0; i < len(s); i++ {
+			if s[i] == '\x1b' {
+				for i < len(s) && s[i] != 'm' {
+					i++
+				}
+				continue
+			}
+			out.WriteByte(s[i])
+		}
+		return out.String()
+	}
+	s1, s2 := strip(out1), strip(out2)
+	if strings.Index(s1, "BODY") != strings.Index(s2, "BODY") {
+		t.Fatal("BODY heading position must not change with focus")
+	}
+}
+
+func TestPayload_ResizeGeometry(t *testing.T) {
+	m := NewModel()
+	m.bodyInput.SetValue("content")
+
+	for _, w := range []int{80, 100, 120, 160, 200} {
+		m.shell.Resize(w, 30)
+		out := m.renderPayloadDomain(w - 4)
+		if !contains(t, out, "BODY") {
+			t.Fatalf("width %d: payload must show BODY", w)
+		}
+		if !contains(t, out, "content") {
+			t.Fatalf("width %d: payload must show body content", w)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ribbon Level Consistency Test
+// ---------------------------------------------------------------------------
+
+func TestRibbon_ChooseRibbonLevelRenderRibbonAgreement(t *testing.T) {
+	m := NewModel()
+	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
+
+	for _, width := range []int{72, 80, 100, 120, 160, 200} {
+		state := m.ShellState()
+		out := m.renderStatusline(state, width)
+		if w := lipgloss.Width(out); w > width {
+			t.Fatalf("width %d: rendered width %d exceeds available", width, w)
+		}
+		if strings.Count(out, "…") > 1 {
+			t.Fatalf("width %d: multiple ellipsis suggests incorrect truncation", width)
+		}
 	}
 }

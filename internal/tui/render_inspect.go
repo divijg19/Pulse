@@ -17,13 +17,6 @@ func (m Model) renderInspect(region Region) string {
 	reqURL := m.effectiveURL(result)
 	identity := identityCell(fmt.Sprintf("Result %d", m.selected+1))
 
-	sectionLine := func(label string, isActive bool) string {
-		if isActive {
-			return styleAccent.Render("── " + label + " ──")
-		}
-		return styleSectionLine.Render("── " + label + " ──")
-	}
-
 	what := m.renderInspectSummary(result, method, reqURL)
 
 	switch {

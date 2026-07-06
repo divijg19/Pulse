@@ -30,15 +30,15 @@ func TestMethodSelection(t *testing.T) {
 	}
 }
 
-func TestConcurrencyClamping(t *testing.T) {
+func TestConcurrencyNoClamping(t *testing.T) {
 	m := NewModel()
 	m.setConcurrency(500)
-	if got := m.concurrency(); got != runconfig.MaxConcurrency {
-		t.Fatalf("concurrency high clamp = %d", got)
+	if got := m.concurrency(); got != 500 {
+		t.Fatalf("concurrency should not clamp high, got %d", got)
 	}
 	m.setConcurrency(-10)
-	if got := m.concurrency(); got != runconfig.MinConcurrency {
-		t.Fatalf("concurrency low clamp = %d", got)
+	if got := m.concurrency(); got != -10 {
+		t.Fatalf("concurrency should not clamp low, got %d", got)
 	}
 }
 
@@ -1043,7 +1043,7 @@ func TestConfirmQuit_FromInspectMode(t *testing.T) {
 	}
 }
 
-func TestRequestDialog_ExecDomain_ClampAtMax(t *testing.T) {
+func TestRequestDialog_ExecDomain_ArrowsAtMax(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
@@ -1051,12 +1051,12 @@ func TestRequestDialog_ExecDomain_ClampAtMax(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m = updated.(Model)
-	if m.concurrency() != 100 {
-		t.Fatalf("concurrency at max should stay 100, got %d", m.concurrency())
+	if m.concurrency() != 101 {
+		t.Fatalf("concurrency at max after up = %d (expected 101)", m.concurrency())
 	}
 }
 
-func TestRequestDialog_ExecDomain_ClampAtMin(t *testing.T) {
+func TestRequestDialog_ExecDomain_ArrowsAtMin(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
@@ -1064,8 +1064,8 @@ func TestRequestDialog_ExecDomain_ClampAtMin(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(Model)
-	if m.concurrency() != 1 {
-		t.Fatalf("concurrency at min should stay 1, got %d", m.concurrency())
+	if m.concurrency() != 0 {
+		t.Fatalf("concurrency at min after down = %d (expected 0)", m.concurrency())
 	}
 }
 

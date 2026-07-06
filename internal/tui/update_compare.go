@@ -2,22 +2,33 @@ package tui
 
 import tea "github.com/charmbracelet/bubbletea"
 
-func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleCompareKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		m.workspace.compare = compareState{marked: -1, active: -1}
 		m.workspace.mode = modeObserve
+		m.workspace.view = TimelineView
+		m.status = "Comparison cleared"
+		return m, nil
+	case "q", "ctrl+c":
+		m.workspace.compare = compareState{marked: -1, active: -1}
+		m.workspace.dialog = dialogConfirmQuit
 		return m, nil
 	case "tab":
 		m.inspectZone = (m.inspectZone + 1) % 3
+		m.inspectBodyOffset = 0
 		return m, nil
 	case "shift+tab":
 		m.inspectZone = (m.inspectZone + 2) % 3
+		m.inspectBodyOffset = 0
 		return m, nil
 	case "home":
 		m.inspectZone = zoneWhatHappened
+		m.inspectBodyOffset = 0
 		return m, nil
 	case "end":
 		m.inspectZone = zoneBody
+		m.inspectBodyOffset = 0
 		return m, nil
 	case "up", "k":
 		if m.inspectZone == zoneBody && m.inspectBodyOffset > 0 {
@@ -28,22 +39,6 @@ func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.inspectZone == zoneBody {
 			m.inspectBodyOffset++
 		}
-		return m, nil
-	case "c":
-		if m.workspace.compare.marked < 0 {
-			m.workspace.compare.marked = m.selected
-			m.workspace.mode = modeObserve
-		} else if m.workspace.compare.marked == m.selected {
-			m.workspace.compare.marked = -1
-		} else {
-			m.workspace.compare.active = m.selected
-			m.workspace.mode = modeCompare
-			m.inspectZone = zoneWhatHappened
-			m.inspectBodyOffset = 0
-		}
-		return m, nil
-	case "q", "ctrl+c":
-		m.workspace.dialog = dialogConfirmQuit
 		return m, nil
 	}
 	return m, nil

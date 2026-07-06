@@ -71,8 +71,13 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	barColor := statusColor(result.Status)
 	bar := renderLatencyBar(filled, barWidth, barColor)
 
-	line := fmt.Sprintf("%s %-12s %-4s %s %s %s",
-		rowCursor(selected), status, method, bar, latency, truncateURL(reqURL, urlWidth))
+	marked := ""
+	if m.workspace.compare.marked == index {
+		marked = "◆ "
+	}
+
+	line := fmt.Sprintf("%s%s %-12s %-4s %s %s %s",
+		rowCursor(selected), marked, status, method, bar, latency, truncateURL(reqURL, urlWidth))
 
 	return renderResultRow(line, result, selected, width)
 }
@@ -86,8 +91,14 @@ func (m Model) renderLogs(region Region) string {
 			}
 			method := m.effectiveMethod(result)
 			reqURL := m.effectiveURL(result)
-			line := fmt.Sprintf("%s #%03d %s %-4s %-10s %s %s",
-				rowCursor(selected), index+1, stamp, method, resultStatus(result), formatDuration(result.Latency), truncate(reqURL, width-logsFixedWidth-logsFixedSuffix))
+
+			marked := ""
+			if m.workspace.compare.marked == index {
+				marked = "◆ "
+			}
+
+			line := fmt.Sprintf("%s%s #%03d %s %-4s %-10s %s %s",
+				rowCursor(selected), marked, index+1, stamp, method, resultStatus(result), formatDuration(result.Latency), truncate(reqURL, width-logsFixedWidth-logsFixedSuffix))
 			if result.Error != "" {
 				line = fmt.Sprintf("%s · %s", line, result.Error)
 			}

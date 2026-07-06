@@ -12,9 +12,17 @@ const (
 // Workspace is the composition unit. A Workspace composes Views, a View
 // composes Regions, a Region hosts Surfaces. Workspace is owned by Shell.
 type Workspace struct {
-	mode   mode
-	dialog dialog
-	view   ViewType
+	mode    mode
+	dialog  dialog
+	view    ViewType
+	compare compareState
+}
+
+// compareState holds the investigation comparison lifecycle. Both fields are
+// result slice indices. Values of -1 mean unset. Esc destroys the state.
+type compareState struct {
+	marked int
+	active int
 }
 
 // NewWorkspace creates the default Workspace (OBSERVE/Timeline).
@@ -23,6 +31,10 @@ func NewWorkspace() Workspace {
 		mode:   modeObserve,
 		dialog: dialogNone,
 		view:   TimelineView,
+		compare: compareState{
+			marked: -1,
+			active: -1,
+		},
 	}
 }
 
@@ -33,6 +45,8 @@ func (w Workspace) Orientation() string {
 		return "QUIT"
 	case w.dialog == dialogRequest:
 		return "REQUEST"
+	case w.mode == modeCompare:
+		return "COMPARE"
 	case w.mode == modeInspect:
 		return "INSPECT"
 	default:

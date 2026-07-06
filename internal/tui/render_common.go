@@ -90,3 +90,12 @@ func renderLatencyBar(filled, barWidth int, barColor string) string {
 func identityCell(label string) string {
 	return styleMuted.Render(label)
 }
+
+// sectionLine renders a section header with em-dash rules around the label.
+// When active is true, the accent style is used; otherwise muted.
+func sectionLine(label string, active bool) string {
+	if active {
+		return styleAccent.Render("── " + label + " ──")
+	}
+	return styleSectionLine.Render("── " + label + " ──")
+}

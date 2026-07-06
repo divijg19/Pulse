@@ -38,6 +38,7 @@ type mode int
 const (
 	modeObserve mode = iota
 	modeInspect
+	modeCompare
 )
 
 type dialog int
@@ -111,12 +112,14 @@ func NewModel() Model {
 	cc.CharLimit = 3
 	cc.Width = 4
 
+	geo := calculatePayloadGeometry(76)
+
 	body := textarea.New()
 	body.Placeholder = `{"name":"pulse"}`
 	body.Prompt = ""
 	body.CharLimit = 1 << 20
-	body.SetHeight(3)
-	body.SetWidth(48)
+	body.SetHeight(geo.BodyHeight)
+	body.SetWidth(geo.BodyWidth)
 
 	return Model{
 		shell:            NewShell(),
@@ -135,24 +138,27 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, startupTimeout())
 }
 
-func (m *Model) setBodyWidths(totalWidth int) {
-	innerWidth := totalWidth - 4
-	leftWidth := max(minPanelWidth, innerWidth/defaultBodySplitDiv-2)
-	rightWidth := max(minPanelWidth, innerWidth-leftWidth-3)
-	m.bodyInput.SetWidth(max(10, rightWidth-6))
+func (m *Model) syncPayloadGeometry(totalWidth int) {
+	contentWidth := totalWidth - 4
+	geo := calculatePayloadGeometry(contentWidth)
+	m.bodyInput.SetWidth(geo.BodyWidth)
+	for i := range m.headers {
+		m.headers[i].Key.Width = geo.KeyWidth
+		m.headers[i].Value.Width = geo.ValueWidth
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.shell.Resize(msg.Width, msg.Height)
-		m.setBodyWidths(msg.Width)
+		m.syncPayloadGeometry(msg.Width)
 		return m, nil
 	case startupMsg:
 		w, _ := m.shell.Dimensions()
 		if w == 0 {
 			m.shell.Resize(80, 24)
-			m.setBodyWidths(80)
+			m.syncPayloadGeometry(80)
 		}
 		return m, nil
 	case tickMsg:
@@ -210,6 +216,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.errMsg = ""
 
 	switch m.workspace.mode {
+	case modeCompare:
+		return m.handleCompareKey(msg)
 	case modeObserve:
 		switch m.workspace.dialog {
 		case dialogRequest:
@@ -459,13 +467,13 @@ func (m Model) handlePayloadHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selectedHead++
 		}
 		return m, nil
-	case "left", "h":
+	case "left":
 		if m.headerSubfocus == subfocusValue {
 			m.headerSubfocus = subfocusKey
 			m.focusPayloadKey()
 		}
 		return m, nil
-	case "right", "l":
+	case "right":
 		if m.headerSubfocus == subfocusKey {
 			m.headerSubfocus = subfocusValue
 			m.focusPayloadValue()
@@ -667,6 +675,7 @@ func (m Model) startRun() (Model, tea.Cmd) {
 
 	m.workspace.mode = modeObserve
 	m.workspace.dialog = dialogNone
+	m.workspace.compare = compareState{marked: -1, active: -1}
 	m.running = true
 	m.cancel = cancel
 	m.eventCh = eventCh
@@ -743,11 +752,11 @@ func (m Model) concurrency() int {
 	if err != nil {
 		return runconfig.DefaultConcurrency
 	}
-	return runconfig.ClampConcurrency(value)
+	return value
 }
 
 func (m *Model) setConcurrency(value int) {
-	m.concurrencyInput.SetValue(strconv.Itoa(runconfig.ClampConcurrency(value)))
+	m.concurrencyInput.SetValue(strconv.Itoa(value))
 }
 
 func (m Model) headerMap() map[string]string {
@@ -763,17 +772,19 @@ func (m Model) headerMap() map[string]string {
 }
 
 func newHeaderRow() headerRow {
+	geo := calculatePayloadGeometry(76)
+
 	key := textinput.New()
 	key.Prompt = ""
 	key.Placeholder = "Header"
 	key.CharLimit = 256
-	key.Width = 20
+	key.Width = geo.KeyWidth
 
 	value := textinput.New()
 	value.Prompt = ""
 	value.Placeholder = "Value"
 	value.CharLimit = 2048
-	value.Width = 28
+	value.Width = geo.ValueWidth
 
 	return headerRow{Key: key, Value: value}
 }

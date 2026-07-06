@@ -31,7 +31,7 @@ Design principles:
 
 ## Features
 
-- Canonical terminal UI with Ready launch pad, payload editor, live metrics, timeline/log views, and response inspector.
+- Canonical terminal UI with Ready launch pad, payload editor, live metrics, timeline/log views, response inspector, and investigation comparison.
 - Optional browser WebUI started with `pulse web`.
 - Concurrent HTTP execution with immediate result streaming.
 - Payload editor for request headers and raw body.
@@ -43,6 +43,7 @@ Design principles:
 2. Optionally configure headers and body.
 3. Run and watch each request stream in real time.
 4. Select any result and press Enter to inspect full response details.
+5. Press `c` to mark a result, select another, and press `c` again to compare investigations side-by-side.
 
 ## Documentation Map
 

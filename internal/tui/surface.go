@@ -33,11 +33,18 @@ type LogsSurface struct{ m Model }
 
 func (s LogsSurface) Render(region Region) string { return s.m.renderLogs(region) }
 
+// CompareSurface renders the COMPARE workspace.
+type CompareSurface struct{ m Model }
+
+func (s CompareSurface) Render(region Region) string { return s.m.renderCompare(region) }
+
 // resolveSurface returns the Surface for the current Model state.
 func (m Model) resolveSurface() Surface {
 	switch {
 	case m.workspace.dialog == dialogRequest:
 		return RequestSurface{m: m}
+	case m.workspace.compare.marked >= 0 && m.workspace.compare.active >= 0:
+		return CompareSurface{m: m}
 	case m.workspace.mode == modeInspect:
 		return InspectSurface{m: m}
 	case !m.running && len(m.results) == 0:

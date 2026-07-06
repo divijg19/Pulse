@@ -56,7 +56,7 @@ func (m Model) renderRequestContext(region Region) string {
 	b.WriteString(gapSection)
 	b.WriteString(fmt.Sprintf(indentField+"Method: %s\n", runconfig.AllowedMethods()[m.methodIndex]))
 	b.WriteString(fmt.Sprintf(indentField+"URL: %s\n", truncateURL(m.urlInput.Value(), region.Width-contextURLWidth)))
-	b.WriteString(fmt.Sprintf(indentField+"C: %d\n", m.concurrency()))
+	b.WriteString(fmt.Sprintf(indentField+"CC: %d\n", m.concurrency()))
 	b.WriteString(fmt.Sprintf(indentField+"Payload: %s\n", m.payloadSummary()))
 	return regionStyle(region).Render(b.String())
 }

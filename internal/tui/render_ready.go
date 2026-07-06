@@ -20,7 +20,7 @@ func (m Model) renderReady(region Region) string {
 	items := []configItem{
 		{"Method", method, true},
 		{"URL", url, strings.TrimSpace(url) != ""},
-		{"Concurrency", fmt.Sprintf("%d", cc), true},
+		{"CC", fmt.Sprintf("%d", cc), true},
 		{"Payload", payloadLabel, true},
 	}
 	if isDefaultMethod {
@@ -42,8 +42,17 @@ func (m Model) renderReady(region Region) string {
 	b.WriteString(gapSection)
 	b.WriteString(renderKeyValueList(items))
 	b.WriteString(gapSection)
-	b.WriteString("State\n")
-	b.WriteString(styleMuted.Render("Ready to execute"))
+
+	if m.errMsg != "" {
+		b.WriteString(styleError.Render("Configuration incomplete"))
+		b.WriteString("\n")
+		b.WriteString(indentField + m.errMsg)
+		b.WriteString("\n")
+		b.WriteString(styleMuted.Render(indentField + "Press E to edit and adjust."))
+	} else {
+		b.WriteString("State\n")
+		b.WriteString(styleMuted.Render("Ready to execute"))
+	}
 
 	return regionStyle(region).Render(b.String())
 }
