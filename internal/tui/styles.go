@@ -40,6 +40,8 @@ var (
 
 	styleCompareMarked = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Bold(true)
 	styleCompareActive = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true)
+	styleDiffAdded     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
+	styleDiffRemoved   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 
 	styleMethod = styleBase.Bold(true)
 

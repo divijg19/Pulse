@@ -58,6 +58,8 @@ type Model struct {
 	shell     Shell
 	workspace Workspace
 
+	payloadGeometry payloadGeometry
+
 	activeDomain     DomainType
 	methodIndex      int
 	requestField     int
@@ -124,6 +126,7 @@ func NewModel() Model {
 	return Model{
 		shell:            NewShell(),
 		workspace:        NewWorkspace(),
+		payloadGeometry:  geo,
 		activeDomain:     DomainRequest,
 		methodIndex:      0,
 		requestField:     reqFieldURL,
@@ -138,27 +141,53 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, startupTimeout())
 }
 
-func (m *Model) syncPayloadGeometry(totalWidth int) {
-	contentWidth := totalWidth - 4
+func (m *Model) syncPayloadGeometry(contentWidth int) {
 	geo := calculatePayloadGeometry(contentWidth)
 	m.bodyInput.SetWidth(geo.BodyWidth)
 	for i := range m.headers {
 		m.headers[i].Key.Width = geo.KeyWidth
 		m.headers[i].Value.Width = geo.ValueWidth
 	}
+	m.payloadGeometry = geo
+}
+
+func workspaceContentWidth(shellWidth, shellHeight int) int {
+	layout := computeShellLayout(shellWidth, shellHeight)
+	ws := layout.Workspace
+	ws.Border = BorderFull
+	ws.PaddingX = 1
+	return ws.ContentRegion().Width
+}
+
+// payloadContentWidth returns the width available to the payload body editor
+// at the given shell dimensions, accounting for context panel when visible.
+func payloadContentWidth(shellWidth, shellHeight int) int {
+	cw := workspaceContentWidth(shellWidth, shellHeight)
+	if shellWidth < contextThreshold {
+		return cw
+	}
+	ctxWidth := cw / 3
+	if ctxWidth < contextMinWidth {
+		ctxWidth = contextMinWidth
+	}
+	primaryWidth := cw - ctxWidth - 1
+	if primaryWidth < 40 {
+		return cw
+	}
+	return primaryWidth
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.shell.Resize(msg.Width, msg.Height)
-		m.syncPayloadGeometry(msg.Width)
+		m.syncPayloadGeometry(payloadContentWidth(msg.Width, msg.Height))
 		return m, nil
 	case startupMsg:
 		w, _ := m.shell.Dimensions()
 		if w == 0 {
 			m.shell.Resize(80, 24)
-			m.syncPayloadGeometry(80)
+			m.syncPayloadGeometry(payloadContentWidth(80, 24))
 		}
 		return m, nil
 	case tickMsg:
@@ -346,13 +375,11 @@ func (m Model) advanceDomainBackward() (tea.Model, tea.Cmd) {
 
 func (m Model) handleRequestDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		if m.requestField == reqFieldURL {
 			m.focusMethod()
 		}
 		return m, nil
-	case "j":
-		fallthrough
 	case "down":
 		if m.requestField == reqFieldMethod {
 			m.focusURL()
@@ -366,14 +393,14 @@ func (m Model) handleRequestDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focusPayloadKey()
 		}
 		return m, nil
-	case "left", "h":
+	case "left":
 		if m.requestField == reqFieldMethod && m.methodIndex > 0 {
 			m.methodIndex--
 		}
 		if m.requestField == reqFieldMethod {
 			return m, nil
 		}
-	case "right", "l":
+	case "right":
 		if m.requestField == reqFieldMethod {
 			methods := runconfig.AllowedMethods()
 			if m.methodIndex < len(methods)-1 {
@@ -397,25 +424,6 @@ func (m Model) handlePayloadDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handlePayloadBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "k":
-		fallthrough
-	case "up":
-		if len(m.headers) > 0 {
-			m.selectedHead = len(m.headers) - 1
-			m.headerSubfocus = subfocusValue
-			m.focusPayloadValue()
-		} else {
-			m.activeDomain = DomainRequest
-			m.focusURL()
-		}
-		return m, nil
-	case "j":
-		fallthrough
-	case "down":
-		m.focusConcurrency()
-		return m, nil
-	}
 	var cmd tea.Cmd
 	m.bodyInput, cmd = m.bodyInput.Update(msg)
 	return m, cmd
@@ -451,7 +459,7 @@ func (m Model) handlePayloadHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case "up", "k":
+	case "up":
 		if m.selectedHead == 0 {
 			m.activeDomain = DomainRequest
 			m.focusURL()
@@ -459,7 +467,7 @@ func (m Model) handlePayloadHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selectedHead--
 		}
 		return m, nil
-	case "down", "j":
+	case "down":
 		if m.selectedHead == len(m.headers)-1 {
 			m.selectedHead = bodyFocus
 			m.focusPayloadBody()
@@ -496,10 +504,10 @@ func (m Model) handlePayloadHeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleExecDomainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		m.setConcurrency(m.concurrency() + 1)
 		return m, nil
-	case "down", "j":
+	case "down":
 		m.setConcurrency(m.concurrency() - 1)
 		return m, nil
 	}
@@ -617,7 +625,7 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inspectZone = zoneWhatHappened
 		}
 		return m, nil
-	case "tab", "shift+tab", "left", "right", "h", "l":
+	case "tab", "shift+tab", "left", "right":
 		return m, nil
 	case "[":
 		m.workspace.view = TimelineView
@@ -629,6 +637,8 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.workspace.dialog = dialogRequest
 		m.activeDomain = DomainRequest
 		m.focusURL()
+		w, _ := m.shell.Dimensions()
+		m.syncPayloadGeometry(payloadContentWidth(w, 24))
 		return m, nil
 	case "ctrl+r":
 		return m.startRun()

@@ -192,6 +192,7 @@ Release naming contract:
 
 ```text
 Pulse/
+├── LICENSE                # MIT license
 ├── cmd/pulse/             # canonical CLI/TUI entrypoint + embedded WebUI assets
 ├── internal/api/          # request validation + SSE HTTP handlers
 ├── internal/engine/       # concurrent HTTP execution
@@ -204,59 +205,17 @@ Pulse/
 └── .github/workflows/     # CI and release pipelines
 ```
 
-## Renderer Architecture (v0.7.7+)
+## Renderer Architecture
 
-The terminal UI follows a strict four-layer ownership model:
+See [RENDERING.md](RENDERING.md).
 
-| Layer | Role | Renderers |
-|---|---|---|
-| Context | Persistent state frame | Top bar (method, URL, CC) |
-| Identity | Workspace identification | Timeline, Logs, Inspector - Result #N, Endpoint, Concurrency, Payload |
-| Content | Primary data display | Metrics, result rows, dialog forms, response details |
-| Interaction | Immediate action signals | Status bar mode + hints, ConfirmQuit |
+---
 
-Each workspace surface owns exactly one identity line:
+## See also
 
-| Surface | Identity | Style |
-|---|---|---|
-| Ready | None (launch state) | N/A |
-| Timeline | `Timeline` | Bold + Accent |
-| Logs | `Logs` | Bold + Accent |
-| Inspect | `INSPECT` | Badge |
-| Compare | `COMPARE` | Badge |
-| Endpoint | `Endpoint` | Muted |
-| Concurrency | `Concurrency` | Muted |
-| Payload | `Payload` | Muted |
-
-ConfirmQuit is an interaction-layer dialog only - it preserves the current workspace identity and content, changing only the status bar.
-
-### Visual Invariant (v0.7.8+)
-
-| Concept | Representation |
+| Document | What it answers |
 |---|---|
-| Cursor (navigation position) | `▶` glyph |
-| Highlight (active target) | Accent foreground + dark background |
-
-All selection-capable surfaces follow this invariant:
-
-| Surface | Cursor | Highlight |
-|---|---|---|
-| Timeline | ✓ | ✓ |
-| Logs | ✓ | ✓ |
-| Payload header rows | ✓ | ✓ |
-| Payload body | N/A | ✓ |
-| Endpoint method selector | ✓ | ✓ |
-| Concurrency value | ✓ | ✓ |
-| Inspect | N/A | N/A (read-only) |
-| Compare | N/A | N/A (read-only) |
-
-### Renderer Dispatch
-
-`View()` is a pure dispatch function:
-
-1. Compute width and body height.
-2. Dispatch to the correct renderer based on dialog, mode, and state.
-3. Compose the layout: Top bar → Separator → Body → Separator → Status bar.
-4. Wrap in base style with explicit width and height.
-
-No renderer performs another renderer's work. No rendering logic lives in `View()`.
+| [README.md](README.md) | Product overview, installation, quick start |
+| [RENDERING.md](RENDERING.md) | TUI rendering architecture, layout, render lifecycle, constitution |
+| [internal/tui/README.md](internal/tui/README.md) | TUI package guide, file layout, navigation |
+| [internal/tui/STATE_OWNERSHIP.md](internal/tui/STATE_OWNERSHIP.md) | Model field ownership, lifetime, mutation rules |

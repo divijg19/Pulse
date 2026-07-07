@@ -2,7 +2,7 @@ package tui
 
 // PayloadGeometry owns every payload dimension.
 // Nothing outside PayloadGeometry performs layout calculations.
-type PayloadGeometry struct {
+type payloadGeometry struct {
 	AvailableWidth int
 	KeyWidth       int
 	ValueWidth     int
@@ -10,7 +10,7 @@ type PayloadGeometry struct {
 	BodyHeight     int
 }
 
-func calculatePayloadGeometry(availableWidth int) PayloadGeometry {
+func calculatePayloadGeometry(availableWidth int) payloadGeometry {
 	if availableWidth < 20 {
 		availableWidth = 20
 	}
@@ -27,7 +27,7 @@ func calculatePayloadGeometry(availableWidth int) PayloadGeometry {
 	bodyWidth := max(10, availableWidth-len(indentNested)-2)
 	bodyHeight := 3
 
-	return PayloadGeometry{
+	return payloadGeometry{
 		AvailableWidth: availableWidth,
 		KeyWidth:       keyW,
 		ValueWidth:     valueW,
