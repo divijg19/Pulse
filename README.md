@@ -2,8 +2,9 @@
 
 > A real-time terminal-first observability surface for HTTP behavior.
 
-![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)
-![Frontend](https://img.shields.io/badge/Frontend-SolidJS%20%2B%20Vite-blue)
+![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)
+![Web UI](https://img.shields.io/badge/Web-SolidJS%20%2B%20Vite-blue)
+![Terminal UI](https://img.shields.io/badge/TUI-Bubble%20Tea-7C3AED)
 ![Streaming](https://img.shields.io/badge/Streaming-SSE-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
@@ -47,10 +48,19 @@ Design principles:
 
 ## Documentation Map
 
-- Architecture and contracts: [ARCHITECTURE.md](ARCHITECTURE.md)
-- Frontend-only development details: [web/README.md](web/README.md)
+| Document | What it answers |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, components, APIs, engine, concurrency, resource safety |
+| [RENDERING.md](RENDERING.md) | TUI rendering architecture, layout, render lifecycle, rendering constitution |
+| [internal/tui/README.md](internal/tui/README.md) | TUI package guide, file layout, navigation |
+| [internal/tui/STATE_OWNERSHIP.md](internal/tui/STATE_OWNERSHIP.md) | Model field ownership, lifetime, mutation rules |
+| [web/README.md](web/README.md) | Frontend-only development details |
 
-The root README is product-level. Deep implementation details are centralized in ARCHITECTURE.md.
+Every document answers exactly one question. No concept is explained
+in depth in more than one place. Read the doc whose question matches yours.
+
+The root README is product-level. Deep implementation details are centralized
+in ARCHITECTURE.md.
 
 ## Quick Start
 

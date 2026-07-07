@@ -9,15 +9,6 @@ import (
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
-const sentinelEmpty = "—"
-
-const (
-	gapSection      = "\n\n"
-	indentField     = "  "
-	indentNested    = "    "
-	inlineSeparator = " · "
-)
-
 const (
 	timelineFixedWidth = 34
 	logsFixedWidth     = 29

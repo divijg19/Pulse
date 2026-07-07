@@ -24,6 +24,8 @@ func (m Model) renderCompare(region Region) string {
 	markedIdentity := styleCompareMarked.Render("◆ Marked")
 	activeIdentity := styleCompareActive.Render("▶ Current")
 
+	diffSummary := m.renderCompareDiff(markedResult, activeResult)
+
 	markedWhat := m.renderInspectSummary(markedResult, markedMethod, markedURL)
 	activeWhat := m.renderInspectSummary(activeResult, activeMethod, activeURL)
 
@@ -38,17 +40,20 @@ func (m Model) renderCompare(region Region) string {
 
 	switch {
 	case region.Width >= 120:
-		return m.renderCompareWide(region, markedIdentity, markedWhat, markedWhy, markedBody,
+		return m.renderCompareWide(region, diffSummary,
+			markedIdentity, markedWhat, markedWhy, markedBody,
 			activeIdentity, activeWhat, activeWhy, activeBody)
 	case region.Width >= 80:
-		return m.renderCompareMedium(region, markedIdentity, markedWhat, markedWhy, markedBody,
+		return m.renderCompareMedium(region, diffSummary,
+			markedIdentity, markedWhat, markedWhy, markedBody,
 			activeIdentity, activeWhat, activeWhy, activeBody)
 	default:
 		return regionStyle(region).Render(styleMuted.Render("Comparison requires at least 80 columns."))
 	}
 }
 
-func (m Model) renderCompareWide(region Region, markedId, markedWhat, markedWhy, markedBody string,
+func (m Model) renderCompareWide(region Region, diffSummary string,
+	markedId, markedWhat, markedWhy, markedBody string,
 	activeId, activeWhat, activeWhy, activeBody string) string {
 
 	whatW := max(minBodyWidth, region.Width*35/100)
@@ -75,31 +80,29 @@ func (m Model) renderCompareWide(region Region, markedId, markedWhat, markedWhy,
 	markedPane := lipgloss.NewStyle().Render(markedId + gapSection + markedCols)
 	activePane := lipgloss.NewStyle().Render(activeId + gapSection + activeCols)
 
-	return regionStyle(region).Render(lipgloss.JoinHorizontal(lipgloss.Top, markedPane, " │ ", activePane))
+	pane := lipgloss.JoinHorizontal(lipgloss.Top, markedPane, " │ ", activePane)
+	content := diffSummary + "\n" + pane
+	return regionStyle(region).Render(content)
 }
 
-func (m Model) renderCompareMedium(region Region, markedId, markedWhat, markedWhy, markedBody string,
+func (m Model) renderCompareMedium(region Region, diffSummary string,
+	markedId, markedWhat, markedWhy, markedBody string,
 	activeId, activeWhat, activeWhy, activeBody string) string {
 
-	markedTitle := markedId + gapSection + sectionLine("WHAT HAPPENED", false) + "\n" + markedWhat
-	activeTitle := activeId + gapSection + sectionLine("WHAT HAPPENED", false) + "\n" + activeWhat
-	markedWhyTitle := sectionLine("WHY", false) + "\n" + markedWhy
-	activeWhyTitle := sectionLine("WHY", false) + "\n" + activeWhy
-	markedBodyTitle := sectionLine("RESPONSE", false) + "\n" + markedBody
-	activeBodyTitle := sectionLine("RESPONSE", false) + "\n" + activeBody
-
 	lines := []string{
-		markedTitle,
+		diffSummary,
 		"\n",
-		markedWhyTitle,
+		markedId + gapSection + sectionLine("WHAT HAPPENED", false) + "\n" + markedWhat,
 		"\n",
-		markedBodyTitle,
+		sectionLine("WHY", false) + "\n" + markedWhy,
 		"\n",
-		activeTitle,
+		sectionLine("RESPONSE", false) + "\n" + markedBody,
 		"\n",
-		activeWhyTitle,
+		activeId + gapSection + sectionLine("WHAT HAPPENED", false) + "\n" + activeWhat,
 		"\n",
-		activeBodyTitle,
+		sectionLine("WHY", false) + "\n" + activeWhy,
+		"\n",
+		sectionLine("RESPONSE", false) + "\n" + activeBody,
 	}
 
 	return regionStyle(region).Render(strings.Join(lines, "\n"))

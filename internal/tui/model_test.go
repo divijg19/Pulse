@@ -1171,3 +1171,7 @@ func TestInspectNavigation_BodyScrolling(t *testing.T) {
 		t.Fatalf("down in whatHappened: offset changed to %d", m.inspectBodyOffset)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Geometry Invariance Tests
+// ---------------------------------------------------------------------------

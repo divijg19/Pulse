@@ -66,12 +66,14 @@ jobs:
         run: sha256sum ${{ env.FILE_NAME }} > ${{ env.FILE_NAME }}.sha256
 
       - name: Upload release asset
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ env.FILE_NAME }}
             ${{ env.FILE_NAME }}.sha256
-          # Ensure manual dispatches don't accidentally attach to an old tag
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          tag_name: ${{ github.ref_name }}
+          append_body: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

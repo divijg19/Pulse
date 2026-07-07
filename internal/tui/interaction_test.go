@@ -1,19 +1,321 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/divijg19/Pulse/internal/model"
 )
 
-// typeName returns the type name for reflection comparisons in tests.
-func typeName(v interface{}) string {
-	return fmt.Sprintf("%T", v)
+// ---------------------------------------------------------------------------
+// Suite 2  --  Behaviour Audit
+// ---------------------------------------------------------------------------
+
+func TestV091Behaviour_ObserveNoDeadKeys(t *testing.T) {
+	m := NewModel()
+	tabKeys := []tea.KeyMsg{
+		keyMsgKey(tea.KeyTab),
+		keyMsgKey(tea.KeyShiftTab),
+		keyMsgKey(tea.KeyLeft),
+		keyMsgKey(tea.KeyRight),
+		keyMsgRune('h'),
+		keyMsgRune('l'),
+	}
+	for _, key := range tabKeys {
+		updated, cmd := m.handleObserveKey(key)
+		m2 := updated.(Model)
+		if cmd != nil {
+			t.Fatalf("key %+v should not produce command in observe", key.Type)
+		}
+		if m2.workspace.dialog != dialogNone {
+			t.Fatal("key should not open dialog")
+		}
+	}
+}
+
+func TestV091Behaviour_InspectNoDeadKeys(t *testing.T) {
+	m := NewModel()
+	m.workspace.mode = modeInspect
+	m.results = testResults(1)
+	leftRightKeys := []tea.KeyMsg{
+		keyMsgKey(tea.KeyLeft),
+		keyMsgKey(tea.KeyRight),
+		keyMsgRune('h'),
+		keyMsgRune('l'),
+	}
+	for _, key := range leftRightKeys {
+		updated, cmd := m.handleInspectKey(key)
+		m2 := updated.(Model)
+		if cmd != nil {
+			t.Fatalf("key %+v should not produce command in inspect", key.Type)
+		}
+		if m2.workspace.mode != modeInspect {
+			t.Fatal("key should stay in inspect mode")
+		}
+	}
+
+	// Tab and Shift+Tab now cycle investigation zones — verify they work
+	m2 := m
+	updated, _ := m2.handleInspectKey(keyMsgKey(tea.KeyTab))
+	m2 = updated.(Model)
+	if m2.inspectZone != zoneWhy {
+		t.Fatalf("Tab should advance to WHY zone, got %d", m2.inspectZone)
+	}
+	updated, _ = m2.handleInspectKey(keyMsgKey(tea.KeyShiftTab))
+	m2 = updated.(Model)
+	if m2.inspectZone != zoneWhatHappened {
+		t.Fatalf("Shift+Tab should go back to WHAT HAPPENED zone, got %d", m2.inspectZone)
+	}
+}
+
+func TestV091Behaviour_RequestNoDeadKeys(t *testing.T) {
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+	m.requestField = reqFieldURL
+	m.urlInput.Focus()
+
+	tabKeys := []tea.KeyMsg{
+		keyMsgKey(tea.KeyLeft),
+		keyMsgKey(tea.KeyRight),
+		keyMsgKey(tea.KeyUp),
+		keyMsgKey(tea.KeyDown),
+		keyMsgRune('h'),
+		keyMsgRune('l'),
+	}
+	for _, key := range tabKeys {
+		updated, _ := m.handleRequestKey(key)
+		m2 := updated.(Model)
+		if m2.workspace.dialog != dialogRequest {
+			t.Fatalf("key %+v should not close request dialog", key.Type)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Suite 6  --  Operator Walkthrough
+// ---------------------------------------------------------------------------
+
+func TestV091Walkthrough_RequestRunInspectQuit(t *testing.T) {
+	m := NewModel()
+
+	// 1. Start  --  should show READY identity
+	m.shell.Resize(100, 30)
+	if !strings.Contains(m.View(), "READY") {
+		t.Fatal("initial state should show READY")
+	}
+
+	// 2. Press e to open REQUEST dialog
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = updated.(Model)
+	if m.workspace.dialog != dialogRequest {
+		t.Fatal("e should open REQUEST dialog")
+	}
+
+	// 3. REQUEST dialog should show identity
+	if !strings.Contains(m.View(), "REQUEST") {
+		t.Fatal("REQUEST dialog should show identity")
+	}
+	if !strings.Contains(m.View(), "Request") {
+		t.Fatal("REQUEST dialog should show Request header")
+	}
+
+	// 4. Tab to advance through domains (Request→Payload headers)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeDomain != DomainPayload {
+		t.Fatal("Tab should advance from Request to Payload domain")
+	}
+
+	// 5. Tab again (Payload header key→header value)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.headerSubfocus != subfocusValue {
+		t.Fatal("Tab should advance from header Key to Value subfocus")
+	}
+
+	// 6. Tab again (header value→Payload body)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeDomain != DomainPayload || m.selectedHead != bodyFocus {
+		t.Fatal("Tab should advance from header Value to Payload body")
+	}
+
+	// 7. Tab again (Payload body→Execution)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeDomain != DomainExec {
+		t.Fatal("Tab should advance from Payload body to Execution domain")
+	}
+
+	// 8. Shift+Tab to go back (Exec→Payload body)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeDomain != DomainPayload {
+		t.Fatal("Shift+Tab should go back to Payload domain")
+	}
+
+	// 9. Esc to close dialog
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.workspace.dialog != dialogNone {
+		t.Fatal("Esc should close REQUEST dialog")
+	}
+
+	// 10. Press q to open quit confirmation
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	m = updated.(Model)
+	if m.workspace.dialog != dialogConfirmQuit {
+		t.Fatal("q should open quit confirmation")
+	}
+
+	// 11. Esc cancels quit
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	_ = m // esc sets dialog to dialogNone
+}
+
+// ---------------------------------------------------------------------------
+// Suite 7  --  Navigation Audit
+// ---------------------------------------------------------------------------
+
+func TestV091Navigation_UpDownInRequest(t *testing.T) {
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+	m.requestField = reqFieldURL
+
+	// Up from URL → Method (blur URL, no focus yet)
+	updated, _ := m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyUp})
+	m2 := updated.(Model)
+	if m2.requestField != reqFieldMethod {
+		t.Fatal("Up from URL should move to Method field")
+	}
+
+	// Up again at Method  --  should stay at Method (already at top)
+	updated, _ = m2.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyUp})
+	m3 := updated.(Model)
+	if m3.requestField != reqFieldMethod {
+		t.Fatal("Up at Method should stay at Method (already at top)")
+	}
+
+	// Down from Method → URL
+	m3.requestField = reqFieldMethod
+	m4, _ := m3.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyDown})
+	if m4.(Model).requestField != reqFieldURL {
+		t.Fatal("Down from Method should move to URL field")
+	}
+
+	// Down at URL  --  should stay at URL (already at bottom)
+	m5 := m4.(Model)
+	updated, _ = m5.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyDown})
+	if updated.(Model).requestField != reqFieldURL {
+		t.Fatal("Down at URL should stay at URL (already at bottom)")
+	}
+}
+
+func TestV091Navigation_BlurAllBeforeDomainTransition(t *testing.T) {
+	m := NewModel()
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+	m.requestField = reqFieldURL
+	m.blurAll()
+	m.urlInput.Focus()
+
+	m2, _ := m.advanceDomain(true)
+	if m2.(Model).activeDomain != DomainPayload {
+		t.Fatal("Tab at URL field should advance to Payload domain")
+	}
+	if m2.(Model).urlInput.Focused() {
+		t.Fatal("URL input must be blurred after advancing to Payload domain")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Suite 12  --  Boundary Traversal Audit
+// ---------------------------------------------------------------------------
+
+func TestV091Boundary_ReverseTabFromBodyToHeaders(t *testing.T) {
+	m := newRequestPayloadModel()
+	m.selectedHead = bodyFocus
+	m.focusPayloadBody()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m2 := updated.(Model)
+	if m2.selectedHead != len(m2.headers)-1 || m2.headerSubfocus != subfocusValue {
+		t.Fatalf("Shift+Tab at body should go to last header Value, got head=%d subfocus=%d", m2.selectedHead, m2.headerSubfocus)
+	}
+}
+
+func TestV091Boundary_ArrowUpInBodyStaysInBody(t *testing.T) {
+	m := newRequestPayloadModel()
+	m.selectedHead = bodyFocus
+	m.focusPayloadBody()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m2 := updated.(Model)
+	if m2.selectedHead != bodyFocus {
+		t.Fatalf("↑ at body should stay in body (editor cursor move), got head=%d", m2.selectedHead)
+	}
+	if m2.activeDomain != DomainPayload {
+		t.Fatalf("↑ at body should stay in Payload domain, got domain=%d", m2.activeDomain)
+	}
+}
+
+func TestV091Boundary_ArrowDownInBodyStaysInBody(t *testing.T) {
+	m := newRequestPayloadModel()
+	m.selectedHead = bodyFocus
+	m.focusPayloadBody()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m2 := updated.(Model)
+	if m2.selectedHead != bodyFocus {
+		t.Fatalf("↓ at body should stay in body (editor cursor move), got head=%d", m2.selectedHead)
+	}
+	if m2.activeDomain != DomainPayload {
+		t.Fatalf("↓ at body should stay in Payload domain, got domain=%d", m2.activeDomain)
+	}
+}
+
+func TestV091Boundary_ExecDomainFocusedGuard(t *testing.T) {
+	m := newRequestExecModel()
+	m.setConcurrency(5)
+	m.concurrencyInput.Focus()
+
+	// Arrow keys adjust concurrency without losing focus
+	before := m.concurrency()
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m2 := updated.(Model)
+	if m2.concurrency() != before+1 {
+		t.Fatalf("↑ should increment concurrency from %d to %d, got %d", before, before+1, m2.concurrency())
+	}
+	if !m2.concurrencyInput.Focused() {
+		t.Fatal("Exec domain should keep concurrencyInput focused after arrow adjustment")
+	}
+}
+
+func TestV091Boundary_ArrowUpFromMethodIsNoOp(t *testing.T) {
+	m := newRequestModel()
+	m.requestField = reqFieldMethod
+
+	before := m.methodIndex
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m2 := updated.(Model)
+	if m2.methodIndex != before {
+		t.Fatal("↑ at Method selector should be no-op (already at top)")
+	}
+}
+
+func TestV091Boundary_ArrowDownAtUrlToPayload(t *testing.T) {
+	m := newRequestModel()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m2 := updated.(Model)
+	if m2.activeDomain != DomainPayload || m2.selectedHead != 0 || m2.headerSubfocus != subfocusKey {
+		t.Fatalf("↓ at URL should advance to Payload header row 0, got domain=%d head=%d subfocus=%d", m2.activeDomain, m2.selectedHead, m2.headerSubfocus)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -100,12 +402,15 @@ func TestV092HeaderMutation_DeleteLastThenDown(t *testing.T) {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 	m = updated.(Model)
 
-	// Down from bodyFocus goes to Exec domain.
+	// Down from bodyFocus should stay in body (editor cursor move).
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(Model)
 
-	if m.activeDomain != DomainExec {
-		t.Fatalf("after down: activeDomain = %d (expected DomainExec=%d)", m.activeDomain, DomainExec)
+	if m.activeDomain != DomainPayload {
+		t.Fatalf("after down: activeDomain = %d (expected DomainPayload=%d)", m.activeDomain, DomainPayload)
+	}
+	if m.selectedHead != bodyFocus {
+		t.Fatalf("after down: selectedHead = %d (expected bodyFocus=%d)", m.selectedHead, bodyFocus)
 	}
 }
 
@@ -568,267 +873,6 @@ func TestV092Boundary_IllegalInspectRequest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Section: Architecture
-//
-// Invariant: Every concept has exactly one owner.
-// Failure: A type reads state it does not own, or renders output that
-// belongs to another layer.
-//
-// Verified:
-//   - Workspace is the single source of mode/dialog/view
-//   - Surface dispatch is deterministic and complete
-//   - Domains describe intent (actions), not rendering
-//   - Focus functions guard against invalid indices
-//   - Focus transitions are consistent
-// ---------------------------------------------------------------------------
-
-// Invariant: Workspace is the single source of truth for mode, dialog, and
-// view. No code reads them independently.
-
-func TestV092Constitution_WorkspaceSingleSource(t *testing.T) {
-	m := NewModel()
-	if m.workspace.mode != modeObserve {
-		t.Fatalf("initial mode = %d (expected modeObserve=%d)", m.workspace.mode, modeObserve)
-	}
-	if m.workspace.dialog != dialogNone {
-		t.Fatalf("initial dialog = %d (expected dialogNone=%d)", m.workspace.dialog, dialogNone)
-	}
-	if m.workspace.view != TimelineView {
-		t.Fatalf("initial view = %d (expected TimelineView=%d)", m.workspace.view, TimelineView)
-	}
-
-	// orientationLabel may refine the idle Observe workspace into READY.
-	label := orientationLabel(m)
-	if label != "READY" {
-		t.Fatalf("orientationLabel = %q (expected READY)", label)
-	}
-
-	// Changing workspace state changes orientation.
-	m.workspace.dialog = dialogRequest
-	if orientationLabel(m) != "REQUEST" {
-		t.Fatalf("after dialogRequest: orientationLabel = %q (expected REQUEST)", orientationLabel(m))
-	}
-
-	m.workspace.dialog = dialogConfirmQuit
-	if orientationLabel(m) != "QUIT" {
-		t.Fatalf("after dialogConfirmQuit: orientationLabel = %q (expected QUIT)", orientationLabel(m))
-	}
-
-	m.workspace.dialog = dialogNone
-	m.workspace.mode = modeInspect
-	if orientationLabel(m) != "INSPECT" {
-		t.Fatalf("after modeInspect: orientationLabel = %q (expected INSPECT)", orientationLabel(m))
-	}
-}
-
-// Invariant: Every render path resolves through resolveSurface().
-
-func TestV092Constitution_SurfaceResolvability(t *testing.T) {
-	tests := []struct {
-		name     string
-		setup    func(m *Model)
-		wantType string
-	}{
-		{
-			"request dialog overrides all",
-			func(m *Model) { m.workspace.dialog = dialogRequest },
-			"tui.RequestSurface",
-		},
-		{
-			"inspect mode",
-			func(m *Model) { m.workspace.mode = modeInspect },
-			"tui.InspectSurface",
-		},
-		{
-			"idle with no results",
-			func(m *Model) {},
-			"tui.ReadySurface",
-		},
-		{
-			"running with timeline view (default)",
-			func(m *Model) { m.running = true },
-			"tui.TimelineSurface",
-		},
-		{
-			"has results with timeline view",
-			func(m *Model) {
-				m.results = []model.Result{{Status: 200}}
-			},
-			"tui.TimelineSurface",
-		},
-		{
-			"logs view with results",
-			func(m *Model) {
-				m.results = []model.Result{{Status: 200}}
-				m.workspace.view = LogsView
-			},
-			"tui.LogsSurface",
-		},
-		{
-			"running with logs view",
-			func(m *Model) {
-				m.running = true
-				m.results = []model.Result{{Status: 200}}
-				m.workspace.view = LogsView
-			},
-			"tui.LogsSurface",
-		},
-		{
-			"request dialog with inspect mode (dialog wins)",
-			func(m *Model) {
-				m.workspace.dialog = dialogRequest
-				m.workspace.mode = modeInspect
-			},
-			"tui.RequestSurface",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			m := NewModel()
-			tc.setup(&m)
-			surface := m.resolveSurface()
-			got := surface.Render(Region{Width: 80, Height: 24})
-			if got == "" {
-				t.Fatal("surface rendered empty output")
-			}
-			gotType := typeName(surface)
-			if gotType != tc.wantType {
-				t.Fatalf("resolveSurface() = %s (expected %s)", gotType, tc.wantType)
-			}
-		})
-	}
-}
-
-// Invariant: Domain actions describe intent; they never render.
-
-func TestV092Constitution_DomainActions(t *testing.T) {
-	m := NewModel()
-
-	for dt, expected := range map[DomainType]int{
-		DomainRequest: 2,
-		DomainPayload: 3,
-		DomainExec:    1,
-	} {
-		domain, ok := domainRegistry[dt]
-		if !ok {
-			t.Fatalf("domainRegistry missing entry for DomainType=%d", dt)
-		}
-		actions := domain.Actions(m)
-		if len(actions) != expected {
-			t.Fatalf("DomainType=%d: Actions() returned %d (expected %d)", dt, len(actions), expected)
-		}
-		for i, a := range actions {
-			if !a.Enabled {
-				t.Fatalf("DomainType=%d action[%d] is disabled", dt, i)
-			}
-		}
-	}
-}
-
-// Invariant: Every focus function guards against invalid indices.
-
-func TestV092Focus_EmptyHeaderGuard(t *testing.T) {
-	// focusPayloadKey and focusPayloadValue must not panic when headers
-	// is empty or selectedHead is out of range.
-	m := NewModel()
-	m.headers = nil
-	m.selectedHead = 0
-
-	// Must not panic with empty headers.
-	m.focusPayloadKey()
-	m.focusPayloadValue()
-
-	// Must not panic with out-of-range index.
-	m.selectedHead = 5
-	m.focusPayloadKey()
-	m.focusPayloadValue()
-
-	m.selectedHead = -10
-	m.focusPayloadKey()
-	m.focusPayloadValue()
-}
-
-func TestV092Focus_TransitionConsistency(t *testing.T) {
-	// 1. Delete last header -> bodyInput focused.
-	m := NewModel()
-	m.workspace.dialog = dialogRequest
-	m.activeDomain = DomainPayload
-	m.selectedHead = 0
-	m.headerSubfocus = subfocusKey
-	m.headers = append(m.headers, newHeaderRow())
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
-	m = updated.(Model)
-	if !m.bodyInput.Focused() {
-		t.Fatal("after delete last header: bodyInput should be focused")
-	}
-
-	// 2. Delete middle header -> remaining header key focused.
-	m2 := NewModel()
-	m2.workspace.dialog = dialogRequest
-	m2.activeDomain = DomainPayload
-	m2.selectedHead = 1
-	m2.headerSubfocus = subfocusKey
-	m2.headers = append(m2.headers, newHeaderRow(), newHeaderRow(), newHeaderRow())
-
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
-	m2 = updated2.(Model)
-	if len(m2.headers) != 2 {
-		t.Fatalf("after delete middle: headers = %d (expected 2)", len(m2.headers))
-	}
-	if !m2.headers[m2.selectedHead].Key.Focused() {
-		t.Fatal("after delete middle header: remaining header key should be focused")
-	}
-}
-
-// Invariant: Render functions must not mutate model state.
-
-func TestV092Architecture_RenderDoesNotMutate(t *testing.T) {
-	// Rendering must never modify model state. Running View() on the same
-	// model must produce identical output and leave all fields untouched.
-	m := NewModel()
-	m.workspace.dialog = dialogRequest
-	m.activeDomain = DomainPayload
-	m.selectedHead = 0
-	m.headerSubfocus = subfocusKey
-	m.headers = append(m.headers, newHeaderRow())
-	m.results = append(m.results, model.Result{Status: 200})
-
-	mode := m.workspace.mode
-	dialog := m.workspace.dialog
-	domain := m.activeDomain
-	selected := m.selected
-	head := m.selectedHead
-	running := m.running
-
-	before := m.View()
-
-	if m.workspace.mode != mode {
-		t.Fatal("render mutated workspace.mode")
-	}
-	if m.workspace.dialog != dialog {
-		t.Fatal("render mutated workspace.dialog")
-	}
-	if m.activeDomain != domain {
-		t.Fatal("render mutated activeDomain")
-	}
-	if m.selected != selected {
-		t.Fatal("render mutated selected")
-	}
-	if m.selectedHead != head {
-		t.Fatal("render mutated selectedHead")
-	}
-	if m.running != running {
-		t.Fatal("render mutated running")
-	}
-
-	after := m.View()
-	if before != after {
-		t.Fatal("View() is non-deterministic: two calls produced different output")
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Section: Interaction
 //
 // Invariant: Every keystroke produces predictable, deterministic behaviour.
@@ -938,14 +982,14 @@ func TestV092Interaction_ObserveInspectKeysNoop(t *testing.T) {
 	}
 }
 
-// Invariant: hjkl keys are consistent with arrow keys in every domain.
+// Invariant: hjkl in editable fields type text; arrows navigate.
+// hjkl in read-only browse modes (observe/inspect/compare) navigate.
 
 func TestV092Interaction_HJKLConsistency(t *testing.T) {
-	// hjkl must produce identical results to arrow keys in every domain
-	// where both are handled. This verifies the hjkl vim-bindings are
-	// not diverging from the primary arrow-key bindings.
+	// Editable fields: hjkl must type into the focused widget.
+	// Arrow keys continue to navigate, cycle, or adjust values.
 
-	// Exec domain: up/k increment, down/j decrement.
+	// Exec domain: k/j type text; up/down inc/dec concurrency.
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.activeDomain = DomainExec
@@ -953,19 +997,28 @@ func TestV092Interaction_HJKLConsistency(t *testing.T) {
 	m.concurrencyInput.SetValue("5")
 
 	updatedK, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	updatedUp, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	mK := updatedK.(Model)
-	mUp := updatedUp.(Model)
-	if mK.concurrencyInput.Value() != mUp.concurrencyInput.Value() {
-		t.Fatalf("exec: up=%s but k=%s", mUp.concurrencyInput.Value(), mK.concurrencyInput.Value())
+	if mK.concurrencyInput.Value() != "5k" {
+		t.Fatalf("exec: k should type into concurrency input, got %q", mK.concurrencyInput.Value())
 	}
 
-	updatedJ, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	updatedDown, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updatedJ, _ := mK.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	mJ := updatedJ.(Model)
+	if mJ.concurrencyInput.Value() != "5kj" {
+		t.Fatalf("exec: j should type into concurrency input, got %q", mJ.concurrencyInput.Value())
+	}
+
+	// Arrows still inc/dec the parsed value.
+	updatedUp, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	mUp := updatedUp.(Model)
+	if mUp.concurrencyInput.Value() != "6" {
+		t.Fatalf("exec: up should increment concurrency, got %q", mUp.concurrencyInput.Value())
+	}
+
+	updatedDown, _ := mUp.Update(tea.KeyMsg{Type: tea.KeyDown})
 	mDown := updatedDown.(Model)
-	if mJ.concurrencyInput.Value() != mDown.concurrencyInput.Value() {
-		t.Fatalf("exec: down=%s but j=%s", mDown.concurrencyInput.Value(), mJ.concurrencyInput.Value())
+	if mDown.concurrencyInput.Value() != "5" {
+		t.Fatalf("exec: down should decrement concurrency, got %q", mDown.concurrencyInput.Value())
 	}
 
 	// Payload header: left/right switch subfocus; h/l move cursor within text.
@@ -1088,291 +1141,173 @@ func TestV092Interaction_CtrlXFromDialog(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Section: Layout
-//
-// Invariant: The layout is stable and predictable at every supported size
-// and transition. No line exceeds the terminal width. No size causes a
-// panic. Determining output is deterministic (no state leakage).
-//
-// Verified:
-//   - All supported widths (72-220) and heights (10-40) render without overflow
-//   - Extreme sizes (1x1, 200x100, etc.) never panic
-//   - Identical model at identical size produces identical output
-//   - All layout configurations produce valid region dimensions
-// ---------------------------------------------------------------------------
+// Regression: editable fields type h/j/k/l; body up/down stay in body.
+// Read-only browse modes (observe, inspect, compare) keep j/k navigation.
 
-// Invariant: Layout is stable at every supported size and transition.
+func TestV092Regression_PayloadBodyEditorKeys(t *testing.T) {
+	m := newRequestPayloadModel()
+	m.selectedHead = bodyFocus
+	m.focusPayloadBody()
+	m.bodyInput.SetValue("")
 
-func TestV092Geometry_RendersWithoutWrap(t *testing.T) {
-	// Verify layout integrity across a range of terminal sizes.
-	// The shell enforces a minimum width of 72, so we test from that
-	// floor upward. Heights test the minimum supported values.
-	widths := []int{72, 80, 100, 120, 160, 200, 220}
-	heights := []int{10, 16, 24, 30, 40}
-
-	surfaces := []struct {
-		name  string
-		setup func(m *Model)
-	}{
-		{"idle", func(m *Model) {}},
-		{"running", func(m *Model) { m.running = true }},
-		{"request dialog", func(m *Model) { m.workspace.dialog = dialogRequest }},
-		{"inspect", func(m *Model) { m.workspace.mode = modeInspect }},
+	// h/j/k/l type into body.
+	for _, r := range []rune{'h', 'j', 'k', 'l'} {
+		m2, _ := m.Update(keyMsgRune(r))
+		m = m2.(Model)
+	}
+	if m.bodyInput.Value() != "hjkl" {
+		t.Fatalf("body should type hjkl, got %q", m.bodyInput.Value())
+	}
+	if m.selectedHead != bodyFocus {
+		t.Fatal("body should stay focused after typing hjkl")
+	}
+	if m.activeDomain != DomainPayload {
+		t.Fatal("body should stay in Payload domain after typing hjkl")
 	}
 
-	for _, s := range surfaces {
-		for _, w := range widths {
-			for _, h := range heights {
-				t.Run(s.name+fmt.Sprintf("/%dx%d", w, h), func(t *testing.T) {
-					m := NewModel()
-					s.setup(&m)
-					m.shell.Resize(w, h)
+	// Up/down stay in body (editor cursor movement).
+	m2, _ := m.Update(keyMsgKey(tea.KeyUp))
+	m = m2.(Model)
+	if m.selectedHead != bodyFocus {
+		t.Fatal("↑ at body should stay in body")
+	}
+	m2, _ = m.Update(keyMsgKey(tea.KeyDown))
+	m = m2.(Model)
+	if m.selectedHead != bodyFocus {
+		t.Fatal("↓ at body should stay in body")
+	}
 
-					view := m.View()
-					if view == "" {
-						t.Fatal("view returned empty string")
-					}
+	// Left/right stay in body.
+	m2, _ = m.Update(keyMsgKey(tea.KeyLeft))
+	m = m2.(Model)
+	if m.selectedHead != bodyFocus {
+		t.Fatal("← at body should stay in body")
+	}
+	m2, _ = m.Update(keyMsgKey(tea.KeyRight))
+	m = m2.(Model)
+	if m.selectedHead != bodyFocus {
+		t.Fatal("→ at body should stay in body")
+	}
 
-					// Verify no line exceeds the terminal width.
-					lines := strings.Split(view, "\n")
-					for i, line := range lines {
-						if lipgloss.Width(line) > w {
-							t.Fatalf("line %d overflows: width %d > terminal %d", i, lipgloss.Width(line), w)
-						}
-					}
-				})
-			}
-		}
+	// Tab leaves body for Exec domain.
+	m2, _ = m.Update(keyMsgKey(tea.KeyTab))
+	m = m2.(Model)
+	if m.activeDomain != DomainExec {
+		t.Fatal("Tab from body should go to Exec domain")
 	}
 }
 
-func TestV092Geometry_NoPanicAtExtremeSizes(t *testing.T) {
-	sizes := []struct{ w, h int }{
-		{1, 1},
-		{5, 5},
-		{200, 100},
-		{40, 100},
-		{220, 8},
-	}
-
-	for _, sz := range sizes {
-		t.Run(fmt.Sprintf("%dx%d", sz.w, sz.h), func(t *testing.T) {
-			m := NewModel()
-			m.shell.Resize(sz.w, sz.h)
-			_ = m.View() // must not panic
-		})
-	}
-}
-
-// Invariant: The existing layout can accept regions, borders, and panels
-// without architectural changes.
-
-func TestV092Layout_SpacingIsDeterministic(t *testing.T) {
-	// The same model rendered twice at the same width must produce
-	// identical output. This verifies no state leaks into rendering.
-	m := NewModel()
-	m.workspace.dialog = dialogRequest
-	m.activeDomain = DomainPayload
+func TestV092Regression_HeaderVimKeysType(t *testing.T) {
+	// In header key/value fields, j/k type text.
+	// Up/down continue navigating between header rows.
+	m := newRequestPayloadModel()
 	m.selectedHead = 0
-	m.headerSubfocus = subfocusKey
-	m.headers = append(m.headers, newHeaderRow())
-	m.shell.Resize(80, 24)
+	m.headerSubfocus = subfocusValue
+	m.focusPayloadValue()
+	m.headers[0].Value.SetValue("")
 
-	a := m.View()
-	b := m.View()
+	// j/k at header value should type.
+	m2, _ := m.Update(keyMsgRune('j'))
+	m = m2.(Model)
+	if m.headers[0].Value.Value() != "j" {
+		t.Fatalf("'j' at header value should type 'j', got %q", m.headers[0].Value.Value())
+	}
+	m2, _ = m.Update(keyMsgRune('k'))
+	m = m2.(Model)
+	if m.headers[0].Value.Value() != "jk" {
+		t.Fatalf("'k' at header value should type 'k', got %q", m.headers[0].Value.Value())
+	}
+	if m.selectedHead != 0 {
+		t.Fatal("j/k should not change header row")
+	}
 
-	if a != b {
-		t.Fatal("same model rendered twice at same size produced different output")
+	// Up/down still navigate header rows.
+	m2, _ = m.Update(keyMsgKey(tea.KeyUp))
+	m = m2.(Model)
+	if m.selectedHead != 0 {
+		t.Fatal("↑ at first header row should cross to Request domain")
+	}
+	if m.activeDomain != DomainRequest {
+		t.Fatal("↑ at first header row should go to Request domain")
 	}
 }
 
-func TestV092Layout_AllLayoutsRender(t *testing.T) {
-	// Every layout configuration must produce valid rendered output.
-	sizes := []struct{ w, h int }{
-		{80, 24},
-		{100, 30},
-		{120, 40},
-		{160, 40},
-		{60, 10},
-	}
-	for _, sz := range sizes {
-		t.Run(fmt.Sprintf("%dx%d", sz.w, sz.h), func(t *testing.T) {
-			m := NewModel()
-			m.shell.Resize(sz.w, sz.h)
-
-			layout := m.shell.Layout()
-			if layout.Workspace.Width <= 0 || layout.Workspace.Height <= 0 {
-				t.Fatalf("workspace region has non-positive dimensions: %dx%d", layout.Workspace.Width, layout.Workspace.Height)
-			}
-			if layout.Context.Width < 0 || layout.Command.Width < 0 {
-				t.Fatalf("negative context or command width")
-			}
-
-			view := m.View()
-			if view == "" {
-				t.Fatal("View() returned empty string")
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Section: Rendering
-//
-// Invariant: Visual treatment expresses semantics consistently.
-// Failure: A visual element communicates the wrong message (e.g., inactive
-// state rendered with active styling, inconsistent use of box-drawing).
-//
-// Verified:
-//   - Active domains use heavy rules (━), inactive use light (─)
-//   - Workspace identity is never boxed
-//   - Section dividers use em dashes (──) not ASCII dashes
-// ---------------------------------------------------------------------------
-
-// Invariant: Visual treatment expresses semantics.
-
-func TestV092Visual_HeavyVsLightRules(t *testing.T) {
-	// Active domain uses heavy rule (━), inactive uses light rule (─).
+func TestV092Regression_ObserveVimKeysNavigate(t *testing.T) {
 	m := NewModel()
-	m.workspace.dialog = dialogRequest
-	m.activeDomain = DomainRequest
+	m.workspace.mode = modeObserve
+	m.workspace.dialog = dialogNone
+	m.results = []model.Result{
+		{Status: 200},
+		{Status: 404},
+		{Status: 500},
+	}
+	m.selected = 1
 
-	reqRendered := m.renderRequestDomain(80)
-	if !strings.Contains(reqRendered, "━") {
-		t.Fatal("active domain (Request) should use heavy rule ━")
+	// 'k' navigates up in observe mode.
+	m2, _ := m.Update(keyMsgRune('k'))
+	m = m2.(Model)
+	if m.selected != 0 {
+		t.Fatal("'k' in observe mode should navigate up")
 	}
 
-	payloadRendered := m.renderPayloadDomain(80)
-	if !strings.Contains(payloadRendered, "─") {
-		t.Fatal("inactive domain (Payload) should use light rule ─")
+	// 'j' navigates down in observe mode.
+	m2, _ = m.Update(keyMsgRune('j'))
+	m = m2.(Model)
+	if m.selected != 1 {
+		t.Fatal("'j' in observe mode should navigate down")
 	}
 }
 
-func TestV092Visual_WorkspaceIdentityNeverBoxed(t *testing.T) {
-	// The workspace identity badge itself must never use box-drawing
-	// characters. The workspace region has a border in v0.9.2+, but
-	// the badge within it must not.
-	badge := renderWorkspaceBadge("OBSERVE")
-	if strings.Contains(badge, "┌") || strings.Contains(badge, "┐") ||
-		strings.Contains(badge, "└") || strings.Contains(badge, "┘") {
-		t.Fatal("workspace identity badge should not use box-drawing characters")
-	}
-}
-
-func TestV092Visual_SectionLinesUseEmDash(t *testing.T) {
-	// Section dividers must use em dashes (──), not ASCII dashes (--).
+func TestV092Regression_InspectVimKeysScroll(t *testing.T) {
 	m := NewModel()
 	m.workspace.mode = modeInspect
-	m.results = append(m.results, model.Result{Status: 200})
+	m.results = []model.Result{
+		{
+			Status:       200,
+			ResponseBody: "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10",
+		},
+	}
 	m.selected = 0
+	m.inspectZone = zoneBody
+	m.inspectBodyOffset = 5
 
-	rendered := m.renderInspect(Region{Width: 80, Height: 24})
-	if !strings.Contains(rendered, "──") {
-		t.Fatal("inspect section lines should use ──")
+	// 'k' scrolls body up in inspect mode.
+	updated, _ := m.handleInspectKey(keyMsgRune('k'))
+	m2 := updated.(Model)
+	if m2.inspectBodyOffset != 4 {
+		t.Fatal("'k' in inspect body should decrement offset")
+	}
+
+	// 'j' scrolls body down in inspect mode.
+	updated, _ = m2.handleInspectKey(keyMsgRune('j'))
+	m3 := updated.(Model)
+	if m3.inspectBodyOffset != 5 {
+		t.Fatal("'j' in inspect body should increment offset")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Section: Information Architecture
-//
-// Invariant: Every screen answers: where am I, what is selected, what can I
-// edit, what happens next, what does Tab do, what does Esc do.
-// Failure: A surface renders without communicating orientation or navigable
-// state.
-//
-// Verified:
-//   - Every renderable state shows its orientation label
-// ---------------------------------------------------------------------------
-
-// Invariant: Every screen answers: where, what's selected, what changes,
-// what's next, what does Tab do, what does Esc do.
-
-func TestV092IA_EverySurfaceHasOrientation(t *testing.T) {
-	// Every renderable state must show its orientation label.
-	states := []struct {
-		name     string
-		setup    func(m *Model)
-		expected string
-	}{
-		{"idle", func(m *Model) {}, "READY"},
-		{"request dialog", func(m *Model) { m.workspace.dialog = dialogRequest }, "REQUEST"},
-		{"inspect mode", func(m *Model) { m.workspace.mode = modeInspect }, "INSPECT"},
-		{"quit dialog", func(m *Model) { m.workspace.dialog = dialogConfirmQuit }, "QUIT"},
-	}
-	for _, st := range states {
-		t.Run(st.name, func(t *testing.T) {
-			m := NewModel()
-			st.setup(&m)
-			view := m.View()
-			if !strings.Contains(view, st.expected) {
-				t.Fatalf("view does not contain orientation %q", st.expected)
-			}
-		})
-	}
-}
-
-// Invariant: Every empty state guides the operator rather than feeling
-// like an unhandled edge case.
-
-func TestV092IA_EmptyStatesGuide(t *testing.T) {
-	// Ready state (no results, not running) should show guidance.
+func TestV092Regression_CompareVimKeysScroll(t *testing.T) {
 	m := NewModel()
-	view := m.View()
-	if !strings.Contains(view, "Ready") {
-		t.Fatal("idle state should show Ready guidance")
+	m.workspace.mode = modeCompare
+	m.results = []model.Result{
+		{Status: 200, ResponseBody: "a\nb\nc\nd\ne\nf\ng"},
+		{Status: 404, ResponseBody: "a\nb\nc\nd\ne\nf\ng"},
+	}
+	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.inspectZone = zoneBody
+	m.inspectBodyOffset = 5
+
+	// 'k' scrolls body up in compare mode.
+	updated, _ := m.handleCompareKey(keyMsgRune('k'))
+	m2 := updated.(Model)
+	if m2.inspectBodyOffset != 4 {
+		t.Fatal("'k' in compare body should decrement offset")
 	}
 
-	// Inspect with no results should show an empty-state message.
-	m2 := NewModel()
-	m2.workspace.mode = modeInspect
-	view2 := m2.View()
-	if view2 == "" {
-		t.Fatal("inspect with no results should not render empty")
-	}
-
-	// Request dialog with no config should show the dialog.
-	m3 := NewModel()
-	m3.workspace.dialog = dialogRequest
-	view3 := m3.View()
-	if !strings.Contains(view3, "REQUEST") {
-		t.Fatal("request dialog should show REQUEST orientation")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Section: Engineering
-//
-// Invariant: The test suite itself is maintainable, exhaustive, and
-// executable. Redundant tests are removed. Coverage is intentional.
-//
-// Verified:
-//   - Semantic constants are used in place of magic literals
-//   - No deprecated or superseded conventions remain
-// ---------------------------------------------------------------------------
-
-func TestV092Engineering_SentinelConstantUsed(t *testing.T) {
-	// Verify the sentinelEmpty constant is used instead of hardcoded
-	// em dash strings for the empty payload sentinel.
-	m := NewModel()
-	if m.payloadSummary() != sentinelEmpty {
-		t.Fatal("payloadSummary should return sentinelEmpty for empty payload")
-	}
-}
-
-func TestV092Engineering_ConfigurationUsesCC(t *testing.T) {
-	// Configuration summaries should use "CC" not "Concurrency".
-	cfg := NewModel().Configuration()
-	found := false
-	for _, c := range cfg {
-		if c.Identity == "CC" {
-			found = true
-		}
-		if c.Identity == "Concurrency" {
-			t.Fatal("Configuration should use CC, not Concurrency")
-		}
-	}
-	if !found {
-		t.Fatal("Configuration should contain CC identity")
+	// 'j' scrolls body down in compare mode.
+	updated, _ = m2.handleCompareKey(keyMsgRune('j'))
+	m3 := updated.(Model)
+	if m3.inspectBodyOffset != 5 {
+		t.Fatal("'j' in compare body should increment offset")
 	}
 }

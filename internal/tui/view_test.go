@@ -2580,6 +2580,97 @@ func TestCompare_HandleKeyDispatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Compare Diff Summary Tests
+// ---------------------------------------------------------------------------
+
+func TestCompareDiff_StatusChange(t *testing.T) {
+	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	active := model.Result{Status: 404, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/b"}
+	m := NewModel()
+
+	out := m.renderCompareDiff(marked, active)
+
+	if !contains(t, out, "200") || !contains(t, out, "404") {
+		t.Fatal("diff must show both status values")
+	}
+}
+
+func TestCompareDiff_StatusSame(t *testing.T) {
+	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	active := model.Result{Status: 200, Latency: 15 * time.Millisecond, RequestURL: "https://example.com/a"}
+	m := NewModel()
+
+	out := m.renderCompareDiff(marked, active)
+
+	if contains(t, out, "200 →") {
+		t.Fatal("status should not show diff when unchanged")
+	}
+}
+
+func TestCompareDiff_LatencyDelta(t *testing.T) {
+	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	active := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
+	m := NewModel()
+
+	out := m.renderCompareDiff(marked, active)
+
+	if !contains(t, out, "+") || !contains(t, out, "Latency") {
+		t.Fatal("diff must show latency delta with + sign")
+	}
+}
+
+func TestCompareDiff_LatencyDecrease(t *testing.T) {
+	marked := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
+	active := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	m := NewModel()
+
+	out := m.renderCompareDiff(marked, active)
+
+	if !contains(t, out, "-") || !contains(t, out, "Latency") {
+		t.Fatal("diff must show latency delta with - sign")
+	}
+}
+
+func TestCompareDiff_URLChange(t *testing.T) {
+	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	active := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/b"}
+	m := NewModel()
+
+	out := m.renderCompareDiff(marked, active)
+
+	if !contains(t, out, "example.com/a") || !contains(t, out, "example.com/b") {
+		t.Fatal("diff must show both URLs when different")
+	}
+}
+
+func TestCompareDiff_ErrorChange(t *testing.T) {
+	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	active := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a",
+		Error: "connection refused"}
+	m := NewModel()
+
+	out := m.renderCompareDiff(marked, active)
+
+	if !contains(t, out, "connection refused") {
+		t.Fatal("diff must show error when error appears")
+	}
+}
+
+func TestCompareDiff_DiffSummaryInRender(t *testing.T) {
+	m := compareTestModel()
+	m.workspace.compare = compareState{marked: 0, active: 1}
+
+	out := m.renderCompare(Region{Width: 100, Height: 30})
+
+	if !contains(t, out, "DIFF SUMMARY") {
+		t.Fatal("compare render must include DIFF SUMMARY section")
+	}
+	if !contains(t, out, "Status:") && !contains(t, out, "Latency:") {
+		t.Fatal("diff summary must show at least one diff field")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Payload Rendering Regression Tests
 // ---------------------------------------------------------------------------
 
@@ -2956,6 +3047,134 @@ func TestValidation_NoDuplicateWhenValidConcurrency(t *testing.T) {
 
 	if contains(t, out, "Must be between") {
 		t.Fatal("no inline error for valid concurrency")
+	}
+}
+
+func TestValidation_URL_InlineWhenActive(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+	m.requestField = reqFieldURL
+	m.urlInput.SetValue("")
+
+	out := m.renderRequestDomain(80)
+	if !contains(t, out, "URL is required") {
+		t.Fatal("inline URL error must show when URL field is active and empty")
+	}
+}
+
+func TestValidation_URL_NotInlineWhenInactive(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.urlInput.SetValue("")
+
+	out := m.renderPayloadDomain(80)
+	if contains(t, out, "URL is required") {
+		t.Fatal("URL validation must NOT appear in Payload domain")
+	}
+}
+
+func TestValidation_URL_ValidErrorHidden(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+	m.requestField = reqFieldURL
+
+	out := m.renderRequestDomain(80)
+	if contains(t, out, "URL is required") || contains(t, out, "Must be a valid") {
+		t.Fatal("no inline error for valid default URL")
+	}
+}
+
+func TestValidation_URL_MalformedURL(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainRequest
+	m.requestField = reqFieldURL
+	m.urlInput.SetValue("not-a-url")
+
+	out := m.renderRequestDomain(80)
+	if !contains(t, out, "Must be a valid absolute URL") {
+		t.Fatal("inline error must show for malformed URL")
+	}
+}
+
+func TestValidation_Body_InvalidJSON(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.selectedHead = bodyFocus
+	m.bodyInput.SetValue("{invalid}")
+
+	out := m.renderPayloadDomain(80)
+	if !contains(t, out, "Body must be valid JSON") {
+		t.Fatal("inline error must show for invalid JSON body")
+	}
+}
+
+func TestValidation_Body_ValidJSONNoError(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.selectedHead = bodyFocus
+	m.bodyInput.SetValue(`{"key": "value"}`)
+
+	out := m.renderPayloadDomain(80)
+	if contains(t, out, "Body must be valid") {
+		t.Fatal("no inline error for valid JSON")
+	}
+}
+
+func TestValidation_Body_NoErrorWhenEmpty(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.selectedHead = bodyFocus
+	m.bodyInput.SetValue("")
+
+	out := m.renderPayloadDomain(80)
+	if contains(t, out, "Body must be valid") {
+		t.Fatal("no inline error when body is empty")
+	}
+}
+
+func TestValidation_Header_KeyRequired(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.selectedHead = 0
+	m.headerSubfocus = subfocusKey
+	m.headers = []headerRow{newHeaderRow()}
+	m.headers[0].Key.SetValue("")
+
+	out := m.renderPayloadDomain(80)
+	if !contains(t, out, "Header key is required") {
+		t.Fatal("inline error must show when header key is empty")
+	}
+}
+
+func TestValidation_Header_KeyPresentNoError(t *testing.T) {
+	m := NewModel()
+	m.shell.Resize(100, 30)
+	m.workspace.dialog = dialogRequest
+	m.activeDomain = DomainPayload
+	m.selectedHead = 0
+	m.headerSubfocus = subfocusKey
+	m.headers = []headerRow{newHeaderRow()}
+	m.headers[0].Key.SetValue("Content-Type")
+
+	out := m.renderPayloadDomain(80)
+	if contains(t, out, "Header key is required") {
+		t.Fatal("no inline error when header key is present")
 	}
 }
 
