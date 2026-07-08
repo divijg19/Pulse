@@ -32,6 +32,8 @@ func (m Model) Actions() []Action {
 		return m.requestActions()
 	case m.workspace.mode == modeCompare:
 		return []Action{
+			{ActionClear, ApplicationCategory, true},
+			{ActionSwap, NavigationCategory, true},
 			{ActionZoneNext, NavigationCategory, true},
 			{ActionZoneScroll, NavigationCategory, true},
 			{ActionBack, ApplicationCategory, true},
@@ -234,7 +236,7 @@ func (m Model) renderTopBar(state ShellState, width int) string {
 }
 
 func isErrorResult(result model.Result) bool {
-	return result.Status >= 400 || result.Status == 0
+	return result.Status == 0 || ClassifyStatus(result.Status) >= StatusClientError
 }
 
 func accentOrMuted(name string, active bool) string {
@@ -451,14 +453,14 @@ func resultStatus(result model.Result) string {
 	if result.Status == 0 {
 		return "ERR"
 	}
-	switch {
-	case result.Status >= 100 && result.Status < 200:
+	switch ClassifyStatus(result.Status) {
+	case StatusInfo:
 		return fmt.Sprintf("%d Info", result.Status)
-	case result.Status >= 200 && result.Status < 300:
+	case StatusSuccess:
 		return fmt.Sprintf("%d OK", result.Status)
-	case result.Status >= 300 && result.Status < 400:
+	case StatusRedirect:
 		return fmt.Sprintf("%d Redirect", result.Status)
-	case result.Status >= 400:
+	case StatusClientError, StatusServerError:
 		return fmt.Sprintf("%d", result.Status)
 	default:
 		return fmt.Sprintf("%d", result.Status)

@@ -2068,17 +2068,17 @@ func TestCompareStateClearedOnStartRun(t *testing.T) {
 	m.setConcurrency(1)
 
 	// Set stale compare state (as if user marked results then started new run)
-	m.workspace.compare = compareState{marked: 2, active: 5}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 2, CandidateIndex: 5, State: SessionComparing}
 
 	started, cmd := m.startRun()
 	if cmd == nil {
 		t.Fatal("startRun should return a command")
 	}
-	if started.workspace.compare.marked != -1 {
-		t.Fatal("startRun must clear compare.marked, got", started.workspace.compare.marked)
+	if started.workspace.compare.Session.BaselineIndex != -1 {
+		t.Fatal("startRun must clear compare.BaselineIndex, got", started.workspace.compare.Session.BaselineIndex)
 	}
-	if started.workspace.compare.active != -1 {
-		t.Fatal("startRun must clear compare.active, got", started.workspace.compare.active)
+	if started.workspace.compare.Session.CandidateIndex != -1 {
+		t.Fatal("startRun must clear compare.CandidateIndex, got", started.workspace.compare.Session.CandidateIndex)
 	}
 }
 
@@ -2087,18 +2087,18 @@ func TestCompareStateClearedOnCancelRun(t *testing.T) {
 	m := NewModel()
 	m.running = true
 	m.cancel = func() {}
-	m.workspace.compare = compareState{marked: 1, active: 2}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
 	m.results = []model.Result{
 		{Status: 200},
 		{Status: 404},
 	}
 
 	m = m.cancelRun()
-	if m.workspace.compare.marked != 1 {
-		t.Fatal("cancelRun must preserve compare.marked (results remain visible)")
+	if m.workspace.compare.Session.BaselineIndex != 1 {
+		t.Fatal("cancelRun must preserve compare.BaselineIndex (results remain visible)")
 	}
-	if m.workspace.compare.active != 2 {
-		t.Fatal("cancelRun must preserve compare.active (results remain visible)")
+	if m.workspace.compare.Session.CandidateIndex != 2 {
+		t.Fatal("cancelRun must preserve compare.CandidateIndex (results remain visible)")
 	}
 }
 
@@ -2125,8 +2125,8 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m.selected = 1
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.marked != 1 {
-			t.Fatal("first c should store marked index, got", m.workspace.compare.marked)
+		if m.workspace.compare.Session.BaselineIndex != 1 {
+			t.Fatal("first c should store marked index, got", m.workspace.compare.Session.BaselineIndex)
 		}
 		if m.workspace.mode != modeObserve {
 			t.Fatal("first c should return to Observe mode")
@@ -2137,15 +2137,16 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
 		m.selected = 1
-		m.workspace.compare.marked = 1
+		m.workspace.compare.Session.BaselineIndex = 1
+		m.workspace.compare.Session.State = SessionBaselineMarked
 		m.selected = 2
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.marked != 1 {
-			t.Fatal("marked should remain 1, got", m.workspace.compare.marked)
+		if m.workspace.compare.Session.BaselineIndex != 1 {
+			t.Fatal("marked should remain 1, got", m.workspace.compare.Session.BaselineIndex)
 		}
-		if m.workspace.compare.active != 2 {
-			t.Fatal("active should be 2, got", m.workspace.compare.active)
+		if m.workspace.compare.Session.CandidateIndex != 2 {
+			t.Fatal("active should be 2, got", m.workspace.compare.Session.CandidateIndex)
 		}
 		if m.workspace.mode != modeCompare {
 			t.Fatal("second c should enter Compare mode")
@@ -2156,11 +2157,12 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
 		m.selected = 1
-		m.workspace.compare.marked = 1
+		m.workspace.compare.Session.BaselineIndex = 1
+		m.workspace.compare.Session.State = SessionBaselineMarked
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.marked != -1 {
-			t.Fatal("c on same marked result should unmark, got", m.workspace.compare.marked)
+		if m.workspace.compare.Session.BaselineIndex != -1 {
+			t.Fatal("c on same marked result should unmark, got", m.workspace.compare.Session.BaselineIndex)
 		}
 		if m.workspace.mode != modeInspect {
 			t.Fatal("unmark should stay in Inspect mode")
@@ -2173,26 +2175,26 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m.selected = 0
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.marked != 0 {
-			t.Fatal("mark should be 0, got", m.workspace.compare.marked)
+		if m.workspace.compare.Session.BaselineIndex != 0 {
+			t.Fatal("mark should be 0, got", m.workspace.compare.Session.BaselineIndex)
 		}
 	})
 }
 
 func TestCompare_CompareKeyLifecycle(t *testing.T) {
 
-	t.Run("Esc from Compare clears state and returns to Observe", func(t *testing.T) {
+	t.Run("Esc from Compare preserves session and returns to Observe", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeCompare
-		m.workspace.compare = compareState{marked: 1, active: 2}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
 		m.workspace.view = LogsView
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEsc})
 		m = updated.(Model)
-		if m.workspace.compare.marked != -1 {
-			t.Fatal("Esc should reset marked to -1")
+		if m.workspace.compare.Session.BaselineIndex != 1 {
+			t.Fatal("Esc should preserve marked, got", m.workspace.compare.Session.BaselineIndex)
 		}
-		if m.workspace.compare.active != -1 {
-			t.Fatal("Esc should reset active to -1")
+		if m.workspace.compare.Session.CandidateIndex != 2 {
+			t.Fatal("Esc should preserve active, got", m.workspace.compare.Session.CandidateIndex)
 		}
 		if m.workspace.mode != modeObserve {
 			t.Fatal("Esc should set mode to Observe")
@@ -2205,16 +2207,16 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 	t.Run("q from Compare shows quit dialog", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeCompare
-		m.workspace.compare = compareState{marked: 1, active: 2}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 		m = updated.(Model)
 		if m.workspace.dialog != dialogConfirmQuit {
 			t.Fatal("q should open confirm quit dialog")
 		}
-		if m.workspace.compare.marked != -1 {
+		if m.workspace.compare.Session.BaselineIndex != -1 {
 			t.Fatal("q should clear marked")
 		}
-		if m.workspace.compare.active != -1 {
+		if m.workspace.compare.Session.CandidateIndex != -1 {
 			t.Fatal("q should clear active")
 		}
 	})
@@ -2222,10 +2224,10 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 	t.Run("Esc from Inspect preserves mark", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
-		m.workspace.compare = compareState{marked: 1, active: -1}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: -1, State: SessionBaselineMarked}
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyEsc})
 		m = updated.(Model)
-		if m.workspace.compare.marked != 1 {
+		if m.workspace.compare.Session.BaselineIndex != 1 {
 			t.Fatal("Esc from Inspect should preserve mark")
 		}
 		if m.workspace.mode != modeObserve {
@@ -2233,23 +2235,23 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("c after Esc starts fresh lifecycle", func(t *testing.T) {
+	t.Run("c after x starts fresh lifecycle", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeCompare
-		m.workspace.compare = compareState{marked: 1, active: 2}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
 		m.workspace.view = LogsView
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEsc})
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 		m = updated.(Model)
 
 		m.workspace.mode = modeInspect
 		m.selected = 0
 		updated2, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated2.(Model)
-		if m.workspace.compare.marked != 0 {
-			t.Fatal("after Esc, c should mark fresh result, got", m.workspace.compare.marked)
+		if m.workspace.compare.Session.BaselineIndex != 0 {
+			t.Fatal("after x, c should mark fresh result, got", m.workspace.compare.Session.BaselineIndex)
 		}
 		if m.workspace.mode != modeObserve {
-			t.Fatal("after Esc, first c should return to Observe")
+			t.Fatal("after x, first c should return to Observe")
 		}
 	})
 }
@@ -2258,7 +2260,7 @@ func TestCompare_InvestigationReset(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeInspect
 	m.selected = 1
-	m.workspace.compare = compareState{marked: 0, active: -1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: -1, State: SessionBaselineMarked}
 	m.inspectZone = zoneBody
 	m.inspectBodyOffset = 10
 
@@ -2281,7 +2283,7 @@ func TestCompare_InvalidState(t *testing.T) {
 	region := Region{Width: 100, Height: 30}
 
 	t.Run("marked < 0 shows no comparison", func(t *testing.T) {
-		m.workspace.compare = compareState{marked: -1, active: 1}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: 1, State: SessionBaselineMarked}
 		out := m.renderCompare(region)
 		if !contains(t, out, "No comparison active") {
 			t.Fatal("invalid state should show no comparison message")
@@ -2289,7 +2291,7 @@ func TestCompare_InvalidState(t *testing.T) {
 	})
 
 	t.Run("active < 0 shows no comparison", func(t *testing.T) {
-		m.workspace.compare = compareState{marked: 1, active: -1}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: -1, State: SessionBaselineMarked}
 		out := m.renderCompare(region)
 		if !contains(t, out, "No comparison active") {
 			t.Fatal("invalid state should show no comparison message")
@@ -2297,7 +2299,7 @@ func TestCompare_InvalidState(t *testing.T) {
 	})
 
 	t.Run("both < 0 shows no comparison", func(t *testing.T) {
-		m.workspace.compare = compareState{marked: -1, active: -1}
+		m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: -1, State: SessionIdle}
 		out := m.renderCompare(region)
 		if !contains(t, out, "No comparison active") {
 			t.Fatal("invalid state should show no comparison message")
@@ -2307,7 +2309,7 @@ func TestCompare_InvalidState(t *testing.T) {
 
 func TestCompare_ResponsiveLayouts(t *testing.T) {
 	m := compareTestModel()
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 
 	t.Run("narrow (<80) shows rejection", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 79, Height: 30})
@@ -2316,46 +2318,34 @@ func TestCompare_ResponsiveLayouts(t *testing.T) {
 		}
 	})
 
-	t.Run("medium (80) renders stacked layout", func(t *testing.T) {
+	t.Run("medium (80) renders analysis content", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 80, Height: 30})
 		if contains(t, out, "requires at least 80 columns") {
 			t.Fatal("80 should be valid width")
 		}
-		if !contains(t, out, "Marked") {
-			t.Fatal("medium should show Marked identity")
-		}
-		if !contains(t, out, "Current") {
-			t.Fatal("medium should show Current identity")
+		if !contains(t, out, "METADATA") {
+			t.Fatal("medium should show METADATA section")
 		}
 	})
 
-	t.Run("medium (100) renders stacked layout", func(t *testing.T) {
+	t.Run("medium (100) renders analysis content", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 100, Height: 30})
-		if !contains(t, out, "Marked") {
-			t.Fatal("medium should show Marked identity")
-		}
-		if !contains(t, out, "Current") {
-			t.Fatal("medium should show Current identity")
+		if !contains(t, out, "METADATA") {
+			t.Fatal("medium should show METADATA section")
 		}
 	})
 
 	t.Run("boundary (119) renders stacked layout", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 119, Height: 30})
-		if !contains(t, out, "Marked") {
-			t.Fatal("119 should show Marked identity")
-		}
-		if !contains(t, out, "Current") {
-			t.Fatal("119 should show Current identity")
+		if !contains(t, out, "METADATA") {
+			t.Fatal("119 should show METADATA section")
 		}
 	})
 
 	t.Run("wide (120) renders side-by-side layout", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 120, Height: 30})
-		if !contains(t, out, "Marked") {
-			t.Fatal("wide should show Marked identity")
-		}
-		if !contains(t, out, "Current") {
-			t.Fatal("wide should show Current identity")
+		if !contains(t, out, "METADATA") {
+			t.Fatal("wide should show METADATA section")
 		}
 		if !contains(t, out, "│") {
 			t.Fatal("wide should include column separator")
@@ -2364,9 +2354,6 @@ func TestCompare_ResponsiveLayouts(t *testing.T) {
 
 	t.Run("wide (150) renders side-by-side layout", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 150, Height: 30})
-		if !contains(t, out, "Marked") {
-			t.Fatal("wide should show Marked identity")
-		}
 		if !contains(t, out, "│") {
 			t.Fatal("wide should include column separator")
 		}
@@ -2375,37 +2362,28 @@ func TestCompare_ResponsiveLayouts(t *testing.T) {
 
 func TestCompare_Rendering(t *testing.T) {
 	m := compareTestModel()
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 	region := Region{Width: 130, Height: 30}
 	out := m.renderCompare(region)
 
-	if !contains(t, out, "◆") {
-		t.Fatal("Marked identity should include diamond")
+	if !contains(t, out, "METADATA") {
+		t.Fatal("should show METADATA section")
 	}
-	if !contains(t, out, "▶") {
-		t.Fatal("Current identity should include right arrow")
+	if !contains(t, out, "200") {
+		t.Fatal("should show baseline status")
 	}
-	if !contains(t, out, "Marked") {
-		t.Fatal("should show Marked identity")
+	if !contains(t, out, "404") {
+		t.Fatal("should show candidate status")
 	}
-	if !contains(t, out, "Current") {
-		t.Fatal("should show Current identity")
-	}
-	if !contains(t, out, "WHAT HAPPENED") {
-		t.Fatal("compare should show WHAT HAPPENED section")
-	}
-	if !contains(t, out, "WHY") {
-		t.Fatal("compare should show WHY section")
-	}
-	if !contains(t, out, "RESPONSE") {
-		t.Fatal("compare should show RESPONSE section")
+	if !contains(t, out, "Regression") {
+		t.Fatal("should show regression verdict for 200→404")
 	}
 }
 
 func TestCompare_Navigation(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeCompare
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 
 	t.Run("up scrolls body when in body zone", func(t *testing.T) {
 		m.inspectZone = zoneBody
@@ -2512,7 +2490,7 @@ func TestCompare_Navigation(t *testing.T) {
 func TestCompare_ZoneNavigation(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeCompare
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 
 	t.Run("Tab at WhatHappened goes to Why", func(t *testing.T) {
 		m.inspectZone = zoneWhatHappened
@@ -2546,7 +2524,7 @@ func TestRenderStatusline_CompareMode(t *testing.T) {
 	m := compareTestModel()
 	m.shell.Resize(100, 24)
 	m.workspace.mode = modeCompare
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 
 	out := m.renderStatusline(m.ShellState(), 100)
 	if !contains(t, out, "[Tab]") {
@@ -2566,7 +2544,7 @@ func TestRenderStatusline_CompareMode(t *testing.T) {
 func TestCompare_HandleKeyDispatch(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeCompare
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 
 	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
@@ -2574,8 +2552,11 @@ func TestCompare_HandleKeyDispatch(t *testing.T) {
 	if m.workspace.mode != modeObserve {
 		t.Fatal("handleKey should dispatch Esc to compare handler")
 	}
-	if m.workspace.compare.marked != -1 {
-		t.Fatal("handleKey should clear compare state via compare handler")
+	if m.workspace.compare.Session.BaselineIndex != 0 {
+		t.Fatal("handleKey should preserve compare state via compare handler on Esc, got", m.workspace.compare.Session.BaselineIndex)
+	}
+	if m.workspace.compare.Session.CandidateIndex != 1 {
+		t.Fatal("handleKey should preserve compare active via compare handler on Esc, got", m.workspace.compare.Session.CandidateIndex)
 	}
 }
 
@@ -2583,90 +2564,179 @@ func TestCompare_HandleKeyDispatch(t *testing.T) {
 // Compare Diff Summary Tests
 // ---------------------------------------------------------------------------
 
-func TestCompareDiff_StatusChange(t *testing.T) {
-	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
-	active := model.Result{Status: 404, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/b"}
-	m := NewModel()
+func TestCompareEngine_StatusRegression(t *testing.T) {
+	baseline := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 500, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	analysis := AnalyzeComparison(baseline, candidate)
 
-	out := m.renderCompareDiff(marked, active)
+	if analysis.Metadata.Status.Old != 200 || analysis.Metadata.Status.New != 500 {
+		t.Fatal("status values must be recorded")
+	}
+	if !analysis.Metadata.Status.Changed {
+		t.Fatal("status should be marked changed")
+	}
 
-	if !contains(t, out, "200") || !contains(t, out, "404") {
-		t.Fatal("diff must show both status values")
+	found := false
+	for _, f := range analysis.Flags {
+		if f.Field == "status" && f.Severity == FlagRegression {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("status regression flag must be set")
+	}
+	if analysis.Verdict != VerdictRegressed {
+		t.Fatal("status regression should produce VerdictRegressed, got", analysis.Verdict)
 	}
 }
 
-func TestCompareDiff_StatusSame(t *testing.T) {
-	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
-	active := model.Result{Status: 200, Latency: 15 * time.Millisecond, RequestURL: "https://example.com/a"}
-	m := NewModel()
+func TestCompareEngine_StatusImprovement(t *testing.T) {
+	baseline := model.Result{Status: 500, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	analysis := AnalyzeComparison(baseline, candidate)
 
-	out := m.renderCompareDiff(marked, active)
-
-	if contains(t, out, "200 →") {
-		t.Fatal("status should not show diff when unchanged")
+	found := false
+	for _, f := range analysis.Flags {
+		if f.Field == "status" && f.Severity == FlagImprovement {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("status improvement flag must be set")
 	}
 }
 
-func TestCompareDiff_LatencyDelta(t *testing.T) {
-	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
-	active := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
-	m := NewModel()
+func TestCompareEngine_LatencyRegression(t *testing.T) {
+	baseline := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 200, Latency: 500 * time.Millisecond, RequestURL: "https://example.com/a"}
+	analysis := AnalyzeComparison(baseline, candidate)
 
-	out := m.renderCompareDiff(marked, active)
-
-	if !contains(t, out, "+") || !contains(t, out, "Latency") {
-		t.Fatal("diff must show latency delta with + sign")
+	found := false
+	for _, f := range analysis.Flags {
+		if f.Field == "latency" && f.Severity == FlagRegression {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("latency regression flag must be set")
 	}
 }
 
-func TestCompareDiff_LatencyDecrease(t *testing.T) {
-	marked := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
-	active := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
-	m := NewModel()
+func TestCompareEngine_LatencyImprovement(t *testing.T) {
+	baseline := model.Result{Status: 200, Latency: 500 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	analysis := AnalyzeComparison(baseline, candidate)
 
-	out := m.renderCompareDiff(marked, active)
-
-	if !contains(t, out, "-") || !contains(t, out, "Latency") {
-		t.Fatal("diff must show latency delta with - sign")
+	found := false
+	for _, f := range analysis.Flags {
+		if f.Field == "latency" && f.Severity == FlagImprovement {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("latency improvement flag must be set")
 	}
 }
 
-func TestCompareDiff_URLChange(t *testing.T) {
-	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
-	active := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/b"}
-	m := NewModel()
+func TestCompareEngine_HeadersDelta(t *testing.T) {
+	baseline := model.Result{Status: 200, ResponseHeaders: map[string]string{"X-Cache": "HIT", "Content-Type": "text/html"}}
+	candidate := model.Result{Status: 200, ResponseHeaders: map[string]string{"Content-Type": "application/json", "X-RateLimit": "100"}}
+	analysis := AnalyzeComparison(baseline, candidate)
 
-	out := m.renderCompareDiff(marked, active)
-
-	if !contains(t, out, "example.com/a") || !contains(t, out, "example.com/b") {
-		t.Fatal("diff must show both URLs when different")
+	if len(analysis.Headers.Added) != 1 || analysis.Headers.Added[0].Name != "X-RateLimit" {
+		t.Fatal("should detect added header X-RateLimit")
+	}
+	if len(analysis.Headers.Removed) != 1 || analysis.Headers.Removed[0].Name != "X-Cache" {
+		t.Fatal("should detect removed header X-Cache")
+	}
+	if len(analysis.Headers.Changed) != 1 || analysis.Headers.Changed[0].Name != "Content-Type" {
+		t.Fatal("should detect changed header Content-Type")
 	}
 }
 
-func TestCompareDiff_ErrorChange(t *testing.T) {
-	marked := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
-	active := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a",
+func TestCompareEngine_BodySummary(t *testing.T) {
+	baseline := model.Result{Status: 200, ResponseBody: "line1\nline2\nline3"}
+	candidate := model.Result{Status: 200, ResponseBody: "line1\nchanged\nline3"}
+	analysis := AnalyzeComparison(baseline, candidate)
+
+	if analysis.Body.ChangedLines < 1 {
+		t.Fatal("should detect line changes")
+	}
+	if analysis.Body.BaselineSize != 17 || analysis.Body.CandidateSize != 19 {
+		t.Fatal("body size should be recorded")
+	}
+	if len(analysis.Body.Segments) == 0 {
+		t.Fatal("body segments should be non-empty")
+	}
+}
+
+func TestCompareEngine_Identical(t *testing.T) {
+	baseline := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	analysis := AnalyzeComparison(baseline, candidate)
+
+	if analysis.Metadata.Status.Changed || analysis.Metadata.Latency.Changed {
+		t.Fatal("identical results should have no changes")
+	}
+	if analysis.Verdict != VerdictEquivalent {
+		t.Fatal("identical results should produce VerdictEquivalent, got", analysis.Verdict)
+	}
+	if len(analysis.Flags) != 0 {
+		t.Fatal("identical results should have no flags")
+	}
+}
+
+func TestCompareEngine_ErrorRegression(t *testing.T) {
+	baseline := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 500, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a",
 		Error: "connection refused"}
-	m := NewModel()
+	analysis := AnalyzeComparison(baseline, candidate)
 
-	out := m.renderCompareDiff(marked, active)
-
-	if !contains(t, out, "connection refused") {
-		t.Fatal("diff must show error when error appears")
+	found := false
+	for _, f := range analysis.Flags {
+		if f.Field == "error" && f.Severity == FlagRegression {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("new error should be flagged as regression")
 	}
 }
 
-func TestCompareDiff_DiffSummaryInRender(t *testing.T) {
+func TestCompareEngine_ErrorResolved(t *testing.T) {
+	baseline := model.Result{Status: 500, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a",
+		Error: "timeout"}
+	candidate := model.Result{Status: 200, Latency: 10 * time.Millisecond, RequestURL: "https://example.com/a"}
+	analysis := AnalyzeComparison(baseline, candidate)
+
+	found := false
+	for _, f := range analysis.Flags {
+		if f.Field == "error" && f.Severity == FlagImprovement {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("resolved error should be flagged as improvement")
+	}
+}
+
+func TestCompareRender_DiffSummaryInRender(t *testing.T) {
 	m := compareTestModel()
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 
 	out := m.renderCompare(Region{Width: 100, Height: 30})
 
-	if !contains(t, out, "DIFF SUMMARY") {
-		t.Fatal("compare render must include DIFF SUMMARY section")
+	if !contains(t, out, "METADATA") {
+		t.Fatal("compare render must include METADATA section")
 	}
-	if !contains(t, out, "Status:") && !contains(t, out, "Latency:") {
-		t.Fatal("diff summary must show at least one diff field")
+	if !contains(t, out, "200") || !contains(t, out, "404") {
+		t.Fatal("diff summary must show status values")
 	}
 }
 

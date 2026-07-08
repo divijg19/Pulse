@@ -43,7 +43,9 @@ func (m Model) resolveSurface() Surface {
 	switch {
 	case m.workspace.dialog == dialogRequest:
 		return RequestSurface{m: m}
-	case m.workspace.compare.marked >= 0 && m.workspace.compare.active >= 0:
+	case m.workspace.compare.Session.State == SessionComparing:
+		return CompareSurface{m: m}
+	case m.workspace.compare.PinnedBaseline != nil:
 		return CompareSurface{m: m}
 	case m.workspace.mode == modeInspect:
 		return InspectSurface{m: m}

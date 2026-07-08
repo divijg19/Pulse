@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/divijg19/Pulse/internal/model"
+
 // ViewType identifies which presentation surface the Workspace shows for
 // the OBSERVE orientation.
 type ViewType int
@@ -9,20 +11,39 @@ const (
 	LogsView
 )
 
+// SessionState describes the lifecycle of a comparison session.
+type SessionState int
+
+const (
+	SessionIdle           SessionState = iota // no active comparison workflow
+	SessionBaselineMarked                     // baseline chosen, no candidate yet
+	SessionComparing                          // both baseline and candidate set
+)
+
+// ComparisonSession tracks a single comparison workflow. A session begins
+// when the operator marks a baseline result and ends when they explicitly
+// clear it. The session is disposable — it is reset on startRun.
+type ComparisonSession struct {
+	BaselineIndex  int                 // baseline result index (-1 = unset)
+	CandidateIndex int                 // candidate result index (-1 = unset)
+	State          SessionState        // current lifecycle phase
+	Analysis       *ComparisonAnalysis // computed analysis, refreshed on transitions
+}
+
+// CompareData holds all comparison state for the workspace. PinnedBaseline
+// survives startRun; Session is ephemeral and reset on each new run.
+type CompareData struct {
+	PinnedBaseline *model.Result
+	Session        ComparisonSession
+}
+
 // Workspace is the composition unit. A Workspace composes Views, a View
 // composes Regions, a Region hosts Surfaces. Workspace is owned by Shell.
 type Workspace struct {
 	mode    mode
 	dialog  dialog
 	view    ViewType
-	compare compareState
-}
-
-// compareState holds the investigation comparison lifecycle. Both fields are
-// result slice indices. Values of -1 mean unset. Esc destroys the state.
-type compareState struct {
-	marked int
-	active int
+	compare CompareData
 }
 
 // NewWorkspace creates the default Workspace (OBSERVE/Timeline).
@@ -31,9 +52,14 @@ func NewWorkspace() Workspace {
 		mode:   modeObserve,
 		dialog: dialogNone,
 		view:   TimelineView,
-		compare: compareState{
-			marked: -1,
-			active: -1,
+		compare: CompareData{
+			PinnedBaseline: nil,
+			Session: ComparisonSession{
+				BaselineIndex:  -1,
+				CandidateIndex: -1,
+				State:          SessionIdle,
+				Analysis:       nil,
+			},
 		},
 	}
 }

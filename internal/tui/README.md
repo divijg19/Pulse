@@ -53,8 +53,7 @@ The active surface is determined by two state fields on `Model`:
 | `render_inspect_summary.go` | Inspect result summary (status, latency, URL, error). |
 | `render_inspect_body.go` | Inspect response body view. |
 | `render_inspect_why.go` | Inspect failure analysis pane. |
-| `render_compare.go` | Compare dialog dispatch. |
-| `render_compare_diff.go` | Compare diff view (metadata-only). |
+| `render_compare.go` | Compare dialog dispatch and diff rendering. |
 | `render_common.go` | Shared rendering utilities (separators, hints). |
 
 ### Geometry and layout

@@ -592,6 +592,31 @@ func (m *Model) focusPayloadBody() {
 	m.bodyInput.Focus()
 }
 
+// computeComparisonAnalysis runs the Comparison Engine using the session's
+// baseline and candidate results. It uses PinnedBaseline as the baseline when
+// available, falling back to m.results[BaselineIndex].
+func (m Model) computeComparisonAnalysis() *ComparisonAnalysis {
+	if m.workspace.compare.Session.State != SessionComparing {
+		return nil
+	}
+	if m.workspace.compare.Session.CandidateIndex < 0 || m.workspace.compare.Session.CandidateIndex >= len(m.results) {
+		return nil
+	}
+	candidate := m.results[m.workspace.compare.Session.CandidateIndex]
+
+	var baseline model.Result
+	if m.workspace.compare.PinnedBaseline != nil {
+		baseline = *m.workspace.compare.PinnedBaseline
+	} else if m.workspace.compare.Session.BaselineIndex >= 0 && m.workspace.compare.Session.BaselineIndex < len(m.results) {
+		baseline = m.results[m.workspace.compare.Session.BaselineIndex]
+	} else {
+		return nil
+	}
+
+	analysis := AnalyzeComparison(baseline, candidate)
+	return &analysis
+}
+
 func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
@@ -632,6 +657,32 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "]":
 		m.workspace.view = LogsView
+		return m, nil
+	case "c":
+		if len(m.results) == 0 {
+			return m, nil
+		}
+		switch m.workspace.compare.Session.State {
+		case SessionIdle:
+			m.workspace.compare.Session.BaselineIndex = m.selected
+			m.workspace.compare.Session.State = SessionBaselineMarked
+			m.status = "Baseline marked"
+			m.workspace.mode = modeObserve
+		case SessionBaselineMarked:
+			if m.selected != m.workspace.compare.Session.BaselineIndex {
+				m.workspace.compare.Session.CandidateIndex = m.selected
+				m.workspace.compare.Session.State = SessionComparing
+				m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+				m.workspace.mode = modeCompare
+				m.inspectZone = zoneWhatHappened
+				m.inspectBodyOffset = 0
+			}
+		case SessionComparing:
+			m.workspace.compare.Session.CandidateIndex = m.selected
+			m.inspectZone = zoneWhatHappened
+			m.inspectBodyOffset = 0
+			m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+		}
 		return m, nil
 	case "e":
 		m.workspace.dialog = dialogRequest
@@ -685,7 +736,11 @@ func (m Model) startRun() (Model, tea.Cmd) {
 
 	m.workspace.mode = modeObserve
 	m.workspace.dialog = dialogNone
-	m.workspace.compare = compareState{marked: -1, active: -1}
+	if m.workspace.compare.Session.State >= SessionBaselineMarked && len(m.results) > m.workspace.compare.Session.BaselineIndex {
+		result := m.results[m.workspace.compare.Session.BaselineIndex]
+		m.workspace.compare.PinnedBaseline = &result
+	}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: -1, State: SessionIdle, Analysis: nil}
 	m.running = true
 	m.cancel = cancel
 	m.eventCh = eventCh

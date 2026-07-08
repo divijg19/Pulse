@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -443,5 +444,186 @@ func TestV092Architecture_RenderDoesNotMutate(t *testing.T) {
 	after := m.View()
 	if before != after {
 		t.Fatal("View() is non-deterministic: two calls produced different output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// v0.9.9 — Comparison Invariants
+// ---------------------------------------------------------------------------
+
+func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
+	setup := func(results int) Model {
+		m := NewModel()
+		m.shell.Resize(100, 30)
+		m.results = testResults(results)
+		return m
+	}
+
+	// Path 1: observe mode, BaselineMarked → Comparing (model.go:675)
+	t.Run("observe baseline marked", func(t *testing.T) {
+		m := setup(3)
+		m.selected = 1
+		m.workspace.mode = modeObserve
+		m.workspace.compare.Session.State = SessionBaselineMarked
+		m.workspace.compare.Session.BaselineIndex = 0
+
+		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2m := m2.(Model)
+		if m2m.workspace.compare.Session.State == SessionComparing && m2m.workspace.compare.Session.Analysis == nil {
+			t.Fatal("H1: State=Comparing but Analysis=nil after observe baseline marked")
+		}
+	})
+
+	// Path 2: observe mode, Comparing → Comparing (replace candidate, model.go:684)
+	t.Run("observe replace candidate", func(t *testing.T) {
+		m := setup(4)
+		m.selected = 2
+		m.workspace.mode = modeCompare
+		m.workspace.compare.Session.State = SessionComparing
+		m.workspace.compare.Session.BaselineIndex = 0
+		m.workspace.compare.Session.CandidateIndex = 1
+		m.workspace.compare.PinnedBaseline = &m.results[0]
+		m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+
+		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2m := m2.(Model)
+		if m2m.workspace.compare.Session.State == SessionComparing && m2m.workspace.compare.Session.Analysis == nil {
+			t.Fatal("State=Comparing but Analysis=nil after observe replace candidate")
+		}
+	})
+
+	// Path 3: inspect mode, Idle → Comparing with PinnedBaseline (update_inspect.go:42)
+	t.Run("inspect idle with pin", func(t *testing.T) {
+		m := setup(3)
+		m.selected = 1
+		m.workspace.mode = modeInspect
+		m.workspace.compare.PinnedBaseline = &m.results[0]
+		m.workspace.compare.Session.State = SessionIdle
+
+		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2m := m2.(Model)
+		if m2m.workspace.compare.Session.State == SessionComparing && m2m.workspace.compare.Session.Analysis == nil {
+			t.Fatal("State=Comparing but Analysis=nil after inspect idle with pin")
+		}
+	})
+
+	// Path 4: inspect mode, BaselineMarked → Comparing (update_inspect.go:59)
+	t.Run("inspect baseline marked", func(t *testing.T) {
+		m := setup(3)
+		m.selected = 1
+		m.workspace.mode = modeInspect
+		m.workspace.compare.Session.State = SessionBaselineMarked
+		m.workspace.compare.Session.BaselineIndex = 0
+
+		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2m := m2.(Model)
+		if m2m.workspace.compare.Session.State == SessionComparing && m2m.workspace.compare.Session.Analysis == nil {
+			t.Fatal("State=Comparing but Analysis=nil after inspect baseline marked")
+		}
+	})
+
+	// Path 5: swap in compare mode (update_compare.go:20)
+	t.Run("swap in compare", func(t *testing.T) {
+		m := setup(3)
+		m.workspace.mode = modeCompare
+		m.workspace.compare.PinnedBaseline = &m.results[0]
+		m.workspace.compare.Session.State = SessionComparing
+		m.workspace.compare.Session.BaselineIndex = 0
+		m.workspace.compare.Session.CandidateIndex = 1
+		m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+
+		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+		m2m := m2.(Model)
+		if m2m.workspace.compare.Session.State != SessionComparing {
+			t.Fatal("swap should remain in Comparing state")
+		}
+		if m2m.workspace.compare.Session.Analysis == nil {
+			t.Fatal("swap should recompute Analysis, got nil")
+		}
+	})
+}
+
+func TestV099Comparing_PinInvariant(t *testing.T) {
+	// PinnedBaseline == nil ⇒ Session.State != SessionComparing
+	m := NewModel()
+	if m.workspace.compare.PinnedBaseline != nil {
+		t.Fatal("fresh Model should have nil PinnedBaseline")
+	}
+	if m.workspace.compare.Session.State == SessionComparing {
+		t.Fatal("fresh Model should not be in Comparing state")
+	}
+}
+
+func TestV099Architecture_EngineNoRenderImports(t *testing.T) {
+	cmd := exec.Command("go", "list", "-f", "{{.Imports}}", "comparison.go")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := []string{"lipgloss", "bubbletea", "ansi", "termenv"}
+	for _, pkg := range forbidden {
+		if strings.Contains(string(out), pkg) {
+			t.Errorf("comparison.go imports rendering package: %s", pkg)
+		}
+	}
+}
+
+func TestV099Status_ClassifyStatusCoverage(t *testing.T) {
+	tt := []struct {
+		status int
+		class  StatusClass
+	}{
+		{-1, StatusUnknown},
+		{0, StatusUnknown},
+		{50, StatusUnknown},
+		{99, StatusUnknown},
+		{100, StatusInfo},
+		{101, StatusInfo},
+		{199, StatusInfo},
+		{200, StatusSuccess},
+		{201, StatusSuccess},
+		{299, StatusSuccess},
+		{300, StatusRedirect},
+		{301, StatusRedirect},
+		{399, StatusRedirect},
+		{400, StatusClientError},
+		{404, StatusClientError},
+		{499, StatusClientError},
+		{500, StatusServerError},
+		{502, StatusServerError},
+		{599, StatusServerError},
+		{600, StatusServerError},
+	}
+	for _, tc := range tt {
+		got := ClassifyStatus(tc.status)
+		if got != tc.class {
+			t.Errorf("ClassifyStatus(%d) = %d (expected %d)", tc.status, got, tc.class)
+		}
+	}
+}
+
+func TestV099Status_ResultStatusRoundtrip(t *testing.T) {
+	tt := []struct {
+		status int
+		want   string
+	}{
+		{0, "ERR"},
+		{101, "101 Info"},
+		{199, "199 Info"},
+		{200, "200 OK"},
+		{201, "201 OK"},
+		{301, "301 Redirect"},
+		{302, "302 Redirect"},
+		{400, "400"},
+		{404, "404"},
+		{500, "500"},
+		{50, "50"},
+		{99, "99"},
+	}
+	for _, tc := range tt {
+		got := resultStatus(model.Result{Status: tc.status})
+		if got != tc.want {
+			t.Errorf("resultStatus(%d) = %q (expected %q)", tc.status, got, tc.want)
+		}
 	}
 }

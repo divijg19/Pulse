@@ -30,16 +30,45 @@ func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "c":
-		if m.workspace.compare.marked < 0 {
-			m.workspace.compare.marked = m.selected
-			m.workspace.mode = modeObserve
-		} else if m.workspace.compare.marked == m.selected {
-			m.workspace.compare.marked = -1
-		} else {
-			m.workspace.compare.active = m.selected
-			m.workspace.mode = modeCompare
-			m.inspectZone = zoneWhatHappened
-			m.inspectBodyOffset = 0
+		switch m.workspace.compare.Session.State {
+		case SessionIdle:
+			if m.workspace.compare.PinnedBaseline != nil {
+				m.workspace.compare.Session.CandidateIndex = m.selected
+				m.workspace.compare.Session.State = SessionComparing
+				m.workspace.compare.Session.BaselineIndex = -1
+				m.workspace.mode = modeCompare
+				m.inspectZone = zoneWhatHappened
+				m.inspectBodyOffset = 0
+				m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+			} else {
+				m.workspace.compare.Session.BaselineIndex = m.selected
+				m.workspace.compare.Session.State = SessionBaselineMarked
+				m.status = "Baseline marked"
+				m.workspace.mode = modeObserve
+			}
+		case SessionBaselineMarked:
+			if m.workspace.compare.Session.BaselineIndex == m.selected {
+				m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: -1, State: SessionIdle, Analysis: nil}
+				m.status = "Comparison cleared"
+			} else {
+				m.workspace.compare.Session.CandidateIndex = m.selected
+				m.workspace.compare.Session.State = SessionComparing
+				m.workspace.mode = modeCompare
+				m.inspectZone = zoneWhatHappened
+				m.inspectBodyOffset = 0
+				m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+			}
+		case SessionComparing:
+			if m.workspace.compare.Session.BaselineIndex == m.selected {
+				m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: -1, State: SessionIdle, Analysis: nil}
+				m.workspace.mode = modeObserve
+				m.status = "Comparison cleared"
+			} else {
+				m.workspace.compare.Session.CandidateIndex = m.selected
+				m.inspectZone = zoneWhatHappened
+				m.inspectBodyOffset = 0
+				m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+			}
 		}
 		return m, nil
 	case "q", "ctrl+c":

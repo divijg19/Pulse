@@ -1293,7 +1293,7 @@ func TestV092Regression_CompareVimKeysScroll(t *testing.T) {
 		{Status: 200, ResponseBody: "a\nb\nc\nd\ne\nf\ng"},
 		{Status: 404, ResponseBody: "a\nb\nc\nd\ne\nf\ng"},
 	}
-	m.workspace.compare = compareState{marked: 0, active: 1}
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
 	m.inspectZone = zoneBody
 	m.inspectBodyOffset = 5
 

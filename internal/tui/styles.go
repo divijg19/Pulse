@@ -39,9 +39,6 @@ var (
 	styleSectionLine = styleMuted
 
 	styleCompareMarked = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Bold(true)
-	styleCompareActive = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true)
-	styleDiffAdded     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
-	styleDiffRemoved   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 
 	styleMethod = styleBase.Bold(true)
 
@@ -58,16 +55,16 @@ func statusColor(status int) string {
 	if status == 0 {
 		return colorError
 	}
-	if status >= 200 && status < 300 {
+	switch ClassifyStatus(status) {
+	case StatusSuccess:
 		return colorSuccess
-	}
-	if status >= 300 && status < 400 {
+	case StatusRedirect:
 		return colorWarning
-	}
-	if status >= 400 {
+	case StatusClientError, StatusServerError:
 		return colorError
+	default:
+		return colorMuted
 	}
-	return colorMuted
 }
 
 var (
