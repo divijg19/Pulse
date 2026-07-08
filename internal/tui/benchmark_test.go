@@ -64,15 +64,27 @@ func BenchmarkRenderer_PayloadDomain(b *testing.B) {
 	}
 }
 
-func BenchmarkRenderer_CompareDiff(b *testing.B) {
-	m := NewModel()
+func BenchmarkRenderer_CompareAnalysis(b *testing.B) {
 	results := testResults(20)
-	marked := results[0]
-	active := results[1]
+	baseline := results[0]
+	candidate := results[1]
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		m.renderCompareDiff(marked, active)
+		AnalyzeComparison(baseline, candidate)
+	}
+}
+
+func BenchmarkRenderer_CompareRender(b *testing.B) {
+	m := NewModel()
+	m.results = testResults(20)
+	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+	region := Region{Width: 100, Height: 30}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		m.renderCompare(region)
 	}
 }
 

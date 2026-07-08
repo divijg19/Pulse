@@ -41,6 +41,8 @@ const (
 	ActionZoneNext
 	ActionZoneScroll
 	ActionCompare
+	ActionClear
+	ActionSwap
 )
 
 // Action is a behavioral intent -- not a presentation object.
@@ -105,6 +107,8 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionZoneNext:          {"Tab", "Next Zone", NavigationCategory, PriorityHigh},
 	ActionZoneScroll:        {"↑↓", "Scroll", NavigationCategory, PriorityMedium},
 	ActionCompare:           {"c", "Compare", NavigationCategory, PriorityLow},
+	ActionClear:             {"x", "Clear", ApplicationCategory, PriorityHigh},
+	ActionSwap:              {"s", "Swap", NavigationCategory, PriorityMedium},
 }
 
 // Shell is the permanent outer boundary of Pulse. It owns orientation,
