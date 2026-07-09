@@ -2323,39 +2323,42 @@ func TestCompare_ResponsiveLayouts(t *testing.T) {
 		if contains(t, out, "requires at least 80 columns") {
 			t.Fatal("80 should be valid width")
 		}
-		if !contains(t, out, "METADATA") {
-			t.Fatal("medium should show METADATA section")
+		if !contains(t, out, "EVIDENCE") {
+			t.Fatal("medium should show EVIDENCE section")
 		}
 	})
 
 	t.Run("medium (100) renders analysis content", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 100, Height: 30})
-		if !contains(t, out, "METADATA") {
-			t.Fatal("medium should show METADATA section")
+		if !contains(t, out, "EVIDENCE") {
+			t.Fatal("medium should show EVIDENCE section")
 		}
 	})
 
 	t.Run("boundary (119) renders stacked layout", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 119, Height: 30})
-		if !contains(t, out, "METADATA") {
-			t.Fatal("119 should show METADATA section")
+		if !contains(t, out, "EVIDENCE") {
+			t.Fatal("119 should show EVIDENCE section")
 		}
 	})
 
-	t.Run("wide (120) renders side-by-side layout", func(t *testing.T) {
+	t.Run("wide (120) renders stacked layout", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 120, Height: 30})
-		if !contains(t, out, "METADATA") {
-			t.Fatal("wide should show METADATA section")
+		if !contains(t, out, "EVIDENCE") {
+			t.Fatal("wide should show EVIDENCE section")
 		}
-		if !contains(t, out, "│") {
-			t.Fatal("wide should include column separator")
+		if !contains(t, out, "DETAILS") {
+			t.Fatal("wide should show DETAILS section")
 		}
 	})
 
-	t.Run("wide (150) renders side-by-side layout", func(t *testing.T) {
+	t.Run("wide (150) renders stacked layout", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 150, Height: 30})
-		if !contains(t, out, "│") {
-			t.Fatal("wide should include column separator")
+		if !contains(t, out, "EVIDENCE") {
+			t.Fatal("wide should show EVIDENCE section")
+		}
+		if !contains(t, out, "WHY") {
+			t.Fatal("wide should show WHY section")
 		}
 	})
 }
@@ -2366,17 +2369,26 @@ func TestCompare_Rendering(t *testing.T) {
 	region := Region{Width: 130, Height: 30}
 	out := m.renderCompare(region)
 
-	if !contains(t, out, "METADATA") {
-		t.Fatal("should show METADATA section")
+	if !contains(t, out, "EVIDENCE") {
+		t.Fatal("should show EVIDENCE section")
 	}
 	if !contains(t, out, "200") {
-		t.Fatal("should show baseline status")
+		t.Fatal("should show baseline status in evidence")
 	}
 	if !contains(t, out, "404") {
-		t.Fatal("should show candidate status")
+		t.Fatal("should show candidate status in evidence")
 	}
 	if !contains(t, out, "Regression") {
 		t.Fatal("should show regression verdict for 200→404")
+	}
+	if !contains(t, out, "WHY") {
+		t.Fatal("should show WHY section")
+	}
+	if !contains(t, out, "DETAILS") {
+		t.Fatal("should show DETAILS section")
+	}
+	if contains(t, out, "│") {
+		t.Fatal("wide layout should NOT use column separator")
 	}
 }
 
@@ -2732,8 +2744,8 @@ func TestCompareRender_DiffSummaryInRender(t *testing.T) {
 
 	out := m.renderCompare(Region{Width: 100, Height: 30})
 
-	if !contains(t, out, "METADATA") {
-		t.Fatal("compare render must include METADATA section")
+	if !contains(t, out, "EVIDENCE") {
+		t.Fatal("compare render must include EVIDENCE section")
 	}
 	if !contains(t, out, "200") || !contains(t, out, "404") {
 		t.Fatal("diff summary must show status values")
