@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines what Compare is, what it is not, what operator questions it answers, and the architectural boundaries that govern its implementation. It serves as the specification for the v0.9.9 "Comparison Experience" release.
+This document defines what Compare is, what it is not, what operator questions it answers, and the architectural boundaries that govern its implementation. It serves as the specification for the v0.10.x "Explain Comparisons" release.
 
 ---
 
@@ -263,7 +263,6 @@ This structure is the single source of truth for the renderer. The renderer rece
 | Body summary | Size change, line-count change, truncated preview showing changed regions (line-based, no semantic diff) |
 | Regression coloring | Red for regressions, green for improvements, yellow for anomalies |
 | Workflow | Mark from Observe, swap, replace candidate, separate clear from exit, cross-run pinning |
-| Responsive layouts | Wide (side-by-side + diff), Medium (stacked + diff), Narrow (diff-only) |
 | Discoverability | Ribbon actions, active/marked/pinned markers in Observe list |
 | State model | ComparisonSession with lifecycle, Pinned flag for cross-run survival |
 
@@ -279,6 +278,56 @@ This structure is the single source of truth for the renderer. The renderer rece
 | Persisted comparison history | Out of scope for TUI-first release |
 | Comparison exports | Out of scope for v0.9.9 |
 | AI-generated summaries | v1.0+ capability, needs separate architecture |
+
+---
+
+## v0.10.0 Scope — Explain Comparisons
+
+v0.10.0 is a **rendering release**. The comparison engine is unchanged; the renderer was
+rebuilt around a single, invariant information hierarchy so operators understand a
+comparison within seconds.
+
+### Stable information hierarchy
+
+Every Compare screen answers four questions in exactly this order:
+
+```text
+Verdict      — highest-level decision: Equivalent / Improved / Regressed / Mixed
+  ↓
+Why          — direction-only sentences derived from flags (no raw values)
+  ↓
+Evidence     — grouped raw deltas (Status, Latency, Headers, Body, Errors)
+  ↓
+Details      — remaining inspection data (URL, full body diff)
+```
+
+Only visual presentation may change between widths. Information ordering never changes.
+
+### Rendering invariants
+
+| Invariant | Enforcement |
+|---|---|
+| Engine performs no rendering | `comparison.go` imports no lipgloss / bubbletea / ansi packages (`TestV099Architecture_EngineNoRenderImports`) |
+| Renderer performs presentation only | `renderCompare` consumes a `*ComparisonAnalysis` and never derives deltas |
+| Renderer mutates no state | `TestV0100_CompareRenderDoesNotMutate`, `TestV0100_CompareRendererConsumesAnalysisOnly` |
+| Section ordering is stable | `verifySectionOrdering` asserts WHY → EVIDENCE → DETAILS order |
+| Responsive layouts preserve order | Same assertion across widths 80–150; wide no longer splits columns |
+
+### Behaviour-first tests
+
+`TestV0100_CompareBehaviourScenarios` covers identical, improved, regressed, mixed,
+metadata-only, header-only, body-only, status-only, latency-only, error transitions, and
+timeout transitions. Each verifies verdict, Why, Evidence, and Details correctness.
+
+### In scope
+
+| Component | Description |
+|---|---|
+| Single semantic pipeline | One ordered set of sections built once; layouts are presentation only |
+| Unified single-column layout | Wide, medium, and narrow all scroll vertically through the same journey |
+| Why section | Direction-only sentences with subtle ▼ / ▲ / · glyphs, no raw values |
+| Evidence grouping | Status, Latency, Headers, Body, Errors grouped categorically |
+| Details | URL and full body diff kept available without overwhelming the operator |
 
 ---
 
@@ -298,12 +347,13 @@ This structure is the single source of truth for the renderer. The renderer rece
 
 ## Certification requirements
 
-See Phase 14 of the v0.9.9 plan for full certification details. Compare-specific certification verifies:
+Compare-specific certification verifies:
 
 * Mark lifecycle (Observe and Inspect paths)
 * Compare lifecycle (enter, swap, replace candidate, exit, clear)
 * Cross-run pinning (baseline survives startRun)
 * Regression coloring (worse = red, better = green)
-* Responsive layouts (all three breakpoints)
+* Unified single-column layout across all widths (no column splitting)
+* Stable Verdict → Why → Evidence → Details ordering
 * No duplicated Inspect rendering in Compare
 * Comparison Analysis → Renderer data flow (engine produces analysis, renderer consumes it, no analysis logic in renderer)

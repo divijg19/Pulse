@@ -11,13 +11,19 @@ import (
 var (
 	styleRegression  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError)).Bold(true)
 	styleImprovement = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess)).Bold(true)
-	styleAnomaly     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Bold(true)
 	styleVerdict     = lipgloss.NewStyle().Bold(true)
 	styleFieldName   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 	styleDiffWorse   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 	styleDiffBetter  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
 	styleDiffNeutral = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning))
 )
+
+type compareSections struct {
+	verdict  string
+	why      string
+	evidence string
+	details  string
+}
 
 func (m Model) renderCompare(region Region) string {
 	if m.workspace.compare.Session.State != SessionComparing {
@@ -37,20 +43,20 @@ func (m Model) renderCompare(region Region) string {
 		return regionStyle(region).Render(styleMuted.Render("Computing comparison..."))
 	}
 
-	verdict := renderVerdict(analysis)
-	flags := renderFlags(analysis.Flags)
-	meta := renderMetadataDeltas(analysis.Metadata)
-	hdrs := renderHeaderDeltas(analysis.Headers)
-	bodyS := renderBodyAnalysis(analysis.Body)
-
-	switch {
-	case region.Width >= 120:
-		return renderCompareWide(region, verdict, flags, meta, hdrs, bodyS)
-	case region.Width >= 80:
-		return renderCompareMedium(region, verdict, flags, meta, hdrs, bodyS)
-	default:
-		return renderCompareNarrow(region, verdict, flags, meta, hdrs, bodyS)
+	if region.Width < 80 {
+		return regionStyle(region).Render(styleMuted.Render("Comparison requires at least 80 columns."))
 	}
+
+	sec := compareSections{
+		verdict:  renderVerdict(analysis),
+		why:      renderWhy(analysis.Flags),
+		evidence: renderEvidenceSection(analysis),
+		details:  renderDetailsSection(analysis),
+	}
+
+	var parts []string
+	parts = appendNonEmpty(parts, sec.verdict, sec.why, sec.evidence, sec.details)
+	return regionStyle(region).Render(strings.Join(parts, "\n\n"))
 }
 
 func renderVerdict(analysis *ComparisonAnalysis) string {
@@ -66,44 +72,130 @@ func renderVerdict(analysis *ComparisonAnalysis) string {
 	}
 }
 
-func renderFlags(flags []Flag) string {
+func renderWhy(flags []Flag) string {
 	if len(flags) == 0 {
 		return ""
 	}
-	var lines []string
+
+	type fieldDir struct {
+		regression  bool
+		improvement bool
+		change      bool
+	}
+
+	dirs := make(map[string]*fieldDir)
+	order := make([]string, 0, len(flags))
+
 	for _, f := range flags {
-		var s string
+		if _, ok := dirs[f.Field]; !ok {
+			dirs[f.Field] = &fieldDir{}
+			order = append(order, f.Field)
+		}
 		switch f.Severity {
 		case FlagRegression:
-			s = styleRegression.Render("▼ " + f.Message)
+			dirs[f.Field].regression = true
 		case FlagImprovement:
-			s = styleImprovement.Render("▲ " + f.Message)
-		case FlagAnomaly:
-			s = styleAnomaly.Render("! " + f.Message)
+			dirs[f.Field].improvement = true
 		default:
-			s = styleMuted.Render("· " + f.Message)
+			dirs[f.Field].change = true
 		}
-		lines = append(lines, "  "+s)
 	}
-	return strings.Join(lines, "\n")
+
+	preferred := []string{"status", "latency", "headers", "body", "error"}
+	sorted := make([]string, 0, len(order))
+	for _, p := range preferred {
+		for _, f := range order {
+			if f == p {
+				sorted = append(sorted, f)
+			}
+		}
+	}
+	for _, f := range order {
+		found := false
+		for _, s := range sorted {
+			if f == s {
+				found = true
+				break
+			}
+		}
+		if !found {
+			sorted = append(sorted, f)
+		}
+	}
+
+	type whyLine struct {
+		prefix string
+		text   string
+	}
+
+	sentences := map[string]func(*fieldDir) whyLine{
+		"status": func(d *fieldDir) whyLine {
+			switch {
+			case d.regression:
+				return whyLine{styleRegression.Render("▼"), "Status regressed"}
+			case d.improvement:
+				return whyLine{styleImprovement.Render("▲"), "Status improved"}
+			default:
+				return whyLine{styleMuted.Render("·"), "Status changed"}
+			}
+		},
+		"latency": func(d *fieldDir) whyLine {
+			switch {
+			case d.regression:
+				return whyLine{styleRegression.Render("▼"), "Latency increased"}
+			case d.improvement:
+				return whyLine{styleImprovement.Render("▲"), "Latency decreased"}
+			default:
+				return whyLine{styleMuted.Render("·"), "Latency changed"}
+			}
+		},
+		"error": func(d *fieldDir) whyLine {
+			switch {
+			case d.regression:
+				return whyLine{styleRegression.Render("▼"), "Error introduced"}
+			case d.improvement:
+				return whyLine{styleImprovement.Render("▲"), "Error resolved"}
+			default:
+				return whyLine{styleMuted.Render("·"), "Error changed"}
+			}
+		},
+		"headers": func(d *fieldDir) whyLine {
+			return whyLine{styleMuted.Render("·"), "Headers changed"}
+		},
+		"body": func(d *fieldDir) whyLine {
+			return whyLine{styleMuted.Render("·"), "Body changed"}
+		},
+	}
+
+	var lines []string
+	for _, field := range sorted {
+		fn, ok := sentences[field]
+		if !ok {
+			continue
+		}
+		wl := fn(dirs[field])
+		lines = append(lines, "  "+wl.prefix+" "+wl.text+".")
+	}
+
+	return sectionLine("WHY", false) + "\n" + strings.Join(lines, "\n")
 }
 
-func renderMetadataDeltas(meta MetadataDelta) string {
-	var b strings.Builder
-	b.WriteString(sectionLine("METADATA", false) + "\n")
+func renderEvidenceSection(analysis *ComparisonAnalysis) string {
+	meta := analysis.Metadata
+	hdrs := analysis.Headers
+	body := analysis.Body
 
-	if !meta.Status.Changed && !meta.Latency.Changed && !meta.URL.Changed && !meta.Error.Changed {
-		b.WriteString("  " + styleMuted.Render("No changes in metadata.") + "\n")
-		return b.String()
-	}
+	categories := make([]string, 0, 5)
 
 	if meta.Status.Changed {
 		sty := statusDeltaColor(meta.Status.Old, meta.Status.New)
-		b.WriteString(fmt.Sprintf("  %s %s → %s\n",
-			styleFieldName.Render("Status:"),
-			styleDiffWorse.Render(fmt.Sprintf("%d", meta.Status.Old)),
-			sty.Render(fmt.Sprintf("%d", meta.Status.New))))
+		categories = append(categories,
+			fmt.Sprintf("  %s %s → %s",
+				styleFieldName.Render("Status:"),
+				sty.Render(fmt.Sprintf("%d", meta.Status.Old)),
+				sty.Render(fmt.Sprintf("%d", meta.Status.New))))
 	}
+
 	if meta.Latency.Changed {
 		sty := latencyDeltaColor(meta.Latency.Old, meta.Latency.New)
 		delta := meta.Latency.New - meta.Latency.Old
@@ -111,18 +203,39 @@ func renderMetadataDeltas(meta MetadataDelta) string {
 		if delta > 0 {
 			deltaStr = "+" + deltaStr
 		}
-		b.WriteString(fmt.Sprintf("  %s %s → %s (%s)\n",
-			styleFieldName.Render("Latency:"),
-			styleMuted.Render(fmt.Sprintf("%v", meta.Latency.Old)),
-			sty.Render(fmt.Sprintf("%v", meta.Latency.New)),
-			sty.Render(deltaStr)))
+		categories = append(categories,
+			fmt.Sprintf("  %s %s → %s (%s)",
+				styleFieldName.Render("Latency:"),
+				sty.Render(fmt.Sprintf("%v", meta.Latency.Old)),
+				sty.Render(fmt.Sprintf("%v", meta.Latency.New)),
+				sty.Render(deltaStr)))
 	}
-	if meta.URL.Changed {
-		b.WriteString(fmt.Sprintf("  %s\n    %s\n    %s\n",
-			styleFieldName.Render("URL:"),
-			styleDiffWorse.Render(meta.URL.Old),
-			styleDiffBetter.Render(meta.URL.New)))
+
+	totalHdrs := len(hdrs.Added) + len(hdrs.Removed) + len(hdrs.Changed)
+	if totalHdrs > 0 {
+		categories = append(categories,
+			fmt.Sprintf("  %s %d header(s) differ",
+				styleFieldName.Render("Headers:"), totalHdrs))
 	}
+
+	if body.BaselineSize != body.CandidateSize || body.ChangedLines > 0 {
+		sizeDelta := body.CandidateSize - body.BaselineSize
+		var sizePart string
+		switch {
+		case sizeDelta > 0:
+			sizePart = fmt.Sprintf("%d → %d bytes (+%d)", body.BaselineSize, body.CandidateSize, sizeDelta)
+		case sizeDelta < 0:
+			sizePart = fmt.Sprintf("%d → %d bytes (%d)", body.BaselineSize, body.CandidateSize, sizeDelta)
+		default:
+			sizePart = fmt.Sprintf("%d bytes (no change)", body.BaselineSize)
+		}
+		if body.ChangedLines > 0 {
+			sizePart += fmt.Sprintf(", %d line(s) differ", body.ChangedLines)
+		}
+		categories = append(categories,
+			fmt.Sprintf("  %s %s", styleFieldName.Render("Body:"), sizePart))
+	}
+
 	if meta.Error.Changed {
 		var oldS, newS string
 		if meta.Error.Old == "" {
@@ -135,57 +248,45 @@ func renderMetadataDeltas(meta MetadataDelta) string {
 		} else {
 			newS = styleDiffWorse.Render(meta.Error.New)
 		}
-		b.WriteString(fmt.Sprintf("  %s %s → %s\n", styleFieldName.Render("Error:"), oldS, newS))
+		categories = append(categories,
+			fmt.Sprintf("  %s %s → %s", styleFieldName.Render("Error:"), oldS, newS))
 	}
-	return b.String()
-}
 
-func renderHeaderDeltas(hdrs HeaderDelta) string {
-	var b strings.Builder
-	total := len(hdrs.Added) + len(hdrs.Removed) + len(hdrs.Changed)
-	if total == 0 {
+	if len(categories) == 0 {
 		return ""
 	}
-	b.WriteString(sectionLine("HEADERS", false) + "\n")
-	for _, h := range hdrs.Added {
-		b.WriteString(fmt.Sprintf("  %s %s: %s\n", styleDiffBetter.Render("+"), h.Name, h.Value))
-	}
-	for _, h := range hdrs.Removed {
-		b.WriteString(fmt.Sprintf("  %s %s: %s\n", styleDiffWorse.Render("-"), h.Name, h.Value))
-	}
-	for _, h := range hdrs.Changed {
-		b.WriteString(fmt.Sprintf("  %s %s:\n    %s %s\n    %s %s\n",
-			styleDiffNeutral.Render("~"), h.Name,
-			styleDiffWorse.Render("-"), h.OldValue,
-			styleDiffBetter.Render("+"), h.NewValue))
-	}
-	return b.String()
+
+	return sectionLine("EVIDENCE", false) + "\n" +
+		strings.Join(categories, "\n")
 }
 
-func renderBodyAnalysis(body BodyAnalysis) string {
+func renderDetailsSection(analysis *ComparisonAnalysis) string {
 	var b strings.Builder
-	if body.BaselineSize == 0 && body.CandidateSize == 0 && body.ChangedLines == 0 {
+	meta := analysis.Metadata
+	body := analysis.Body
+
+	if meta.URL.Changed {
+		b.WriteString(fmt.Sprintf("  %s\n    %s\n    %s\n",
+			styleFieldName.Render("URL:"),
+			styleDiffWorse.Render(meta.URL.Old),
+			styleDiffBetter.Render(meta.URL.New)))
+	}
+
+	if body.BaselineSize != body.CandidateSize || body.ChangedLines > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(renderBodyDiff(body))
+	}
+
+	if b.Len() == 0 {
 		return ""
 	}
-	b.WriteString(sectionLine("BODY", false) + "\n")
+	return sectionLine("DETAILS", false) + "\n" + strings.TrimRight(b.String(), "\n")
+}
 
-	sizeDelta := body.CandidateSize - body.BaselineSize
-	var sizeLine string
-	if sizeDelta > 0 {
-		sizeLine = fmt.Sprintf("  %s %d bytes → %d bytes (+%d bytes)",
-			styleDiffWorse.Render("▼"), body.BaselineSize, body.CandidateSize, sizeDelta)
-	} else if sizeDelta < 0 {
-		sizeLine = fmt.Sprintf("  %s %d bytes → %d bytes (%d bytes)",
-			styleDiffBetter.Render("▲"), body.BaselineSize, body.CandidateSize, sizeDelta)
-	} else {
-		sizeLine = fmt.Sprintf("  %s %d bytes (no change)", styleMuted.Render("·"), body.BaselineSize)
-	}
-	b.WriteString(sizeLine + "\n")
-
-	if body.ChangedLines > 0 {
-		b.WriteString(fmt.Sprintf("  %s %d line(s) differ\n", styleDiffNeutral.Render("~"), body.ChangedLines))
-	}
-
+func renderBodyDiff(body BodyAnalysis) string {
+	var b strings.Builder
 	hasContent := false
 	for _, seg := range body.Segments {
 		switch seg.Kind {
@@ -213,7 +314,6 @@ func renderBodyAnalysis(body BodyAnalysis) string {
 			}
 		}
 	}
-
 	return b.String()
 }
 
@@ -239,42 +339,6 @@ func latencyDeltaColor(old, new time.Duration) lipgloss.Style {
 		return styleDiffWorse
 	}
 	return styleMuted
-}
-
-func renderCompareWide(region Region, verdict, flags, meta, hdrs, bodyS string) string {
-	leftW := region.Width*48/100 - 1
-	if leftW < 10 {
-		leftW = 10
-	}
-	rightW := region.Width - leftW - 2
-	if rightW < 10 {
-		rightW = 10
-	}
-
-	var leftParts, rightParts []string
-	leftParts = appendNonEmpty(leftParts, verdict, flags, meta)
-	rightParts = appendNonEmpty(rightParts, hdrs, bodyS)
-
-	left := lipgloss.NewStyle().Width(leftW).Render(strings.Join(leftParts, "\n\n"))
-	right := lipgloss.NewStyle().Width(rightW).Render(strings.Join(rightParts, "\n\n"))
-
-	content := lipgloss.JoinHorizontal(lipgloss.Top, left, " │ ", right)
-	return regionStyle(region).Render(content)
-}
-
-func renderCompareMedium(region Region, verdict, flags, meta, hdrs, bodyS string) string {
-	var parts []string
-	parts = appendNonEmpty(parts, verdict, flags, meta, hdrs, bodyS)
-	return regionStyle(region).Render(strings.Join(parts, "\n\n"))
-}
-
-func renderCompareNarrow(region Region, verdict, flags, meta, hdrs, bodyS string) string {
-	if region.Width < 80 {
-		return regionStyle(region).Render(styleMuted.Render("Comparison requires at least 80 columns."))
-	}
-	var parts []string
-	parts = appendNonEmpty(parts, verdict, flags, meta, hdrs, bodyS)
-	return regionStyle(region).Render(strings.Join(parts, "\n\n"))
 }
 
 func appendNonEmpty(parts []string, sections ...string) []string {

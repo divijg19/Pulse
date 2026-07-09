@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -625,5 +626,272 @@ func TestV099Status_ResultStatusRoundtrip(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("resultStatus(%d) = %q (expected %q)", tc.status, got, tc.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// v0.10.0 — Compare Rendering & Behavioural Invariants
+// ---------------------------------------------------------------------------
+
+func verifySectionOrdering(t *testing.T, out string) {
+	whyIdx := strings.Index(out, "── WHY ──")
+	evIdx := strings.Index(out, "── EVIDENCE ──")
+	dtIdx := strings.Index(out, "── DETAILS ──")
+
+	if whyIdx != -1 && evIdx != -1 {
+		if whyIdx > evIdx {
+			t.Errorf("Semantic order violated: EVIDENCE rendered before WHY:\n%s", out)
+		}
+	}
+	if evIdx != -1 && dtIdx != -1 {
+		if evIdx > dtIdx {
+			t.Errorf("Semantic order violated: DETAILS rendered before EVIDENCE:\n%s", out)
+		}
+	}
+	if whyIdx != -1 && dtIdx != -1 {
+		if whyIdx > dtIdx {
+			t.Errorf("Semantic order violated: DETAILS rendered before WHY:\n%s", out)
+		}
+	}
+}
+
+func TestV0100_CompareBehaviourScenarios(t *testing.T) {
+	scenarios := []struct {
+		name         string
+		baseline     model.Result
+		candidate    model.Result
+		wantVerdict  string
+		wantWhys     []string
+		wantEvidence []string
+		wantDetails  []string
+	}{
+		{
+			name:         "identical",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", ResponseBody: "ok"},
+			candidate:    model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", ResponseBody: "ok"},
+			wantVerdict:  "No significant changes",
+			wantWhys:     nil,
+			wantEvidence: nil,
+			wantDetails:  nil,
+		},
+		{
+			name:         "improved",
+			baseline:     model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/a"},
+			candidate:    model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			wantVerdict:  "Improvement detected",
+			wantWhys:     []string{"Status improved", "Latency decreased"},
+			wantEvidence: []string{"Status: 500 → 200", "Latency: 100ms → 50ms"},
+			wantDetails:  nil,
+		},
+		{
+			name:         "regressed",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			candidate:    model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/a"},
+			wantVerdict:  "Regression detected",
+			wantWhys:     []string{"Status regressed", "Latency increased"},
+			wantEvidence: []string{"Status: 200 → 500", "Latency: 50ms → 100ms"},
+			wantDetails:  nil,
+		},
+		{
+			name:         "mixed",
+			baseline:     model.Result{Status: 500, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			candidate:    model.Result{Status: 200, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/a"},
+			wantVerdict:  "Mixed results",
+			wantWhys:     []string{"Status improved", "Latency increased"},
+			wantEvidence: []string{"Status: 500 → 200", "Latency: 50ms → 100ms"},
+			wantDetails:  nil,
+		},
+		{
+			name:         "metadata-only",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			candidate:    model.Result{Status: 200, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"},
+			wantVerdict:  "Regression detected",
+			wantWhys:     []string{"Latency increased"},
+			wantEvidence: []string{"Latency: 50ms → 100ms"},
+			wantDetails:  []string{"URL:", "https://example.com/a", "https://example.com/b"},
+		},
+		{
+			name:         "header-only",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", ResponseHeaders: map[string]string{"X-Test": "foo"}},
+			candidate:    model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", ResponseHeaders: map[string]string{"X-Test": "bar"}},
+			wantVerdict:  "No significant changes",
+			wantWhys:     []string{"Headers changed"},
+			wantEvidence: []string{"Headers: 1 header(s) differ"},
+		},
+		{
+			name:         "body-only",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", ResponseBody: "hello"},
+			candidate:    model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", ResponseBody: "world"},
+			wantVerdict:  "No significant changes",
+			wantWhys:     []string{"Body changed"},
+			wantEvidence: []string{"Body: 5 bytes (no change), 2 line(s) differ"},
+		},
+		{
+			name:         "status-only",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			candidate:    model.Result{Status: 400, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			wantVerdict:  "Regression detected",
+			wantWhys:     []string{"Status regressed"},
+			wantEvidence: []string{"Status: 200 → 400"},
+		},
+		{
+			name:         "latency-only",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"},
+			candidate:    model.Result{Status: 200, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/a"},
+			wantVerdict:  "Regression detected",
+			wantWhys:     []string{"Latency increased"},
+			wantEvidence: []string{"Latency: 50ms → 100ms"},
+		},
+		{
+			name:         "error transitions",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", Error: "old error"},
+			candidate:    model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", Error: ""},
+			wantVerdict:  "Improvement detected",
+			wantWhys:     []string{"Error resolved"},
+			wantEvidence: []string{"Error: old error → (resolved)"},
+		},
+		{
+			name:         "timeout transitions",
+			baseline:     model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", Error: ""},
+			candidate:    model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a", Error: "timeout"},
+			wantVerdict:  "Regression detected",
+			wantWhys:     []string{"Error introduced"},
+			wantEvidence: []string{"Error: (none) → timeout"},
+		},
+	}
+
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			m := NewModel()
+			m.results = []model.Result{sc.baseline, sc.candidate}
+			m.workspace.compare.Session = ComparisonSession{
+				BaselineIndex:  0,
+				CandidateIndex: 1,
+				State:          SessionComparing,
+			}
+			m.workspace.compare.PinnedBaseline = &sc.baseline
+
+			out := m.renderCompare(Region{Width: 100, Height: 30})
+
+			if !strings.Contains(out, sc.wantVerdict) {
+				t.Errorf("expected verdict %q, got output:\n%s", sc.wantVerdict, out)
+			}
+
+			for _, why := range sc.wantWhys {
+				if !strings.Contains(out, why) {
+					t.Errorf("expected why message %q to be rendered, got output:\n%s", why, out)
+				}
+			}
+
+			for _, ev := range sc.wantEvidence {
+				if !strings.Contains(out, ev) {
+					t.Errorf("expected evidence %q to be rendered, got output:\n%s", ev, out)
+				}
+			}
+
+			for _, dt := range sc.wantDetails {
+				if !strings.Contains(out, dt) {
+					t.Errorf("expected detail %q to be rendered, got output:\n%s", dt, out)
+				}
+			}
+
+			verifySectionOrdering(t, out)
+		})
+	}
+}
+
+func TestV0100_CompareResponsiveInvariants(t *testing.T) {
+	m := NewModel()
+	baseline := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"}
+	m.results = []model.Result{baseline, candidate}
+	m.workspace.compare.Session = ComparisonSession{
+		BaselineIndex:  0,
+		CandidateIndex: 1,
+		State:          SessionComparing,
+	}
+	m.workspace.compare.PinnedBaseline = &baseline
+
+	widths := []int{80, 100, 119, 120, 150}
+	for _, w := range widths {
+		t.Run(fmt.Sprintf("width_%d", w), func(t *testing.T) {
+			out := m.renderCompare(Region{Width: w, Height: 30})
+			verifySectionOrdering(t, out)
+
+			if strings.Contains(out, "│") {
+				t.Errorf("Wide layout must not contain '│' column separator anymore:\n%s", out)
+			}
+		})
+	}
+
+	t.Run("narrow_79", func(t *testing.T) {
+		out := m.renderCompare(Region{Width: 79, Height: 30})
+		if !strings.Contains(out, "requires at least 80 columns") {
+			t.Errorf("Narrow layout under 80 must require at least 80 columns, got:\n%s", out)
+		}
+	})
+}
+
+func TestV0100_CompareRendererConsumesAnalysisOnly(t *testing.T) {
+	m := NewModel()
+	baseline := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"}
+	m.results = []model.Result{baseline, candidate}
+	m.workspace.compare.Session = ComparisonSession{
+		BaselineIndex:  0,
+		CandidateIndex: 1,
+		State:          SessionComparing,
+	}
+	m.workspace.compare.PinnedBaseline = &baseline
+
+	analysis := m.computeComparisonAnalysis()
+	m.workspace.compare.Session.Analysis = analysis
+
+	baseOutput := m.renderCompare(Region{Width: 100, Height: 30})
+
+	m.activeDomain = DomainPayload
+	m.running = true
+	m.requestField = reqFieldMethod
+	m.selected = 4
+	m.inspectZone = zoneWhy
+
+	mutatedOutput := m.renderCompare(Region{Width: 100, Height: 30})
+
+	if baseOutput != mutatedOutput {
+		t.Error("Renderer does not consume structured analysis only; mutating unrelated model fields changed the comparison view")
+	}
+}
+
+func TestV0100_CompareRenderDoesNotMutate(t *testing.T) {
+	m := NewModel()
+	baseline := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
+	candidate := model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"}
+	m.results = []model.Result{baseline, candidate}
+	m.workspace.compare.Session = ComparisonSession{
+		BaselineIndex:  0,
+		CandidateIndex: 1,
+		State:          SessionComparing,
+	}
+	m.workspace.compare.PinnedBaseline = &baseline
+
+	analysis := m.computeComparisonAnalysis()
+	m.workspace.compare.Session.Analysis = analysis
+
+	activeDomain := m.activeDomain
+	running := m.running
+	requestField := m.requestField
+	selected := m.selected
+	inspectZone := m.inspectZone
+	compareState := m.workspace.compare.Session.State
+
+	_ = m.renderCompare(Region{Width: 100, Height: 30})
+
+	if m.activeDomain != activeDomain ||
+		m.running != running ||
+		m.requestField != requestField ||
+		m.selected != selected ||
+		m.inspectZone != inspectZone ||
+		m.workspace.compare.Session.State != compareState {
+		t.Error("renderCompare mutated the model state during rendering")
 	}
 }

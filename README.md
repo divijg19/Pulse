@@ -44,7 +44,7 @@ Design principles:
 2. Optionally configure headers and body.
 3. Run and watch each request stream in real time.
 4. Select any result and press Enter to inspect full response details.
-5. Press `c` to mark a result, select another, and press `c` again to compare investigations side-by-side.
+5. Press `c` to mark a result, select another, and press `c` again to compare investigations (verdict, why, evidence, details).
 
 ## Documentation Map
 

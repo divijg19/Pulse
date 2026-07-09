@@ -15,7 +15,7 @@ The TUI presents a multi-surface workspace:
 | Logs | `mode=observe`, `view=logs` | Live streaming results as a log |
 | Request | `dialog=request` | Payload editor (headers + body) |
 | Inspect | `dialog=inspect` | Response details (status, headers, body, error) |
-| Compare | `dialog=compare` | Side-by-side investigation comparison |
+| Compare | `dialog=compare` | Investigation comparison with Verdict → Why → Evidence → Details hierarchy |
 
 The active surface is determined by two state fields on `Model`:
 
