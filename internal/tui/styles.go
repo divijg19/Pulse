@@ -24,7 +24,8 @@ var (
 	styleWorkspaceBadge = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorBg)).
 				Background(lipgloss.Color(colorAccent)).
-				Bold(true)
+				Bold(true).
+				Padding(0, 1)
 
 	stylePrimaryAction = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorAccent)).

@@ -19,41 +19,6 @@ const (
 	topBarMinLeft      = 12
 )
 
-// ribbonBadgeLabels enumerates every workspace orientation label the footer
-// badge can render. ribbonBadgeWidth is derived from the longest label so the
-// colored highlight cell is identical for every workspace and flush against the
-// divider — the divider never moves when the workspace changes.
-var ribbonBadgeWidth = func() int {
-	labels := []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT", "COMPARE", "EXECUTE"}
-	maxLen := 0
-	for _, l := range labels {
-		if n := len(l); n > maxLen {
-			maxLen = n
-		}
-	}
-	return maxLen + 2 // 1 cell of padding on each side of the label
-}()
-
-const (
-	// ribbonSepWidth is the divider glyph "│". It is flush against the badge
-	// highlight on its left; the keybindings are given breathing room on its
-	// right via ribbonActionPad.
-	ribbonSepWidth = 1
-	// ribbonActionPad is the single space between the divider and the keybinding
-	// strip, so the actions never touch the divider.
-	ribbonActionPad = 1
-	// ribbonActionGap is the single space between the actions region and the
-	// status region, emitted only when actions are present.
-	ribbonActionGap = 1
-	// ribbonStatusMargin is the fixed right margin between the status text and
-	// the terminal edge, so the status never appears clipped at any width.
-	ribbonStatusMargin = 1
-)
-
-// ribbonDivider is the single statusline separator, rendered once and reused
-// on every frame. It sits flush against the badge highlight on its left.
-var ribbonDivider = styleMuted.Render("│")
-
 func (m Model) Actions() []Action {
 	switch {
 	case m.workspace.dialog == dialogConfirmQuit:
@@ -282,10 +247,7 @@ func accentOrMuted(name string, active bool) string {
 }
 
 func renderWorkspaceBadge(label string) string {
-	// Fixed-width colored cell with the label centered. The highlight
-	// background always spans ribbonBadgeWidth cells and terminates flush
-	// against the divider — the divider never moves when the workspace changes.
-	return styleWorkspaceBadge.Width(ribbonBadgeWidth).Align(lipgloss.Center).Render(label)
+	return styleWorkspaceBadge.Render(label)
 }
 
 func renderInteractionStatus(m Model) string {
@@ -315,28 +277,22 @@ func renderInteractionStatus(m Model) string {
 type Density int
 
 const (
-	DensityFull            Density = iota // 0: full labels, single badge divider
-	DensityRelaxed                        // 1: 1-space group gaps
-	DensityCompact                        // 2: 1-space gaps, "│" within-group
-	DensityCompressed                     // 3: 1-space gaps, " " within-group
+	DensityFull            Density = iota // 0: 4-space gaps, "  │  " seps, full labels
+	DensityRelaxed                        // 1: 1-space group gaps, "  │  " seps
+	DensityCompact                        // 2: 1-space gaps, "│" seps
+	DensityCompressed                     // 3: 1-space gaps, "│" seps, " " within-group
 	DensityAbbreviated                    // 4: same as 3, abbrev labels
 	DensityPriorityReduced                // 5: same as 4, drop Low priority
 	DensityMinimal                        // 6: keys only
 	DensityEmergency                      // 7: no actions
 )
 
-// RibbonLayout holds the computed layout for the footer statusline. The badge
-// width and divider width are fixed package constants (ribbonBadgeWidth,
-// ribbonSepWidth); the only widths owned here are the action strip width and the
-// status budget, both determined once by layoutRibbon. renderRibbon consumes
-// this struct immutably and never recomputes available space.
+// RibbonLayout holds the pre-rendered components of the footer statusline.
 type RibbonLayout struct {
-	Badge        string
-	Actions      string
-	Status       string
-	Density      Density
-	ActionsWidth int
-	StatusWidth  int
+	Badge   string
+	Actions string
+	Status  string
+	Density Density
 }
 
 func abbreviateLabel(label string) string {
@@ -403,7 +359,7 @@ func buildActionStrip(actions []Action, level Density) string {
 				part = fmt.Sprintf("[%s] %s", b.Key, b.Label)
 			}
 			if !highlighted {
-				part = stylePrimaryAction.Render(part)
+				part = stylePrimaryAction.Render(" " + part)
 				highlighted = true
 			}
 			parts = append(parts, part)
@@ -413,80 +369,69 @@ func buildActionStrip(actions []Action, level Density) string {
 	return strings.Join(actionParts, groupGap)
 }
 
-func layoutRibbon(badgeText, statusText string, actions []Action, width int) RibbonLayout {
-	badge := renderWorkspaceBadge(badgeText)
-	status := styleStatusCell.Render(statusText)
+func chooseRibbonLevel(badge, status string, actions []Action, width int) (Density, string) {
+	badgeWidth := lipgloss.Width(badge)
 	statusWidth := lipgloss.Width(status)
 
 	for level := DensityFull; level <= DensityEmergency; level++ {
 		actionText := buildActionStrip(actions, level)
 		actionWidth := lipgloss.Width(actionText)
 
-		actionGap := 0
-		if actionWidth > 0 {
-			actionGap = ribbonActionGap
+		sepWidth := 10
+		if level >= DensityCompact {
+			sepWidth = 2
 		}
 
-		// The status region must hold the action gap (written separately by
-		// renderRibbon), the full status text, and the right margin. The
-		// divider pad is always present. Actions are degraded first; only when
-		// even the emergency density cannot fit the complete status do we allow
-		// intentional truncation.
-		statusRegion := width - ribbonBadgeWidth - ribbonSepWidth - ribbonActionPad - actionWidth - actionGap
-		if statusRegion >= statusWidth+ribbonStatusMargin {
-			return RibbonLayout{
-				Badge:        badge,
-				Actions:      actionText,
-				Status:       status,
-				Density:      level,
-				ActionsWidth: actionWidth,
-				StatusWidth:  statusRegion,
-			}
+		if badgeWidth+statusWidth+sepWidth+actionWidth <= width {
+			return level, actionText
 		}
 	}
-
-	statusRegion := width - ribbonBadgeWidth - ribbonSepWidth - ribbonActionPad
-	return RibbonLayout{
-		Badge:        badge,
-		Actions:      "",
-		Status:       status,
-		Density:      DensityEmergency,
-		ActionsWidth: 0,
-		StatusWidth:  max(1, statusRegion),
-	}
+	return DensityEmergency, ""
 }
 
-func renderRibbon(layout RibbonLayout) string {
+func renderRibbon(layout RibbonLayout, width int) string {
+	sep := styleMuted.Render("│")
+	var leftSep, rightSep string
+	if layout.Density >= DensityCompact {
+		leftSep = sep
+		rightSep = sep
+	} else {
+		leftSep = "  " + sep + "  "
+		rightSep = "  " + sep + "  "
+	}
+
+	ls := lipgloss.Width(leftSep)
+	rs := lipgloss.Width(rightSep)
+	badgeWidth := lipgloss.Width(layout.Badge)
+	actionWidth := lipgloss.Width(layout.Actions)
+	statusWidth := lipgloss.Width(layout.Status)
+
+	availForStatus := max(0, width-badgeWidth-ls-rs-actionWidth)
+	if statusWidth > availForStatus && availForStatus >= 1 {
+		raw := stripANSI(layout.Status)
+		truncated := truncate(raw, availForStatus)
+		layout.Status = styleStatusCell.Render(truncated)
+		statusWidth = lipgloss.Width(layout.Status)
+	}
+
+	padding := max(0, width-badgeWidth-statusWidth-ls-rs-actionWidth)
+
 	var rb strings.Builder
 	rb.WriteString(layout.Badge)
-	rb.WriteString(ribbonDivider)
-	rb.WriteString(strings.Repeat(" ", ribbonActionPad))
-	if layout.ActionsWidth > 0 {
-		rb.WriteString(layout.Actions)
-		rb.WriteString(strings.Repeat(" ", ribbonActionGap))
-	}
-
-	// Status region: right-aligned within the remaining budget, with a fixed
-	// right margin (ribbonStatusMargin) so it never clips at the terminal edge.
-	statusBudget := layout.StatusWidth
-
-	status := layout.Status
-	availText := max(1, statusBudget-ribbonStatusMargin)
-	if lipgloss.Width(status) > availText {
-		raw := stripANSI(status)
-		status = styleStatusCell.Render(truncate(raw, availText))
-	}
-	statusLen := lipgloss.Width(status)
-
-	leading := max(0, statusBudget-statusLen-ribbonStatusMargin)
-	rb.WriteString(strings.Repeat(" ", leading))
-	rb.WriteString(status)
-	rb.WriteString(strings.Repeat(" ", ribbonStatusMargin))
-	return styleRibbon.Render(rb.String())
+	rb.WriteString(leftSep)
+	rb.WriteString(layout.Actions)
+	rb.WriteString(strings.Repeat(" ", padding))
+	rb.WriteString(rightSep)
+	rb.WriteString(layout.Status)
+	return styleRibbon.Width(width).Render(rb.String())
 }
 
 func (m Model) renderStatusline(state ShellState, width int) string {
-	return renderRibbon(layoutRibbon(state.Orientation, renderInteractionStatus(m), state.Actions, width))
+	badge := renderWorkspaceBadge(state.Orientation)
+	statusText := renderInteractionStatus(m)
+	status := styleStatusCell.Render(statusText)
+	level, actions := chooseRibbonLevel(badge, status, state.Actions, width)
+	return renderRibbon(RibbonLayout{Badge: badge, Actions: actions, Status: status, Density: level}, width)
 }
 
 func visibleWindow(total, selected, height int) int {
