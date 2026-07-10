@@ -151,14 +151,12 @@ func TestLayout_Responsive_DegradationDeterministic(t *testing.T) {
 			var prevLevel Density
 			var prevWidth int
 			for width := 40; width <= 220; width++ {
-				badge := renderWorkspaceBadge(st.badge)
-				statusStr := styleStatusCell.Render(st.status)
-				level, _ := chooseRibbonLevel(badge, statusStr, actions, width)
+				layout := layoutRibbon(st.badge, st.status, actions, width)
 
-				if width > 40 && level > prevLevel {
-					t.Fatalf("width %d: density regressed from %d to %d (was at %d)", width, prevLevel, level, prevWidth)
+				if width > 40 && layout.Density > prevLevel {
+					t.Fatalf("width %d: density regressed from %d to %d (was at %d)", width, prevLevel, layout.Density, prevWidth)
 				}
-				prevLevel = level
+				prevLevel = layout.Density
 				prevWidth = width
 
 				if width%10 == 0 {
