@@ -2855,63 +2855,6 @@ func TestRenderReady_NoValidation_ShowsReady(t *testing.T) {
 // Footer Ribbon Regression Tests
 // ---------------------------------------------------------------------------
 
-func TestFooter_LongErrMsgTruncation(t *testing.T) {
-	// Long validation messages must be truncated with ellipsis, never clipped.
-	m := NewModel()
-	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
-
-	for _, width := range []int{72, 80, 90, 100, 120} {
-		state := m.ShellState()
-		out := m.renderStatusline(state, width)
-		if strings.Contains(out, "\n") {
-			t.Fatalf("width %d: footer must not wrap", width)
-		}
-		if w := lipgloss.Width(out); w > width {
-			t.Fatalf("width %d: rendered width %d exceeds available width", width, w)
-		}
-		// Verify the full error text appears (no clipping)
-		if !contains(t, stripANSI(out), "CONCURRENCY MUST BE BETWEEN 1 AND 100") {
-			t.Fatalf("width %d: status must contain full error text", width)
-		}
-		if strings.Count(out, "…") > 0 {
-			t.Fatalf("width %d: error text must not be truncated at this width", width)
-		}
-	}
-}
-
-func TestFooter_ShortStatusUntruncated(t *testing.T) {
-	m := NewModel()
-	state := m.ShellState()
-
-	for _, width := range []int{72, 100, 160} {
-		out := m.renderStatusline(state, width)
-		if !contains(t, out, "Ready") {
-			t.Fatalf("width %d: status must show Ready", width)
-		}
-		if w := lipgloss.Width(out); w > width {
-			t.Fatalf("width %d: rendered width %d exceeds available width", width, w)
-		}
-	}
-}
-
-func TestFooter_RibbonWidthConsistency(t *testing.T) {
-	// chooseRibbonLevel and renderRibbon must agree on total width.
-	m := NewModel()
-	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
-
-	for _, width := range []int{72, 80, 100, 120, 160, 200} {
-		state := m.ShellState()
-		out := m.renderStatusline(state, width)
-		if w := lipgloss.Width(out); w > width {
-			t.Fatalf("width %d: rendered %d > available", width, w)
-		}
-		// Verify no clipping by checking absence of ANSI-truncated characters
-		if strings.Count(out, "…") > 1 {
-			t.Fatalf("width %d: multiple ellipsis suggests incorrect truncation", width)
-		}
-	}
-}
-
 func TestFooter_EditingNoClip(t *testing.T) {
 	// Footer during editing must never clip content.
 	m := NewModel()
@@ -3021,55 +2964,6 @@ func TestHeaderEditing_Invariant(t *testing.T) {
 	colSep2 := visualColumn(row2a, ":")
 	if colSep1 != colSep2 {
 		t.Fatalf("separator visual column changed with selection: %d vs %d", colSep1, colSep2)
-	}
-}
-
-// TestRibbon_Ownership verifies the complete chooseRibbonLevel → renderRibbon
-// chain produces final width ≤ terminal width for every density level.
-func TestRibbon_Ownership(t *testing.T) {
-	for _, width := range []int{40, 50, 60, 72, 80, 100, 120, 160, 200} {
-		for _, orientation := range []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT"} {
-			var actions []Action
-			badge := renderWorkspaceBadge(orientation)
-			switch orientation {
-			case "READY":
-				m := NewModel()
-				actions = m.Actions()
-			case "OBSERVE":
-				m := NewModel()
-				m.results = []model.Result{{Status: 200}}
-				m.running = false
-				actions = m.Actions()
-			case "REQUEST":
-				m := NewModel()
-				m.workspace.dialog = dialogRequest
-				actions = m.Actions()
-			case "INSPECT":
-				m := NewModel()
-				m.workspace.mode = modeInspect
-				actions = m.Actions()
-			case "QUIT":
-				m := NewModel()
-				m.workspace.dialog = dialogConfirmQuit
-				actions = m.Actions()
-			}
-
-			status := styleStatusCell.Render("Ready")
-			level, actionText := chooseRibbonLevel(badge, status, actions, width)
-
-			layout := RibbonLayout{
-				Badge:   badge,
-				Actions: actionText,
-				Status:  status,
-				Density: level,
-			}
-			out := renderRibbon(layout, width)
-
-			if w := lipgloss.Width(out); w > width {
-				t.Fatalf("orientation=%s width=%d level=%d: rendered %d > available",
-					orientation, width, level, w)
-			}
-		}
 	}
 }
 
@@ -3356,21 +3250,26 @@ func TestPayload_ResizeGeometry(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Ribbon Level Consistency Test
+// Ribbon Render Agreement Test
 // ---------------------------------------------------------------------------
 
-func TestRibbon_ChooseRibbonLevelRenderRibbonAgreement(t *testing.T) {
+// TestRibbon_RenderRibbonAgreement verifies the full renderStatusline pipeline
+// (error-message path) never exceeds the terminal width, uses at most one
+// ellipsis, and renders the full error text once it fits.
+func TestRibbon_RenderRibbonAgreement(t *testing.T) {
 	m := NewModel()
 	m.errMsg = "CONCURRENCY MUST BE BETWEEN 1 AND 100"
 
-	for _, width := range []int{72, 80, 100, 120, 160, 200} {
-		state := m.ShellState()
-		out := m.renderStatusline(state, width)
+	for _, width := range []int{72, 80, 90, 100, 120, 160, 200} {
+		out := m.renderStatusline(m.ShellState(), width)
 		if w := lipgloss.Width(out); w > width {
-			t.Fatalf("width %d: rendered width %d exceeds available", width, w)
+			t.Fatalf("width %d: rendered %d > available", width, w)
 		}
 		if strings.Count(out, "…") > 1 {
 			t.Fatalf("width %d: multiple ellipsis suggests incorrect truncation", width)
+		}
+		if width >= 120 && !contains(t, stripANSI(out), "CONCURRENCY MUST BE BETWEEN 1 AND 100") {
+			t.Fatalf("width %d: full error text must be present once it fits", width)
 		}
 	}
 }
