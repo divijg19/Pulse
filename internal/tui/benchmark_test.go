@@ -78,8 +78,10 @@ func BenchmarkRenderer_CompareAnalysis(b *testing.B) {
 func BenchmarkRenderer_CompareRender(b *testing.B) {
 	m := NewModel()
 	m.results = testResults(20)
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
-	m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
 	region := Region{Width: 100, Height: 30}
 	b.ResetTimer()
 

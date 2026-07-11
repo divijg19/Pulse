@@ -37,8 +37,6 @@ var (
 
 	styleSectionLine = styleMuted
 
-	styleCompareMarked = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Bold(true)
-
 	styleMethod = styleBase.Bold(true)
 
 	styleDomainActive = styleAccent

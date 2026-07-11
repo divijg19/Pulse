@@ -593,28 +593,56 @@ func (m *Model) focusPayloadBody() {
 }
 
 // computeComparisonAnalysis runs the Comparison Engine using the session's
-// baseline and candidate results. It uses PinnedBaseline as the baseline when
-// available, falling back to m.results[BaselineIndex].
-func (m Model) computeComparisonAnalysis() *ComparisonAnalysis {
-	if m.workspace.compare.Session.State != SessionComparing {
-		return nil
+// handleMark applies the "Mark" verb to the result at the current selection.
+// It is the only place the c key performs workflow transitions. Every branch
+// routes through a single CompareWorkspace operation; this method never
+// manipulates comparison fields directly.
+func (m Model) handleMark() (tea.Model, tea.Cmd) {
+	if len(m.results) == 0 {
+		return m, nil
 	}
-	if m.workspace.compare.Session.CandidateIndex < 0 || m.workspace.compare.Session.CandidateIndex >= len(m.results) {
-		return nil
-	}
-	candidate := m.results[m.workspace.compare.Session.CandidateIndex]
+	r := m.results[m.selected]
+	w := &m.workspace.compare
 
-	var baseline model.Result
-	if m.workspace.compare.PinnedBaseline != nil {
-		baseline = *m.workspace.compare.PinnedBaseline
-	} else if m.workspace.compare.Session.BaselineIndex >= 0 && m.workspace.compare.Session.BaselineIndex < len(m.results) {
-		baseline = m.results[m.workspace.compare.Session.BaselineIndex]
-	} else {
-		return nil
+	switch {
+	case w.State == CompareIdle:
+		if w.HasPinnedBaseline() {
+			w.Baseline = w.PinnedBaseline
+			w.SelectCandidate(r)
+			m.workspace.mode = modeCompare
+			m.inspectBodyOffset = 0
+		} else {
+			w.MarkBaseline(r)
+			m.workspace.mode = modeObserve
+			m.inspectBodyOffset = 0
+		}
+	case w.State == CompareBaselineMarked:
+		if w.IsBaselineResult(r) {
+			w.Unmark()
+			m.workspace.mode = modeObserve
+			m.inspectBodyOffset = 0
+		} else {
+			w.SelectCandidate(r)
+			m.workspace.mode = modeCompare
+			m.inspectBodyOffset = 0
+		}
+	case w.State == CompareComparing:
+		if w.IsBaselineResult(r) {
+			// c on the baseline clears the workspace (pinned baseline survives).
+			w.Clear()
+			m.workspace.mode = modeObserve
+			m.inspectBodyOffset = 0
+		} else if w.IsCandidateResult(r) {
+			// c on the candidate resumes the workspace without disturbing it.
+			m.workspace.mode = modeCompare
+			m.inspectBodyOffset = 0
+		} else {
+			w.ReplaceCandidate(r)
+			m.workspace.mode = modeCompare
+			m.inspectBodyOffset = 0
+		}
 	}
-
-	analysis := AnalyzeComparison(baseline, candidate)
-	return &analysis
+	return m, nil
 }
 
 func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -659,31 +687,7 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.workspace.view = LogsView
 		return m, nil
 	case "c":
-		if len(m.results) == 0 {
-			return m, nil
-		}
-		switch m.workspace.compare.Session.State {
-		case SessionIdle:
-			m.workspace.compare.Session.BaselineIndex = m.selected
-			m.workspace.compare.Session.State = SessionBaselineMarked
-			m.status = "Baseline marked"
-			m.workspace.mode = modeObserve
-		case SessionBaselineMarked:
-			if m.selected != m.workspace.compare.Session.BaselineIndex {
-				m.workspace.compare.Session.CandidateIndex = m.selected
-				m.workspace.compare.Session.State = SessionComparing
-				m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
-				m.workspace.mode = modeCompare
-				m.inspectZone = zoneWhatHappened
-				m.inspectBodyOffset = 0
-			}
-		case SessionComparing:
-			m.workspace.compare.Session.CandidateIndex = m.selected
-			m.inspectZone = zoneWhatHappened
-			m.inspectBodyOffset = 0
-			m.workspace.compare.Session.Analysis = m.computeComparisonAnalysis()
-		}
-		return m, nil
+		return m.handleMark()
 	case "e":
 		m.workspace.dialog = dialogRequest
 		m.activeDomain = DomainRequest
@@ -736,11 +740,17 @@ func (m Model) startRun() (Model, tea.Cmd) {
 
 	m.workspace.mode = modeObserve
 	m.workspace.dialog = dialogNone
-	if m.workspace.compare.Session.State >= SessionBaselineMarked && len(m.results) > m.workspace.compare.Session.BaselineIndex {
-		result := m.results[m.workspace.compare.Session.BaselineIndex]
-		m.workspace.compare.PinnedBaseline = &result
+
+	// Pin the marked baseline so it survives the run; then reset the active
+	// comparison. The pinned baseline is the only piece of comparison state
+	// that crosses a startRun boundary.
+	var pinned *model.Result
+	if m.workspace.compare.HasBaseline() {
+		p := *m.workspace.compare.Baseline
+		pinned = &p
 	}
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: -1, State: SessionIdle, Analysis: nil}
+	m.workspace.compare = NewCompareWorkspace()
+	m.workspace.compare.PinnedBaseline = pinned
 	m.running = true
 	m.cancel = cancel
 	m.eventCh = eventCh

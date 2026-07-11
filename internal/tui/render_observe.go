@@ -71,12 +71,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 	barColor := statusColor(result.Status)
 	bar := renderLatencyBar(filled, barWidth, barColor)
 
-	prefix := ""
-	if m.workspace.compare.Session.CandidateIndex == index {
-		prefix = "▶ "
-	} else if m.workspace.compare.Session.BaselineIndex == index {
-		prefix = "◆ "
-	}
+	prefix := m.resultCompareMarker(index)
 
 	line := fmt.Sprintf("%s%s %-12s %-4s %s %s %s",
 		rowCursor(selected), prefix, status, method, bar, latency, truncateURL(reqURL, urlWidth))
@@ -94,12 +89,7 @@ func (m Model) renderLogs(region Region) string {
 			method := m.effectiveMethod(result)
 			reqURL := m.effectiveURL(result)
 
-			prefix := ""
-			if m.workspace.compare.Session.CandidateIndex == index {
-				prefix = "▶ "
-			} else if m.workspace.compare.Session.BaselineIndex == index {
-				prefix = "◆ "
-			}
+			prefix := m.resultCompareMarker(index)
 
 			line := fmt.Sprintf("%s%s #%03d %s %-4s %-10s %s %s",
 				rowCursor(selected), prefix, index+1, stamp, method, resultStatus(result), formatDuration(result.Latency), truncate(reqURL, width-logsFixedWidth-logsFixedSuffix))
@@ -108,6 +98,25 @@ func (m Model) renderLogs(region Region) string {
 			}
 			return renderResultRow(line, result, selected, width)
 		})
+}
+
+// resultCompareMarker returns the timeline marker for the result at index,
+// applying deterministic priority: Candidate > Baseline > Pinned. Exactly one
+// marker is returned per entry.
+func (m Model) resultCompareMarker(index int) string {
+	w := m.workspace.compare
+	if index < 0 || index >= len(m.results) {
+		return ""
+	}
+	switch {
+	case w.Candidate != nil && resultsEqual(*w.Candidate, m.results[index]):
+		return "▶ "
+	case w.Baseline != nil && resultsEqual(*w.Baseline, m.results[index]):
+		return "◆ "
+	case w.PinnedBaseline != nil && resultsEqual(*w.PinnedBaseline, m.results[index]):
+		return "● "
+	}
+	return ""
 }
 
 func (m Model) renderEmptyState(runningMsg string) string {
@@ -125,4 +134,13 @@ func renderResultRow(line string, result model.Result, selected bool, width int)
 		return strings.TrimSpace(errorRowStyle(selected).Render(truncate(line, width)))
 	}
 	return strings.TrimSpace(rowStyle(selected).Render(truncate(line, width)))
+}
+
+func resultsEqual(a, b model.Result) bool {
+	return a.Status == b.Status &&
+		a.Latency == b.Latency &&
+		a.Error == b.Error &&
+		a.RequestMethod == b.RequestMethod &&
+		a.RequestURL == b.RequestURL &&
+		a.ResponseBody == b.ResponseBody
 }

@@ -2064,41 +2064,42 @@ func TestInvestigationStateResetOnStartRun(t *testing.T) {
 
 func TestCompareStateClearedOnStartRun(t *testing.T) {
 	m := NewModel()
+	m.results = testResults(10)
 	m.urlInput.SetValue("https://example.com/api")
 	m.setConcurrency(1)
 
-	// Set stale compare state (as if user marked results then started new run)
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 2, CandidateIndex: 5, State: SessionComparing}
+	// Set stale compare state
+	m.workspace.compare.Baseline = &m.results[2]
+	m.workspace.compare.Candidate = &m.results[5]
+	m.workspace.compare.State = CompareComparing
 
 	started, cmd := m.startRun()
 	if cmd == nil {
 		t.Fatal("startRun should return a command")
 	}
-	if started.workspace.compare.Session.BaselineIndex != -1 {
-		t.Fatal("startRun must clear compare.BaselineIndex, got", started.workspace.compare.Session.BaselineIndex)
+	if started.workspace.compare.Baseline != nil {
+		t.Fatal("startRun must clear compare.Baseline")
 	}
-	if started.workspace.compare.Session.CandidateIndex != -1 {
-		t.Fatal("startRun must clear compare.CandidateIndex, got", started.workspace.compare.Session.CandidateIndex)
+	if started.workspace.compare.Candidate != nil {
+		t.Fatal("startRun must clear compare.Candidate")
 	}
 }
 
 func TestCompareStateClearedOnCancelRun(t *testing.T) {
-	// cancelRun does not clear results or compare state (results remain visible)
 	m := NewModel()
+	m.results = testResults(3)
 	m.running = true
 	m.cancel = func() {}
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
-	m.results = []model.Result{
-		{Status: 200},
-		{Status: 404},
-	}
+	m.workspace.compare.Baseline = &m.results[1]
+	m.workspace.compare.Candidate = &m.results[2]
+	m.workspace.compare.State = CompareComparing
 
 	m = m.cancelRun()
-	if m.workspace.compare.Session.BaselineIndex != 1 {
-		t.Fatal("cancelRun must preserve compare.BaselineIndex (results remain visible)")
+	if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
+		t.Fatal("cancelRun must preserve compare.Baseline")
 	}
-	if m.workspace.compare.Session.CandidateIndex != 2 {
-		t.Fatal("cancelRun must preserve compare.CandidateIndex (results remain visible)")
+	if !resultsEqual(*m.workspace.compare.Candidate, m.results[2]) {
+		t.Fatal("cancelRun must preserve compare.Candidate")
 	}
 }
 
@@ -2125,8 +2126,8 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m.selected = 1
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.Session.BaselineIndex != 1 {
-			t.Fatal("first c should store marked index, got", m.workspace.compare.Session.BaselineIndex)
+		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
+			t.Fatal("first c should store marked baseline")
 		}
 		if m.workspace.mode != modeObserve {
 			t.Fatal("first c should return to Observe mode")
@@ -2136,17 +2137,16 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 	t.Run("second c on different result enters Compare", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
-		m.selected = 1
-		m.workspace.compare.Session.BaselineIndex = 1
-		m.workspace.compare.Session.State = SessionBaselineMarked
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.State = CompareBaselineMarked
 		m.selected = 2
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.Session.BaselineIndex != 1 {
-			t.Fatal("marked should remain 1, got", m.workspace.compare.Session.BaselineIndex)
+		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
+			t.Fatal("marked should remain 1")
 		}
-		if m.workspace.compare.Session.CandidateIndex != 2 {
-			t.Fatal("active should be 2, got", m.workspace.compare.Session.CandidateIndex)
+		if !resultsEqual(*m.workspace.compare.Candidate, m.results[2]) {
+			t.Fatal("active should be 2")
 		}
 		if m.workspace.mode != modeCompare {
 			t.Fatal("second c should enter Compare mode")
@@ -2157,15 +2157,15 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
 		m.selected = 1
-		m.workspace.compare.Session.BaselineIndex = 1
-		m.workspace.compare.Session.State = SessionBaselineMarked
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.State = CompareBaselineMarked
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.Session.BaselineIndex != -1 {
-			t.Fatal("c on same marked result should unmark, got", m.workspace.compare.Session.BaselineIndex)
+		if m.workspace.compare.Baseline != nil {
+			t.Fatal("c on same marked result should unmark")
 		}
-		if m.workspace.mode != modeInspect {
-			t.Fatal("unmark should stay in Inspect mode")
+		if m.workspace.mode != modeObserve {
+			t.Fatal("unmark from inspect should go to Observe mode")
 		}
 	})
 
@@ -2175,8 +2175,8 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m.selected = 0
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated.(Model)
-		if m.workspace.compare.Session.BaselineIndex != 0 {
-			t.Fatal("mark should be 0, got", m.workspace.compare.Session.BaselineIndex)
+		if !resultsEqual(*m.workspace.compare.Baseline, m.results[0]) {
+			t.Fatal("mark should be 0")
 		}
 	})
 }
@@ -2186,15 +2186,18 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 	t.Run("Esc from Compare preserves session and returns to Observe", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeCompare
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.Candidate = &m.results[2]
+		m.workspace.compare.State = CompareComparing
+		m.workspace.compare.refreshAnalysis()
 		m.workspace.view = LogsView
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEsc})
 		m = updated.(Model)
-		if m.workspace.compare.Session.BaselineIndex != 1 {
-			t.Fatal("Esc should preserve marked, got", m.workspace.compare.Session.BaselineIndex)
+		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
+			t.Fatal("Esc should preserve marked")
 		}
-		if m.workspace.compare.Session.CandidateIndex != 2 {
-			t.Fatal("Esc should preserve active, got", m.workspace.compare.Session.CandidateIndex)
+		if !resultsEqual(*m.workspace.compare.Candidate, m.results[2]) {
+			t.Fatal("Esc should preserve active")
 		}
 		if m.workspace.mode != modeObserve {
 			t.Fatal("Esc should set mode to Observe")
@@ -2207,16 +2210,19 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 	t.Run("q from Compare shows quit dialog", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeCompare
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.Candidate = &m.results[2]
+		m.workspace.compare.State = CompareComparing
+		m.workspace.compare.refreshAnalysis()
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 		m = updated.(Model)
 		if m.workspace.dialog != dialogConfirmQuit {
 			t.Fatal("q should open confirm quit dialog")
 		}
-		if m.workspace.compare.Session.BaselineIndex != -1 {
+		if m.workspace.compare.Baseline != nil {
 			t.Fatal("q should clear marked")
 		}
-		if m.workspace.compare.Session.CandidateIndex != -1 {
+		if m.workspace.compare.Candidate != nil {
 			t.Fatal("q should clear active")
 		}
 	})
@@ -2224,10 +2230,11 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 	t.Run("Esc from Inspect preserves mark", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: -1, State: SessionBaselineMarked}
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.State = CompareBaselineMarked
 		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyEsc})
 		m = updated.(Model)
-		if m.workspace.compare.Session.BaselineIndex != 1 {
+		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
 			t.Fatal("Esc from Inspect should preserve mark")
 		}
 		if m.workspace.mode != modeObserve {
@@ -2238,7 +2245,10 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 	t.Run("c after x starts fresh lifecycle", func(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeCompare
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: 2, State: SessionComparing}
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.Candidate = &m.results[2]
+		m.workspace.compare.State = CompareComparing
+		m.workspace.compare.refreshAnalysis()
 		m.workspace.view = LogsView
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 		m = updated.(Model)
@@ -2247,8 +2257,8 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 		m.selected = 0
 		updated2, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 		m = updated2.(Model)
-		if m.workspace.compare.Session.BaselineIndex != 0 {
-			t.Fatal("after x, c should mark fresh result, got", m.workspace.compare.Session.BaselineIndex)
+		if !resultsEqual(*m.workspace.compare.Baseline, m.results[0]) {
+			t.Fatal("after x, c should mark fresh result")
 		}
 		if m.workspace.mode != modeObserve {
 			t.Fatal("after x, first c should return to Observe")
@@ -2260,7 +2270,8 @@ func TestCompare_InvestigationReset(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeInspect
 	m.selected = 1
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: -1, State: SessionBaselineMarked}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.State = CompareBaselineMarked
 	m.inspectZone = zoneBody
 	m.inspectBodyOffset = 10
 
@@ -2269,9 +2280,6 @@ func TestCompare_InvestigationReset(t *testing.T) {
 
 	if m.workspace.mode != modeCompare {
 		t.Fatal("should enter Compare mode")
-	}
-	if m.inspectZone != zoneWhatHappened {
-		t.Fatal("Compare should reset inspectZone to WhatHappened")
 	}
 	if m.inspectBodyOffset != 0 {
 		t.Fatal("Compare should reset inspectBodyOffset to 0")
@@ -2283,7 +2291,9 @@ func TestCompare_InvalidState(t *testing.T) {
 	region := Region{Width: 100, Height: 30}
 
 	t.Run("marked < 0 shows no comparison", func(t *testing.T) {
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: 1, State: SessionBaselineMarked}
+		m.workspace.compare.Baseline = nil
+		m.workspace.compare.Candidate = &m.results[1]
+		m.workspace.compare.State = CompareBaselineMarked
 		out := m.renderCompare(region)
 		if !contains(t, out, "No comparison active") {
 			t.Fatal("invalid state should show no comparison message")
@@ -2291,7 +2301,9 @@ func TestCompare_InvalidState(t *testing.T) {
 	})
 
 	t.Run("active < 0 shows no comparison", func(t *testing.T) {
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: 1, CandidateIndex: -1, State: SessionBaselineMarked}
+		m.workspace.compare.Baseline = &m.results[1]
+		m.workspace.compare.Candidate = nil
+		m.workspace.compare.State = CompareBaselineMarked
 		out := m.renderCompare(region)
 		if !contains(t, out, "No comparison active") {
 			t.Fatal("invalid state should show no comparison message")
@@ -2299,7 +2311,9 @@ func TestCompare_InvalidState(t *testing.T) {
 	})
 
 	t.Run("both < 0 shows no comparison", func(t *testing.T) {
-		m.workspace.compare.Session = ComparisonSession{BaselineIndex: -1, CandidateIndex: -1, State: SessionIdle}
+		m.workspace.compare.Baseline = nil
+		m.workspace.compare.Candidate = nil
+		m.workspace.compare.State = CompareIdle
 		out := m.renderCompare(region)
 		if !contains(t, out, "No comparison active") {
 			t.Fatal("invalid state should show no comparison message")
@@ -2309,7 +2323,11 @@ func TestCompare_InvalidState(t *testing.T) {
 
 func TestCompare_ResponsiveLayouts(t *testing.T) {
 	m := compareTestModel()
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
+	m.workspace.compare.View = CompareViewEvidence
 
 	t.Run("narrow (<80) shows rejection", func(t *testing.T) {
 		out := m.renderCompare(Region{Width: 79, Height: 30})
@@ -2347,9 +2365,6 @@ func TestCompare_ResponsiveLayouts(t *testing.T) {
 		if !contains(t, out, "EVIDENCE") {
 			t.Fatal("wide should show EVIDENCE section")
 		}
-		if !contains(t, out, "DETAILS") {
-			t.Fatal("wide should show DETAILS section")
-		}
 	})
 
 	t.Run("wide (150) renders stacked layout", func(t *testing.T) {
@@ -2357,37 +2372,45 @@ func TestCompare_ResponsiveLayouts(t *testing.T) {
 		if !contains(t, out, "EVIDENCE") {
 			t.Fatal("wide should show EVIDENCE section")
 		}
-		if !contains(t, out, "WHY") {
-			t.Fatal("wide should show WHY section")
-		}
 	})
 }
 
 func TestCompare_Rendering(t *testing.T) {
 	m := compareTestModel()
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
 	region := Region{Width: 130, Height: 30}
-	out := m.renderCompare(region)
 
-	if !contains(t, out, "EVIDENCE") {
+	m.workspace.compare.View = CompareViewEvidence
+	outEvidence := m.renderCompare(region)
+
+	m.workspace.compare.View = CompareViewOverview
+	outOverview := m.renderCompare(region)
+
+	m.workspace.compare.View = CompareViewDiff
+	outDetails := m.renderCompare(region)
+
+	if !contains(t, outEvidence, "EVIDENCE") {
 		t.Fatal("should show EVIDENCE section")
 	}
-	if !contains(t, out, "200") {
+	if !contains(t, outEvidence, "200") {
 		t.Fatal("should show baseline status in evidence")
 	}
-	if !contains(t, out, "404") {
+	if !contains(t, outEvidence, "404") {
 		t.Fatal("should show candidate status in evidence")
 	}
-	if !contains(t, out, "Regression") {
+	if !contains(t, outOverview, "Regression") {
 		t.Fatal("should show regression verdict for 200→404")
 	}
-	if !contains(t, out, "WHY") {
+	if !contains(t, outOverview, "WHY") {
 		t.Fatal("should show WHY section")
 	}
-	if !contains(t, out, "DETAILS") {
+	if !contains(t, outDetails, "DETAILS") {
 		t.Fatal("should show DETAILS section")
 	}
-	if contains(t, out, "│") {
+	if contains(t, outEvidence, "│") {
 		t.Fatal("wide layout should NOT use column separator")
 	}
 }
@@ -2395,10 +2418,12 @@ func TestCompare_Rendering(t *testing.T) {
 func TestCompare_Navigation(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeCompare
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
 
-	t.Run("up scrolls body when in body zone", func(t *testing.T) {
-		m.inspectZone = zoneBody
+	t.Run("up scrolls body", func(t *testing.T) {
 		m.inspectBodyOffset = 5
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyUp})
 		m2 := updated.(Model)
@@ -2408,7 +2433,6 @@ func TestCompare_Navigation(t *testing.T) {
 	})
 
 	t.Run("up does not scroll below 0", func(t *testing.T) {
-		m.inspectZone = zoneBody
 		m.inspectBodyOffset = 0
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyUp})
 		m2 := updated.(Model)
@@ -2418,7 +2442,6 @@ func TestCompare_Navigation(t *testing.T) {
 	})
 
 	t.Run("k scrolls body (vim key)", func(t *testing.T) {
-		m.inspectZone = zoneBody
 		m.inspectBodyOffset = 5
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 		m2 := updated.(Model)
@@ -2428,7 +2451,6 @@ func TestCompare_Navigation(t *testing.T) {
 	})
 
 	t.Run("j scrolls body (vim key)", func(t *testing.T) {
-		m.inspectZone = zoneBody
 		m.inspectBodyOffset = 5
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 		m2 := updated.(Model)
@@ -2438,7 +2460,6 @@ func TestCompare_Navigation(t *testing.T) {
 	})
 
 	t.Run("down scrolls body", func(t *testing.T) {
-		m.inspectZone = zoneBody
 		m.inspectBodyOffset = 5
 		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyDown})
 		m2 := updated.(Model)
@@ -2447,87 +2468,26 @@ func TestCompare_Navigation(t *testing.T) {
 		}
 	})
 
-	t.Run("tab cycles zones forward", func(t *testing.T) {
-		m.inspectZone = zoneWhatHappened
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+	t.Run("bracket navigation cycles views forward", func(t *testing.T) {
+		m.workspace.compare.View = CompareViewOverview
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 		m2 := updated.(Model)
-		if m2.inspectZone != zoneWhy {
-			t.Fatal("tab should advance to WHY zone")
+		if m2.workspace.compare.View != CompareViewEvidence {
+			t.Fatal("] should advance view")
 		}
-		updated, _ = m2.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
+		updated, _ = m2.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 		m3 := updated.(Model)
-		if m3.inspectZone != zoneBody {
-			t.Fatal("tab should advance to BODY zone")
-		}
-		updated, _ = m3.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
-		m4 := updated.(Model)
-		if m4.inspectZone != zoneWhatHappened {
-			t.Fatal("tab should wrap to WHAT HAPPENED zone")
+		if m3.workspace.compare.View != CompareViewDiff {
+			t.Fatal("] should advance view")
 		}
 	})
 
-	t.Run("shift+tab cycles zones backward", func(t *testing.T) {
-		m.inspectZone = zoneBody
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	t.Run("bracket navigation cycles views backward", func(t *testing.T) {
+		m.workspace.compare.View = CompareViewDiff
+		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
 		m2 := updated.(Model)
-		if m2.inspectZone != zoneWhy {
-			t.Fatal("shift+tab from body should go to WHY zone")
-		}
-		updated, _ = m2.handleCompareKey(tea.KeyMsg{Type: tea.KeyShiftTab})
-		m3 := updated.(Model)
-		if m3.inspectZone != zoneWhatHappened {
-			t.Fatal("shift+tab from WHY should go to WHAT HAPPENED")
-		}
-	})
-
-	t.Run("home jumps to What Happened", func(t *testing.T) {
-		m.inspectZone = zoneBody
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyHome})
-		m2 := updated.(Model)
-		if m2.inspectZone != zoneWhatHappened {
-			t.Fatal("home should jump to WHAT HAPPENED")
-		}
-	})
-
-	t.Run("end jumps to Body", func(t *testing.T) {
-		m.inspectZone = zoneWhatHappened
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEnd})
-		m2 := updated.(Model)
-		if m2.inspectZone != zoneBody {
-			t.Fatal("end should jump to BODY")
-		}
-	})
-}
-
-func TestCompare_ZoneNavigation(t *testing.T) {
-	m := compareTestModel()
-	m.workspace.mode = modeCompare
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
-
-	t.Run("Tab at WhatHappened goes to Why", func(t *testing.T) {
-		m.inspectZone = zoneWhatHappened
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
-		m2 := updated.(Model)
-		if m2.inspectZone != zoneWhy {
-			t.Fatal("Tab should go from WhatHappened to Why")
-		}
-	})
-
-	t.Run("Tab at Body wraps to WhatHappened", func(t *testing.T) {
-		m.inspectZone = zoneBody
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyTab})
-		m2 := updated.(Model)
-		if m2.inspectZone != zoneWhatHappened {
-			t.Fatal("Tab from Body should wrap to WhatHappened")
-		}
-	})
-
-	t.Run("Shift+Tab at WhatHappened wraps to Body", func(t *testing.T) {
-		m.inspectZone = zoneWhatHappened
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyShiftTab})
-		m2 := updated.(Model)
-		if m2.inspectZone != zoneBody {
-			t.Fatal("Shift+Tab from WhatHappened should wrap to Body")
+		if m2.workspace.compare.View != CompareViewEvidence {
+			t.Fatal("[ should move view backward")
 		}
 	})
 }
@@ -2536,11 +2496,14 @@ func TestRenderStatusline_CompareMode(t *testing.T) {
 	m := compareTestModel()
 	m.shell.Resize(100, 24)
 	m.workspace.mode = modeCompare
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
 
 	out := m.renderStatusline(m.ShellState(), 100)
-	if !contains(t, out, "[Tab]") {
-		t.Fatal("compare ribbon should show [Tab] for zone navigation")
+	if !contains(t, out, "[[]] View") {
+		t.Fatal("compare ribbon should show [[]] View")
 	}
 	if !contains(t, out, "[Esc] Back") {
 		t.Fatal("compare ribbon should show [Esc] Back")
@@ -2556,7 +2519,10 @@ func TestRenderStatusline_CompareMode(t *testing.T) {
 func TestCompare_HandleKeyDispatch(t *testing.T) {
 	m := compareTestModel()
 	m.workspace.mode = modeCompare
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
 
 	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
@@ -2564,11 +2530,11 @@ func TestCompare_HandleKeyDispatch(t *testing.T) {
 	if m.workspace.mode != modeObserve {
 		t.Fatal("handleKey should dispatch Esc to compare handler")
 	}
-	if m.workspace.compare.Session.BaselineIndex != 0 {
-		t.Fatal("handleKey should preserve compare state via compare handler on Esc, got", m.workspace.compare.Session.BaselineIndex)
+	if !resultsEqual(*m.workspace.compare.Baseline, m.results[0]) {
+		t.Fatal("handleKey should preserve compare state via compare handler on Esc")
 	}
-	if m.workspace.compare.Session.CandidateIndex != 1 {
-		t.Fatal("handleKey should preserve compare active via compare handler on Esc, got", m.workspace.compare.Session.CandidateIndex)
+	if !resultsEqual(*m.workspace.compare.Candidate, m.results[1]) {
+		t.Fatal("handleKey should preserve compare active via compare handler on Esc")
 	}
 }
 
@@ -2740,7 +2706,11 @@ func TestCompareEngine_ErrorResolved(t *testing.T) {
 
 func TestCompareRender_DiffSummaryInRender(t *testing.T) {
 	m := compareTestModel()
-	m.workspace.compare.Session = ComparisonSession{BaselineIndex: 0, CandidateIndex: 1, State: SessionComparing}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
+	m.workspace.compare.View = CompareViewEvidence
 
 	out := m.renderCompare(Region{Width: 100, Height: 30})
 

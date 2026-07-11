@@ -11,13 +11,42 @@ func (m Model) renderContextRegion(region Region) string {
 	switch {
 	case m.workspace.dialog == dialogRequest:
 		return m.renderRequestContext(region)
+	case m.workspace.mode == modeCompare:
+		return "" // Compare workspace is itself the main region
 	case m.workspace.mode == modeInspect && len(m.results) > 0:
 		return m.renderInspectContext(region)
+	case m.workspace.compare.HasBaseline():
+		return m.renderComparePreview(region)
 	case len(m.results) > 0:
 		return m.renderObserveContext(region)
 	default:
 		return ""
 	}
+}
+
+func (m Model) renderComparePreview(region Region) string {
+	w := m.workspace.compare
+	var b strings.Builder
+	b.WriteString(accentOrMuted("Comparison", true))
+	b.WriteString(gapSection)
+
+	b.WriteString(renderComparisonIdentityBlock(w.Baseline, w.Candidate))
+
+	if w.IsComparing() && w.Analysis != nil {
+		b.WriteString("\n\n")
+		b.WriteString(renderVerdict(w.Analysis))
+	}
+
+	// The preview is the collapsed Compare workspace: it must make orientation
+	// and the next action obvious even when the full workspace is not on screen.
+	b.WriteString("\n\n")
+	if w.IsComparing() {
+		b.WriteString(styleMuted.Render("c on ▶ to open · x clears"))
+	} else {
+		b.WriteString(styleMuted.Render("c on a result to compare"))
+	}
+
+	return regionStyle(region).Render(b.String())
 }
 
 func (m Model) renderObserveContext(region Region) string {
