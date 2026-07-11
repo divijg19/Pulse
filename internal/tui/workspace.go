@@ -11,30 +11,204 @@ const (
 	LogsView
 )
 
-// SessionState describes the lifecycle of a comparison session.
-type SessionState int
+// CompareState describes the lifecycle phase of a comparison workflow.
+type CompareState int
 
 const (
-	SessionIdle           SessionState = iota // no active comparison workflow
-	SessionBaselineMarked                     // baseline chosen, no candidate yet
-	SessionComparing                          // both baseline and candidate set
+	CompareIdle           CompareState = iota // no active comparison workflow
+	CompareBaselineMarked                     // baseline chosen, no candidate yet
+	CompareComparing                          // both baseline and candidate set
 )
 
-// ComparisonSession tracks a single comparison workflow. A session begins
-// when the operator marks a baseline result and ends when they explicitly
-// clear it. The session is disposable — it is reset on startRun.
-type ComparisonSession struct {
-	BaselineIndex  int                 // baseline result index (-1 = unset)
-	CandidateIndex int                 // candidate result index (-1 = unset)
-	State          SessionState        // current lifecycle phase
-	Analysis       *ComparisonAnalysis // computed analysis, refreshed on transitions
+// CompareView is a presentation of the comparison analysis. Every view
+// consumes the same immutable CompareContext; switching views never triggers
+// recomputation, only a different presentation.
+type CompareView int
+
+const (
+	CompareViewOverview CompareView = iota
+	CompareViewEvidence
+	CompareViewDiff
+	CompareViewHeaders
+	CompareViewBody
+	CompareViewRaw
+)
+
+// compareViewCount is the number of views; used to wrap bracket navigation.
+const compareViewCount = 6
+
+// compareViewNames maps each view to its heading label.
+var compareViewNames = [compareViewCount]string{
+	CompareViewOverview: "Overview",
+	CompareViewEvidence: "Evidence",
+	CompareViewDiff:     "Diff",
+	CompareViewHeaders:  "Headers",
+	CompareViewBody:     "Body",
+	CompareViewRaw:      "Raw",
 }
 
-// CompareData holds all comparison state for the workspace. PinnedBaseline
-// survives startRun; Session is ephemeral and reset on each new run.
-type CompareData struct {
-	PinnedBaseline *model.Result
-	Session        ComparisonSession
+// CompareContext is the renderer-facing projection of a comparison. It contains
+// only presentation data. The renderer never knows whether Baseline originated
+// from the current session or a pinned baseline — it simply renders what it is
+// given. Workflow details remain inside CompareWorkspace.
+type CompareContext struct {
+	Baseline  model.Result
+	Candidate model.Result
+	Analysis  *ComparisonAnalysis
+}
+
+// CompareWorkspace owns all comparison state. It is the single source of truth
+// for workflow transitions; renderers never mutate it. Every transition is
+// expressed through exactly one operation method below.
+type CompareWorkspace struct {
+	Baseline       *model.Result // current baseline (resolved value)
+	Candidate      *model.Result // current candidate (resolved value)
+	PinnedBaseline *model.Result // persists across runs
+	State          CompareState
+	View           CompareView
+	Analysis       *ComparisonAnalysis
+}
+
+// NewCompareWorkspace returns an empty CompareWorkspace.
+func NewCompareWorkspace() CompareWorkspace {
+	return CompareWorkspace{
+		Baseline:       nil,
+		Candidate:      nil,
+		PinnedBaseline: nil,
+		State:          CompareIdle,
+		View:           CompareViewOverview,
+		Analysis:       nil,
+	}
+}
+
+// --- Predicates ------------------------------------------------------------
+
+// IsIdle reports whether no comparison workflow is active.
+func (w CompareWorkspace) IsIdle() bool { return w.State == CompareIdle }
+
+// HasBaseline reports whether a baseline result is available.
+func (w CompareWorkspace) HasBaseline() bool { return w.Baseline != nil }
+
+// HasCandidate reports whether a candidate result is available.
+func (w CompareWorkspace) HasCandidate() bool { return w.Candidate != nil }
+
+// IsComparing reports whether both baseline and candidate are set.
+func (w CompareWorkspace) IsComparing() bool { return w.State == CompareComparing }
+
+// HasPinnedBaseline reports whether a pinned baseline survives across runs.
+func (w CompareWorkspace) HasPinnedBaseline() bool { return w.PinnedBaseline != nil }
+
+// IsBaselineResult reports whether r is the current baseline.
+func (w CompareWorkspace) IsBaselineResult(r model.Result) bool {
+	return w.Baseline != nil && resultsEqual(*w.Baseline, r)
+}
+
+// IsCandidateResult reports whether r is the current candidate.
+func (w CompareWorkspace) IsCandidateResult(r model.Result) bool {
+	return w.Candidate != nil && resultsEqual(*w.Candidate, r)
+}
+
+// --- Workflow operations ---------------------------------------------------
+
+// MarkBaseline establishes r as the baseline. Any prior candidate is dropped;
+// the session enters BaselineMarked. The analysis is cleared until a candidate
+// is selected.
+func (w *CompareWorkspace) MarkBaseline(r model.Result) {
+	b := r
+	w.Baseline = &b
+	w.Candidate = nil
+	w.State = CompareBaselineMarked
+	w.Analysis = nil
+	w.View = CompareViewOverview
+}
+
+// Unmark clears the baseline and any candidate, returning to Idle. The pinned
+// baseline is preserved.
+func (w *CompareWorkspace) Unmark() {
+	w.Baseline = nil
+	w.Candidate = nil
+	w.State = CompareIdle
+	w.Analysis = nil
+}
+
+// SelectCandidate establishes r as the candidate and enters the Comparing
+// state. The analysis is recomputed exactly once.
+func (w *CompareWorkspace) SelectCandidate(r model.Result) {
+	c := r
+	w.Candidate = &c
+	w.State = CompareComparing
+	w.refreshAnalysis()
+}
+
+// ReplaceCandidate replaces the current candidate with r. The analysis is
+// recomputed exactly once.
+func (w *CompareWorkspace) ReplaceCandidate(r model.Result) {
+	c := r
+	w.Candidate = &c
+	w.refreshAnalysis()
+}
+
+// ReplaceBaseline replaces the current baseline with r. The analysis is
+// recomputed exactly once.
+func (w *CompareWorkspace) ReplaceBaseline(r model.Result) {
+	b := r
+	w.Baseline = &b
+	w.refreshAnalysis()
+}
+
+// Swap exchanges the baseline and candidate. The analysis is recomputed so the
+// directional verdict reflects the new perspective. Comparison content (the
+// underlying deltas) is unchanged.
+func (w *CompareWorkspace) Swap() {
+	w.Baseline, w.Candidate = w.Candidate, w.Baseline
+	w.refreshAnalysis()
+}
+
+// Clear ends the active comparison session. Baseline, candidate and analysis
+// are reset to zero; the pinned baseline survives.
+func (w *CompareWorkspace) Clear() {
+	w.Baseline = nil
+	w.Candidate = nil
+	w.State = CompareIdle
+	w.Analysis = nil
+}
+
+// Exit preserves the entire comparison so the operator can resume exactly where
+// they left off. It performs no state mutation.
+func (w *CompareWorkspace) Exit() {}
+
+// NextView advances to the next comparison view, wrapping around.
+func (w *CompareWorkspace) NextView() {
+	w.View = (w.View + 1) % compareViewCount
+}
+
+// PrevView moves to the previous comparison view, wrapping around.
+func (w *CompareWorkspace) PrevView() {
+	w.View = (w.View + compareViewCount - 1) % compareViewCount
+}
+
+// refreshAnalysis recomputes the ComparisonAnalysis from the current baseline
+// and candidate. It is the single place analysis is produced. It is a no-op
+// unless both baseline and candidate are present.
+func (w *CompareWorkspace) refreshAnalysis() {
+	if w.State == CompareComparing && w.Baseline != nil && w.Candidate != nil {
+		a := AnalyzeComparison(*w.Baseline, *w.Candidate)
+		w.Analysis = &a
+	}
+}
+
+// Context projects the workspace into a renderer-facing CompareContext. It
+// resolves the baseline and candidate into plain values so the renderer never
+// needs to know their origin.
+func (w CompareWorkspace) Context() CompareContext {
+	ctx := CompareContext{Analysis: w.Analysis}
+	if w.Baseline != nil {
+		ctx.Baseline = *w.Baseline
+	}
+	if w.Candidate != nil {
+		ctx.Candidate = *w.Candidate
+	}
+	return ctx
 }
 
 // Workspace is the composition unit. A Workspace composes Views, a View
@@ -43,24 +217,16 @@ type Workspace struct {
 	mode    mode
 	dialog  dialog
 	view    ViewType
-	compare CompareData
+	compare CompareWorkspace
 }
 
 // NewWorkspace creates the default Workspace (OBSERVE/Timeline).
 func NewWorkspace() Workspace {
 	return Workspace{
-		mode:   modeObserve,
-		dialog: dialogNone,
-		view:   TimelineView,
-		compare: CompareData{
-			PinnedBaseline: nil,
-			Session: ComparisonSession{
-				BaselineIndex:  -1,
-				CandidateIndex: -1,
-				State:          SessionIdle,
-				Analysis:       nil,
-			},
-		},
+		mode:    modeObserve,
+		dialog:  dialogNone,
+		view:    TimelineView,
+		compare: NewCompareWorkspace(),
 	}
 }
 

@@ -106,8 +106,8 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionDismissCancel:     {"Any", "Cancel", ApplicationCategory, PriorityCritical},
 	ActionZoneNext:          {"Tab", "Next Zone", NavigationCategory, PriorityHigh},
 	ActionZoneScroll:        {"↑↓", "Scroll", NavigationCategory, PriorityMedium},
-	ActionCompare:           {"c", "Compare", NavigationCategory, PriorityLow},
-	ActionClear:             {"x", "Clear", ApplicationCategory, PriorityHigh},
+	ActionCompare:           {"c", "Mark Baseline", NavigationCategory, PriorityLow},
+	ActionClear:             {"x", "Clear Comparison", ApplicationCategory, PriorityHigh},
 	ActionSwap:              {"s", "Swap", NavigationCategory, PriorityMedium},
 }
 

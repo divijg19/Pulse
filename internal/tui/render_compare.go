@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/divijg19/Pulse/internal/model"
 )
 
 var (
@@ -16,47 +17,182 @@ var (
 	styleDiffWorse   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError))
 	styleDiffBetter  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
 	styleDiffNeutral = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning))
+	styleCompareMark = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true)
 )
 
-type compareSections struct {
-	verdict  string
-	why      string
-	evidence string
-	details  string
-}
-
+// renderCompare is the Compare workspace entry point. It builds the immutable
+// CompareContext once and dispatches to the active view renderer. No view
+// renderer performs analysis or mutates workflow state.
 func (m Model) renderCompare(region Region) string {
-	if m.workspace.compare.Session.State != SessionComparing {
-		if m.workspace.compare.PinnedBaseline != nil {
+	w := m.workspace.compare
+	if !w.IsComparing() {
+		if w.HasPinnedBaseline() {
 			return regionStyle(region).Render(
-				styleCompareMarked.Render("📌 Baseline pinned") + "\n" +
+				styleCompareMark.Render("● Pinned Baseline") + "\n" +
 					styleMuted.Render("Select a result and press c to compare against the pinned baseline."))
 		}
 		return regionStyle(region).Render(styleMuted.Render("No comparison active."))
 	}
 
-	analysis := m.workspace.compare.Session.Analysis
-	if analysis == nil {
-		analysis = m.computeComparisonAnalysis()
-	}
-	if analysis == nil {
+	ctx := w.Context()
+	if ctx.Analysis == nil {
 		return regionStyle(region).Render(styleMuted.Render("Computing comparison..."))
 	}
-
 	if region.Width < 80 {
 		return regionStyle(region).Render(styleMuted.Render("Comparison requires at least 80 columns."))
 	}
 
-	sec := compareSections{
-		verdict:  renderVerdict(analysis),
-		why:      renderWhy(analysis.Flags),
-		evidence: renderEvidenceSection(analysis),
-		details:  renderDetailsSection(analysis),
+	identity := renderComparisonIdentityBlock(&ctx.Baseline, &ctx.Candidate)
+
+	var body string
+	switch w.View {
+	case CompareViewOverview:
+		body = renderCompareOverview(ctx)
+	case CompareViewEvidence:
+		body = renderCompareEvidence(ctx)
+	case CompareViewDiff:
+		body = renderCompareDiff(ctx)
+	case CompareViewHeaders:
+		body = renderCompareHeaders(ctx)
+	case CompareViewBody:
+		body = renderCompareBody(ctx)
+	case CompareViewRaw:
+		body = renderCompareRaw(ctx)
 	}
 
 	var parts []string
-	parts = appendNonEmpty(parts, sec.verdict, sec.why, sec.evidence, sec.details)
+	parts = appendNonEmpty(parts, identity, body)
 	return regionStyle(region).Render(strings.Join(parts, "\n\n"))
+}
+
+// renderComparisonIdentityBlock renders the orientation header. It shows the
+// baseline and, when present, the candidate. The same block is used by the
+// full Compare workspace and the collapsed preview, so the two never drift.
+func renderComparisonIdentityBlock(baseline, candidate *model.Result) string {
+	var b strings.Builder
+	if baseline != nil {
+		b.WriteString(styleCompareMark.Render("◆ Baseline"))
+		b.WriteString("\n")
+		b.WriteString(styleMuted.Render(methodPath(*baseline)))
+		b.WriteString("\n\n")
+	}
+	if candidate != nil {
+		b.WriteString(styleCompareMark.Render("▶ Candidate"))
+		b.WriteString("\n")
+		b.WriteString(styleMuted.Render(methodPath(*candidate)))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func methodPath(result model.Result) string {
+	method := result.RequestMethod
+	if method == "" {
+		method = "GET"
+	}
+	return method + " " + result.RequestURL
+}
+
+// --- View renderers --------------------------------------------------------
+
+// Every view renderer consumes an immutable CompareContext.
+
+func renderCompareOverview(ctx CompareContext) string {
+	var parts []string
+	parts = appendNonEmpty(parts, renderVerdict(ctx.Analysis), renderWhy(ctx.Analysis.Flags))
+	return strings.Join(parts, "\n\n")
+}
+
+func renderCompareEvidence(ctx CompareContext) string {
+	return renderEvidenceSection(ctx.Analysis)
+}
+
+func renderCompareDiff(ctx CompareContext) string {
+	return renderDetailsSection(ctx.Analysis)
+}
+
+func renderCompareHeaders(ctx CompareContext) string {
+	hdrs := ctx.Analysis.Headers
+	var b strings.Builder
+	if len(hdrs.Added) > 0 {
+		b.WriteString(sectionLine("ADDED HEADERS", false))
+		for _, e := range hdrs.Added {
+			b.WriteString(fmt.Sprintf("  %s: %s\n", styleFieldName.Render(e.Name), e.Value))
+		}
+		b.WriteString("\n")
+	}
+	if len(hdrs.Removed) > 0 {
+		b.WriteString(sectionLine("REMOVED HEADERS", false))
+		for _, e := range hdrs.Removed {
+			b.WriteString(fmt.Sprintf("  %s: %s\n", styleFieldName.Render(e.Name), e.Value))
+		}
+		b.WriteString("\n")
+	}
+	if len(hdrs.Changed) > 0 {
+		b.WriteString(sectionLine("CHANGED HEADERS", false))
+		for _, e := range hdrs.Changed {
+			b.WriteString(fmt.Sprintf("  %s: %s → %s\n", styleFieldName.Render(e.Name), e.OldValue, e.NewValue))
+		}
+		b.WriteString("\n")
+	}
+	if b.Len() == 0 {
+		return styleMuted.Render("No header differences")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func renderCompareBody(ctx CompareContext) string {
+	var b strings.Builder
+	b.WriteString(sectionLine("BASELINE BODY", false))
+	b.WriteString("\n")
+	b.WriteString(indentBlock(ctx.Baseline.ResponseBody))
+	b.WriteString("\n\n")
+	b.WriteString(sectionLine("CANDIDATE BODY", false))
+	b.WriteString("\n")
+	b.WriteString(indentBlock(ctx.Candidate.ResponseBody))
+	return b.String()
+}
+
+func renderCompareRaw(ctx CompareContext) string {
+	var b strings.Builder
+	b.WriteString(sectionLine("BASELINE", false))
+	b.WriteString("\n")
+	b.WriteString(renderRawResult(ctx.Baseline))
+	b.WriteString("\n\n")
+	b.WriteString(sectionLine("CANDIDATE", false))
+	b.WriteString("\n")
+	b.WriteString(renderRawResult(ctx.Candidate))
+	return b.String()
+}
+
+func renderRawResult(r model.Result) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("  %s %d\n", styleFieldName.Render("Status:"), r.Status))
+	b.WriteString(fmt.Sprintf("  %s %s\n", styleFieldName.Render("Latency:"), formatDuration(r.Latency)))
+	b.WriteString(fmt.Sprintf("  %s %s\n", styleFieldName.Render("Method:"), r.RequestMethod))
+	b.WriteString(fmt.Sprintf("  %s %s\n", styleFieldName.Render("URL:"), r.RequestURL))
+	if len(r.ResponseHeaders) > 0 {
+		b.WriteString(fmt.Sprintf("  %s\n", styleFieldName.Render("Headers:")))
+		for k, v := range r.ResponseHeaders {
+			b.WriteString(fmt.Sprintf("    %s: %s\n", k, v))
+		}
+	}
+	if r.ResponseBody != "" {
+		b.WriteString(fmt.Sprintf("  %s\n", styleFieldName.Render("Body:")))
+		b.WriteString(indentBlock(r.ResponseBody))
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func indentBlock(s string) string {
+	if s == "" {
+		return "  " + styleMuted.Render("(empty)")
+	}
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = "  " + l
+	}
+	return strings.Join(lines, "\n")
 }
 
 func renderVerdict(analysis *ComparisonAnalysis) string {

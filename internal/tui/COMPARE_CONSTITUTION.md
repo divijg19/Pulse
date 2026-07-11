@@ -103,19 +103,17 @@ Never color solely because values differ. "The active result has a different sta
 The canonical comparison workflow is:
 
 ```
-Observe
+Idle
   ↓
 Mark Baseline       (c on a result — establishes the reference)
   ↓
-Observe / Run again
+Compare Candidate   (c on a different result — establishes the comparison target)
   ↓
-Mark Candidate      (c on a different result — establishes the comparison target)
+Swap                (exchange baseline and candidate)
   ↓
-Compare              (entered automatically after candidate is marked)
+Exit Compare        (Esc — preserves session for later)
   ↓
-Swap / Replace      (refine the comparison without restarting)
-  ↓
-Clear               (end the comparison session)
+Clear Comparison    (x — ends the active comparison)
 ```
 
 Key workflow properties:
@@ -150,45 +148,99 @@ The Renderer is responsible for:
 * Rendering a `ComparisonAnalysis` to a styled string
 * No analysis logic — it receives already-computed conclusions
 
-### Comparison Session
+### Compare Workspace
 
-A Comparison Session tracks the lifecycle of a single comparison workflow:
+All comparison workflow state is owned by a single `CompareWorkspace`. There is
+no separate session object, and no index-based tracking — baseline and candidate
+are resolved `*model.Result` pointers, so the workspace never depends on the
+current `m.results` slice to know what it is comparing.
 
-```
-type CompareData struct {
-    PinnedBaseline *model.Result      // baseline survives startRun
-    Session        ComparisonSession  // ephemeral workflow state
+```go
+type CompareWorkspace struct {
+    Baseline       *model.Result // current baseline (resolved value)
+    Candidate      *model.Result // current candidate (resolved value)
+    PinnedBaseline *model.Result // persists across runs
+    State          CompareState
+    View           CompareView
+    Analysis       *ComparisonAnalysis
 }
+```
 
-type ComparisonSession struct {
-    BaselineIndex int              // index into m.results (or -1 when PinnedBaseline is used)
-    CandidateIndex int             // index into m.results
-    State          SessionState    // Idle → BaselineMarked → Comparing
-    Analysis       *ComparisonAnalysis  // computed once per transition
+The workspace is the single source of truth. The renderer never derives what to
+compare — it receives a `CompareContext` projected from the workspace.
+
+### Compare Context
+
+```go
+type CompareContext struct {
+    Baseline  model.Result
+    Candidate model.Result
+    Analysis  *ComparisonAnalysis
 }
 ```
 
-The session is the source of truth. The renderer never derives what to compare — it receives an already-constructed session.
+`CompareWorkspace.Context()` resolves the workspace into a renderer-facing
+projection. The renderer never knows whether `Baseline` originated from the
+current session or a pinned baseline — it simply renders what it is given.
+
+### Workflow operations
+
+Every transition is expressed through exactly one method on `CompareWorkspace`:
+
+| Operation | Effect |
+|-----------|--------|
+| `MarkBaseline(r)` | Establish r as baseline; enter `BaselineMarked`; clear candidate + analysis. |
+| `Unmark()` | Clear baseline + candidate; return to `Idle`. Pinned baseline preserved. |
+| `SelectCandidate(r)` | Establish r as candidate; enter `Comparing`; recompute analysis once. |
+| `ReplaceCandidate(r)` | Replace candidate; recompute analysis once. |
+| `ReplaceBaseline(r)` | Replace baseline; recompute analysis once. |
+| `Swap()` | Exchange baseline and candidate; recompute analysis (perspective changes, content deltas do not). |
+| `Clear()` | Reset baseline, candidate, state, analysis to zero; `Idle`. Pinned baseline preserved. |
+| `Exit()` | No mutation — preserve the entire comparison for resume. |
+| `NextView()` / `PrevView()` | Advance / retreat the active view, wrapping around. |
+
+Predicates replace ad-hoc enum checks: `IsIdle`, `HasBaseline`, `HasCandidate`,
+`IsComparing`, `HasPinnedBaseline`, `IsBaselineResult`, `IsCandidateResult`.
+
+### Analysis is computed exactly once per transition
+
+`refreshAnalysis()` is the single place a `ComparisonAnalysis` is produced. It
+runs only inside the workflow operations above — never during rendering. View
+renderers consume the immutable `*ComparisonAnalysis` and never recompute.
 
 ### State machine
 
 ```
 Idle
   │
-  │  c on result (no session)
+  │  c on result (no PinnedBaseline)
   ▼
 BaselineMarked
   │
-  │  c on different result
-  ▼
-Comparing
+  ├── c on same result  →  Idle (unmark)
   │
-  ├── s  →  Swap (exchange baseline and candidate)
-  ├── c on different result  →  Replace candidate
-  ├── Esc  →  Exit to Observe (preserve session)
-  ├── x  →  Clear (destroy session, return to Idle)
-  └── new result  →  Pin baseline (if Pinned), update candidate
+  │  c on different result
+  └────────────────────────────► Comparing
+                                     │
+                          ┌──────────┼──────────┐
+                          │          │          │
+                    c on baseline   s         Esc
+                          │          │          │
+                          ▼          ▼          ▼
+                       Idle      Comparing   Observe
+                          (swap)    (preserve session)
+                          │
+                          │ x or c on baseline
+                          ▼
+                        Idle
 ```
+
+Notes:
+- `x` (Clear) resets the workspace (Baseline, Candidate, State, Analysis). PinnedBaseline is preserved.
+- `c` on the baseline result (in any state) clears the workspace — the same way `x` does.
+- `c` on a different result (in Comparing) replaces the candidate.
+- `c` with `PinnedBaseline` set (in Idle) immediately enters Compare, using the pinned result as the implicit baseline.
+- `Esc` (Exit) performs no mutation; the operator resumes exactly where they left off.
 
 ---
 
@@ -308,10 +360,11 @@ Only visual presentation may change between widths. Information ordering never c
 | Invariant | Enforcement |
 |---|---|
 | Engine performs no rendering | `comparison.go` imports no lipgloss / bubbletea / ansi packages (`TestV099Architecture_EngineNoRenderImports`) |
-| Renderer performs presentation only | `renderCompare` consumes a `*ComparisonAnalysis` and never derives deltas |
+| Renderer consumes immutable context | `renderCompare` builds a `CompareContext` and dispatches to a view renderer; it never derives deltas |
 | Renderer mutates no state | `TestV0100_CompareRenderDoesNotMutate`, `TestV0100_CompareRendererConsumesAnalysisOnly` |
-| Section ordering is stable | `verifySectionOrdering` asserts WHY → EVIDENCE → DETAILS order |
-| Responsive layouts preserve order | Same assertion across widths 80–150; wide no longer splits columns |
+| Analysis computed exactly once per transition | `refreshAnalysis()` runs only inside workspace operations, never during render |
+| View order is stable | Views (Overview → Evidence → Diff → Headers → Body → Raw) are fixed by the `CompareView` enum; bracket navigation only switches presentation |
+| Responsive layouts preserve content | Layouts across widths 80–150 render the same analysis through the active view |
 
 ### Behaviour-first tests
 
@@ -331,6 +384,74 @@ timeout transitions. Each verifies verdict, Why, Evidence, and Details correctne
 
 ---
 
+## v0.10.2 Scope — Compare Workspace Convergence
+
+v0.10.2 is the **final architectural convergence** of Compare. It transforms
+Compare from a transient diff screen into a persistent operator workspace whose
+state is always visible and whose implementation is simple, cohesive and
+maintainable. Nothing outside the Compare subsystem changes.
+
+### Compare is a workspace
+
+Compare is no longer a modal or a temporary screen. It is a persistent
+workspace that evolves as the operator works:
+
+* **Idle** — no active comparison. A pinned baseline may still be displayed.
+* **BaselineMarked** — a baseline is chosen; Observe shows a collapsed preview.
+* **Comparing** — both baseline and candidate are set; the workspace is live.
+
+### One rendering pipeline
+
+The collapsed baseline preview and the full Compare workspace share the same
+renderer. `renderComparisonIdentityBlock` is reused by both
+`renderComparePreview` (Observe context panel) and `renderCompare` — there is
+no second implementation and the two never drift.
+
+```
+renderCompare()
+   │
+   ├─ build CompareContext (w.Context())
+   │
+   └─ dispatch on w.View
+         ├─ CompareViewOverview  → renderCompareOverview   (Verdict + Why)
+         ├─ CompareViewEvidence  → renderCompareEvidence   (EVIDENCE)
+         ├─ CompareViewDiff      → renderCompareDiff       (DETAILS)
+         ├─ CompareViewHeaders   → renderCompareHeaders
+         ├─ CompareViewBody      → renderCompareBody
+         └─ CompareViewRaw       → renderCompareRaw
+```
+
+Every view renderer consumes the identical immutable `CompareContext`.
+
+### State is always visible
+
+The operator never mentally tracks what is marked, pinned, baseline, candidate,
+or resumable. The interface communicates it continuously via timeline markers
+(▶ Candidate, ◆ Baseline, ● Pinned) and the Compare identity header
+(`renderComparisonIdentityBlock`).
+
+### Single workflow owner
+
+`handleMark` routes every `c` press through the `CompareWorkspace` operations.
+No handler mutates comparison fields directly. `handleMark` uses a **value
+receiver** (`func (m Model) handleMark()`) because Bubble Tea's `Update` returns
+a `Model` value — a pointer receiver would cause an interface conversion panic.
+
+### In scope
+
+| Component | Description |
+|---|---|
+| CompareWorkspace | Single source of truth for all comparison state; resolved `*model.Result` pointers |
+| CompareContext | Renderer-facing projection; immutable during a frame |
+| View-oriented rendering | Overview / Evidence / Diff / Headers / Body / Raw, bracket-navigable |
+| Collapsed preview | The preview **is** the Compare workspace with partial context — same renderer and identity block, plus verdict and an orientation/resume hint |
+| Resumable workspace | `Esc` preserves the workspace; `c` on the candidate (▶) re-enters Compare without disturbing the comparison |
+| Orientation at every width | Below 140 columns the status line reports the active comparison, so the operator never loses context |
+| Workflow convergence | `c`, `s`, `x`, `Esc` each own exactly one meaning |
+| Terminology convergence | Mark / Pinned Baseline / Candidate / Compare / Swap / Clear / Exit / Resume |
+
+---
+
 ## Non-Goals (explicit)
 
 1. **This release does not add a diff library dependency.** Body preview diff uses line-based string comparison in pure Go. A proper diff algorithm (patience diff, LCS) may be added in v1.0.
@@ -341,7 +462,7 @@ timeout transitions. Each verifies verdict, Why, Evidence, and Details correctne
 
 4. **This release does not implement a comparison history.** Sessions are in-memory only. Pinned baselines survive one startRun cycle but are not persisted to disk.
 
-5. **This release does not change the Observe result list beyond adding comparison markers** (◆, ▶, 📌).
+5. **This release does not change the Observe result list beyond adding comparison markers** (▶, ◆, ●).
 
 ---
 
@@ -353,7 +474,9 @@ Compare-specific certification verifies:
 * Compare lifecycle (enter, swap, replace candidate, exit, clear)
 * Cross-run pinning (baseline survives startRun)
 * Regression coloring (worse = red, better = green)
-* Unified single-column layout across all widths (no column splitting)
-* Stable Verdict → Why → Evidence → Details ordering
+* Collapsed baseline preview reuses the Compare renderer (no second implementation)
+* View-oriented navigation (Overview / Evidence / Diff / Headers / Body / Raw via bracket keys)
+* Stable view order fixed by the `CompareView` enum
+* Analysis computed exactly once per transition; never during rendering
 * No duplicated Inspect rendering in Compare
-* Comparison Analysis → Renderer data flow (engine produces analysis, renderer consumes it, no analysis logic in renderer)
+* Comparison Analysis → Renderer data flow (engine produces analysis, `CompareWorkspace` owns it, renderer consumes an immutable `CompareContext`)

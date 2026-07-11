@@ -69,8 +69,7 @@ func (m Model) Actions() []Action {
 		return []Action{
 			{ActionClear, ApplicationCategory, true},
 			{ActionSwap, NavigationCategory, true},
-			{ActionZoneNext, NavigationCategory, true},
-			{ActionZoneScroll, NavigationCategory, true},
+			{ActionSwitchView, NavigationCategory, true},
 			{ActionBack, ApplicationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
@@ -297,7 +296,11 @@ func renderInteractionStatus(m Model) string {
 	case m.workspace.dialog == dialogConfirmQuit:
 		return "Quitting"
 	case m.workspace.mode == modeCompare:
-		return "Comparing"
+		return "Comparing · " + compareViewNames[m.workspace.compare.View]
+	case m.workspace.mode == modeObserve && m.workspace.compare.IsComparing():
+		return "Comparing · c on ▶ to open"
+	case m.workspace.mode == modeObserve && m.workspace.compare.HasBaseline():
+		return "Baseline marked · c to compare"
 	case m.workspace.mode == modeInspect:
 		return "Inspecting"
 	case m.running:
