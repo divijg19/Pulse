@@ -31,6 +31,8 @@ func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "c":
 		return m.handleMark()
+	case "x":
+		return m.handleRenounceOrClearKey()
 	case "q", "ctrl+c":
 		m.workspace.dialog = dialogConfirmQuit
 		return m, nil

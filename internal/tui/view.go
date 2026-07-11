@@ -24,7 +24,7 @@ const (
 // colored highlight cell is identical for every workspace and flush against the
 // divider — the divider never moves when the workspace changes.
 var ribbonBadgeWidth = func() int {
-	labels := []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT", "COMPARE", "EXECUTE"}
+	labels := []string{"READY", "OBSERVE", "REQUEST", "INSPECT", "QUIT", "COMPARE"}
 	maxLen := 0
 	for _, l := range labels {
 		if n := len(l); n > maxLen {
@@ -299,6 +299,8 @@ func renderInteractionStatus(m Model) string {
 		return "Comparing · " + compareViewNames[m.workspace.compare.View]
 	case m.workspace.mode == modeObserve && m.workspace.compare.IsComparing():
 		return "Comparing · c on ▶ to open"
+	case m.workspace.mode == modeObserve && !m.workspace.compare.HasBaseline() && m.workspace.compare.HasReference():
+		return "Reference · x renounces"
 	case m.workspace.mode == modeObserve && m.workspace.compare.HasBaseline():
 		return "Baseline marked · c to compare"
 	case m.workspace.mode == modeInspect:
@@ -493,6 +495,9 @@ func (m Model) renderStatusline(state ShellState, width int) string {
 }
 
 func visibleWindow(total, selected, height int) int {
+	if height < 1 {
+		height = 1
+	}
 	if total <= height {
 		return 0
 	}

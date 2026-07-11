@@ -15,7 +15,7 @@ func (m Model) renderContextRegion(region Region) string {
 		return "" // Compare workspace is itself the main region
 	case m.workspace.mode == modeInspect && len(m.results) > 0:
 		return m.renderInspectContext(region)
-	case m.workspace.compare.HasBaseline():
+	case m.workspace.compare.HasBaseline() || m.workspace.compare.HasReference():
 		return m.renderComparePreview(region)
 	case len(m.results) > 0:
 		return m.renderObserveContext(region)
@@ -30,20 +30,29 @@ func (m Model) renderComparePreview(region Region) string {
 	b.WriteString(accentOrMuted("Comparison", true))
 	b.WriteString(gapSection)
 
-	b.WriteString(renderComparisonIdentityBlock(w.Baseline, w.Candidate))
+	// Identity: baseline/candidate when a workspace is active, otherwise the
+	// reference request (persisted across runs) on its own.
+	if w.Baseline != nil || w.Candidate != nil {
+		b.WriteString(m.renderComparisonIdentityBlock(w.Baseline, w.Candidate))
+	} else if w.Reference != nil {
+		b.WriteString(m.renderIdentityLine("●", "Pinned Baseline", *w.Reference))
+	}
 
 	if w.IsComparing() && w.Analysis != nil {
 		b.WriteString("\n\n")
 		b.WriteString(renderVerdict(w.Analysis))
 	}
 
-	// The preview is the collapsed Compare workspace: it must make orientation
-	// and the next action obvious even when the full workspace is not on screen.
+	// Context-specific keybindings make the next action obvious without leaving
+	// the drawer, including how to renounce a reference.
 	b.WriteString("\n\n")
-	if w.IsComparing() {
-		b.WriteString(styleMuted.Render("c on ▶ to open · x clears"))
-	} else {
-		b.WriteString(styleMuted.Render("c on a result to compare"))
+	switch {
+	case w.IsComparing():
+		b.WriteString(styleMuted.Render("c on ▶ open · x clear · s swap · [ ] view"))
+	case w.HasBaseline():
+		b.WriteString(styleMuted.Render("c compare · x clear"))
+	case w.HasReference():
+		b.WriteString(styleMuted.Render("c compare · x renounce"))
 	}
 
 	return regionStyle(region).Render(b.String())

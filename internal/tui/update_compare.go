@@ -6,13 +6,12 @@ func (m Model) handleCompareKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	w := &m.workspace.compare
 	switch msg.String() {
 	case "esc":
-		// Exit never destroys workflow state.
-		w.Exit()
+		// Esc never destroys workflow state.
 		m.workspace.mode = modeObserve
 		m.workspace.view = TimelineView
 		return m, nil
 	case "x":
-		// Clear ends the comparison but preserves the pinned baseline.
+		// Clear ends the comparison but preserves the reference.
 		w.Clear()
 		m.workspace.mode = modeObserve
 		m.inspectBodyOffset = 0

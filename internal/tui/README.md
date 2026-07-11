@@ -133,6 +133,8 @@ New to the TUI codebase? Read in this order:
 | Document | What it answers |
 |---|---|
 | `STATE_OWNERSHIP.md` | Model field ownership, lifetime, mutation rules |
+| `COMPARE_CONSTITUTION.md` | Comparison engine contract: state model, analysis, render projections |
+| `COMPARE_WORKFLOW.md` | Comparison UX: keybindings, lifecycle, persistence, preview behaviour |
 | [RENDERING.md](../../RENDERING.md) | TUI rendering architecture, layout, render lifecycle, constitution |
 | [ARCHITECTURE.md](../../ARCHITECTURE.md) | System architecture, components, APIs, engine, concurrency |
 | [README.md](../../README.md) | Product overview, installation, quick start |

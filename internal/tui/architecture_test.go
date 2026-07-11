@@ -483,7 +483,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		m.workspace.compare.Baseline = &m.results[0]
 		m.workspace.compare.Candidate = &m.results[1]
 		m.workspace.compare.State = CompareComparing
-		m.workspace.compare.PinnedBaseline = &m.results[0]
+		m.workspace.compare.Reference = &m.results[0]
 		m.workspace.compare.refreshAnalysis()
 
 		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
@@ -493,12 +493,12 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		}
 	})
 
-	// Path 3: inspect mode, Idle → Comparing with PinnedBaseline
+	// Path 3: inspect mode, Idle → Comparing with Reference
 	t.Run("inspect idle with pin", func(t *testing.T) {
 		m := setup(3)
 		m.selected = 1
 		m.workspace.mode = modeInspect
-		m.workspace.compare.PinnedBaseline = &m.results[0]
+		m.workspace.compare.Reference = &m.results[0]
 		m.workspace.compare.State = CompareIdle
 
 		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
@@ -527,7 +527,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 	t.Run("swap in compare", func(t *testing.T) {
 		m := setup(3)
 		m.workspace.mode = modeCompare
-		m.workspace.compare.PinnedBaseline = &m.results[0]
+		m.workspace.compare.Reference = &m.results[0]
 		m.workspace.compare.Baseline = &m.results[0]
 		m.workspace.compare.Candidate = &m.results[1]
 		m.workspace.compare.State = CompareComparing
@@ -545,10 +545,10 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 }
 
 func TestV099Comparing_PinInvariant(t *testing.T) {
-	// PinnedBaseline == nil ⇒ Session.State != SessionComparing
+	// Reference == nil on a fresh Model
 	m := NewModel()
-	if m.workspace.compare.PinnedBaseline != nil {
-		t.Fatal("fresh Model should have nil PinnedBaseline")
+	if m.workspace.compare.Reference != nil {
+		t.Fatal("fresh Model should have nil Reference")
 	}
 	if m.workspace.compare.State == CompareComparing {
 		t.Fatal("fresh Model should not be in Comparing state")
@@ -764,11 +764,7 @@ func TestV0100_CompareBehaviourScenarios(t *testing.T) {
 		t.Run(sc.name, func(t *testing.T) {
 			m := NewModel()
 			m.results = []model.Result{sc.baseline, sc.candidate}
-			m.workspace.compare.Baseline = &sc.baseline
-			m.workspace.compare.Candidate = &sc.candidate
-			m.workspace.compare.State = CompareComparing
-			m.workspace.compare.PinnedBaseline = &sc.baseline
-			m.workspace.compare.refreshAnalysis()
+			setComparing(&m, &sc.baseline, &sc.candidate)
 
 			m.workspace.compare.View = CompareViewOverview
 			outOverview := m.renderCompare(Region{Width: 100, Height: 30})
@@ -778,6 +774,11 @@ func TestV0100_CompareBehaviourScenarios(t *testing.T) {
 
 			m.workspace.compare.View = CompareViewDiff
 			outDetails := m.renderCompare(Region{Width: 100, Height: 30})
+
+			// The semantic order (WHY → EVIDENCE → DETAILS) must hold across the
+			// three views taken together; renderCompare renders one view per call
+			// so the ordering can only be asserted on the concatenation.
+			verifySectionOrdering(t, outOverview+"\n"+outEvidence+"\n"+outDetails)
 
 			if !strings.Contains(outOverview, sc.wantVerdict) {
 				t.Errorf("expected verdict %q, got output:\n%s", sc.wantVerdict, outOverview)
@@ -809,18 +810,13 @@ func TestV0100_CompareResponsiveInvariants(t *testing.T) {
 	baseline := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
 	candidate := model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"}
 	m.results = []model.Result{baseline, candidate}
-	m.workspace.compare.Baseline = &baseline
-	m.workspace.compare.Candidate = &candidate
-	m.workspace.compare.State = CompareComparing
-	m.workspace.compare.PinnedBaseline = &baseline
-	m.workspace.compare.refreshAnalysis()
+	setComparing(&m, &baseline, &candidate)
 
 	m.workspace.compare.View = CompareViewEvidence
 	widths := []int{80, 100, 119, 120, 150}
 	for _, w := range widths {
 		t.Run(fmt.Sprintf("width_%d", w), func(t *testing.T) {
 			out := m.renderCompare(Region{Width: w, Height: 30})
-			verifySectionOrdering(t, out)
 
 			if strings.Contains(out, "│") {
 				t.Errorf("Wide layout must not contain '│' column separator anymore:\n%s", out)
@@ -841,11 +837,7 @@ func TestV0100_CompareRendererConsumesAnalysisOnly(t *testing.T) {
 	baseline := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
 	candidate := model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"}
 	m.results = []model.Result{baseline, candidate}
-	m.workspace.compare.Baseline = &baseline
-	m.workspace.compare.Candidate = &candidate
-	m.workspace.compare.State = CompareComparing
-	m.workspace.compare.PinnedBaseline = &baseline
-	m.workspace.compare.refreshAnalysis()
+	setComparing(&m, &baseline, &candidate)
 
 	baseOutput := m.renderCompare(Region{Width: 100, Height: 30})
 
@@ -867,11 +859,7 @@ func TestV0100_CompareRenderDoesNotMutate(t *testing.T) {
 	baseline := model.Result{Status: 200, Latency: 50 * time.Millisecond, RequestURL: "https://example.com/a"}
 	candidate := model.Result{Status: 500, Latency: 100 * time.Millisecond, RequestURL: "https://example.com/b"}
 	m.results = []model.Result{baseline, candidate}
-	m.workspace.compare.Baseline = &baseline
-	m.workspace.compare.Candidate = &candidate
-	m.workspace.compare.State = CompareComparing
-	m.workspace.compare.PinnedBaseline = &baseline
-	m.workspace.compare.refreshAnalysis()
+	setComparing(&m, &baseline, &candidate)
 
 	activeDomain := m.activeDomain
 	running := m.running
@@ -895,6 +883,32 @@ func TestV0100_CompareRenderDoesNotMutate(t *testing.T) {
 // ---------------------------------------------------------------------------
 // v0.10.2 — Compare Workflow Convergence Tests
 // ---------------------------------------------------------------------------
+
+// enterComparing marks results[baselineIdx] as baseline and compares it against
+// results[candidateIdx], returning the Model in the Comparing state. It factors
+// out the repeated two-press sequence shared by the workflow tests.
+func enterComparing(t *testing.T, baselineIdx, candidateIdx int) Model {
+	t.Helper()
+	m := NewModel()
+	m.results = testResults(3)
+	m.selected = baselineIdx
+	updated, _ := m.Update(keyMsgRune('c'))
+	m = updated.(Model)
+	m.selected = candidateIdx
+	updated, _ = m.Update(keyMsgRune('c'))
+	return updated.(Model)
+}
+
+// setComparing wires a Model into the Comparing state with the given baseline
+// and candidate, recomputing the analysis exactly once — mirroring how the
+// workspace reaches that state through MarkBaseline + SelectCandidate.
+func setComparing(m *Model, baseline, candidate *model.Result) {
+	m.workspace.compare.Baseline = baseline
+	m.workspace.compare.Candidate = candidate
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.Reference = baseline
+	m.workspace.compare.refreshAnalysis()
+}
 
 func TestV0102Workflow_MarkReplace(t *testing.T) {
 	// Mark A as baseline → c on B → Compare (B replaces A as baseline)
@@ -924,32 +938,23 @@ func TestV0102Workflow_MarkReplace(t *testing.T) {
 	}
 }
 
-func TestV0102Workflow_ClearPreservesPin(t *testing.T) {
-	// Start a comparison, pin it, then clear — PinnedBaseline survives
-	m := NewModel()
-	m.results = testResults(3)
-	m.selected = 0
+func TestV0102Workflow_ClearPreservesReference(t *testing.T) {
+	// Start a comparison, reference it, then clear — Reference survives
+	m := enterComparing(t, 0, 1)
 
-	// Mark baseline, press c on index 1 to compare
-	updated, _ := m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-	m.selected = 1
-	updated, _ = m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-
-	// Pin the baseline (simulate startRun pinning)
-	m.workspace.compare.PinnedBaseline = &m.results[0]
+	// Reference the baseline (simulate startRun referencing)
+	m.workspace.compare.Reference = &m.results[0]
 
 	// Enter Compare mode and press x
 	m.workspace.mode = modeCompare
-	updated, _ = m.Update(keyMsgRune('x'))
+	updated, _ := m.Update(keyMsgRune('x'))
 	m = updated.(Model)
 
 	if m.workspace.compare.State != CompareIdle {
 		t.Fatal("x should reset session to Idle")
 	}
-	if m.workspace.compare.PinnedBaseline == nil {
-		t.Fatal("x must preserve PinnedBaseline")
+	if m.workspace.compare.Reference == nil {
+		t.Fatal("x must preserve Reference")
 	}
 	if m.workspace.mode != modeObserve {
 		t.Fatal("x should return to Observe")
@@ -958,23 +963,14 @@ func TestV0102Workflow_ClearPreservesPin(t *testing.T) {
 
 func TestV0102Workflow_SwapTwiceReturns(t *testing.T) {
 	// Compare A vs B → s → B is baseline, A is candidate → s → back to original
-	m := NewModel()
-	m.results = testResults(3)
-	m.selected = 0
-
-	// Mark baseline, compare with index 1
-	updated, _ := m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-	m.selected = 1
-	updated, _ = m.Update(keyMsgRune('c'))
-	m = updated.(Model)
+	m := enterComparing(t, 0, 1)
 
 	beforeBaseline := *m.workspace.compare.Baseline
 	beforeCandidate := *m.workspace.compare.Candidate
 
 	// Swap
 	m.workspace.mode = modeCompare
-	updated, _ = m.Update(keyMsgRune('s'))
+	updated, _ := m.Update(keyMsgRune('s'))
 	m = updated.(Model)
 
 	if !resultsEqual(*m.workspace.compare.Baseline, beforeCandidate) {
@@ -998,22 +994,14 @@ func TestV0102Workflow_SwapTwiceReturns(t *testing.T) {
 
 func TestV0102Workflow_ExitPreservesSession(t *testing.T) {
 	// Compare → Esc → Observe → session preserved
-	m := NewModel()
-	m.results = testResults(3)
-	m.selected = 0
-
-	updated, _ := m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-	m.selected = 1
-	updated, _ = m.Update(keyMsgRune('c'))
-	m = updated.(Model)
+	m := enterComparing(t, 0, 1)
 
 	beforeBaseline := *m.workspace.compare.Baseline
 	beforeCandidate := *m.workspace.compare.Candidate
 
 	// Esc exits compare, preserves session
 	m.workspace.mode = modeCompare
-	updated, _ = m.Update(keyMsgKey(tea.KeyEsc))
+	updated, _ := m.Update(keyMsgKey(tea.KeyEsc))
 	m = updated.(Model)
 
 	if m.workspace.mode != modeObserve {
@@ -1033,15 +1021,7 @@ func TestV0102Workflow_ExitPreservesSession(t *testing.T) {
 func TestV0102Workflow_ResumeFromObserve(t *testing.T) {
 	// Compare A vs B → Esc → Observe → c on candidate (▶) → re-enters Compare
 	// without disturbing the comparison.
-	m := NewModel()
-	m.results = testResults(3)
-	m.selected = 0
-
-	updated, _ := m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-	m.selected = 1
-	updated, _ = m.Update(keyMsgRune('c'))
-	m = updated.(Model)
+	m := enterComparing(t, 0, 1)
 	if m.workspace.mode != modeCompare {
 		t.Fatal("should be in Compare after second c")
 	}
@@ -1053,7 +1033,7 @@ func TestV0102Workflow_ResumeFromObserve(t *testing.T) {
 
 	// c on the candidate (marked ▶) must resume the workspace.
 	m.selected = 1
-	updated, _ = m.Update(keyMsgRune('c'))
+	updated, _ := m.Update(keyMsgRune('c'))
 	m = updated.(Model)
 
 	if m.workspace.mode != modeCompare {
@@ -1069,19 +1049,11 @@ func TestV0102Workflow_ResumeFromObserve(t *testing.T) {
 
 func TestV0102Workflow_ClearComparison(t *testing.T) {
 	// Compare A vs B → x → session cleared, back to Observe
-	m := NewModel()
-	m.results = testResults(3)
-	m.selected = 0
-
-	updated, _ := m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-	m.selected = 1
-	updated, _ = m.Update(keyMsgRune('c'))
-	m = updated.(Model)
+	m := enterComparing(t, 0, 1)
 
 	// x clears
 	m.workspace.mode = modeCompare
-	updated, _ = m.Update(keyMsgRune('x'))
+	updated, _ := m.Update(keyMsgRune('x'))
 	m = updated.(Model)
 
 	if m.workspace.compare.State != CompareIdle {
@@ -1092,9 +1064,9 @@ func TestV0102Workflow_ClearComparison(t *testing.T) {
 	}
 }
 
-func TestV0102Workflow_CrossRunPin(t *testing.T) {
-	// Mark baseline → startRun → PinnedBaseline set → session reset
-	// → c on new result → compare against pinned baseline
+func TestV0102Workflow_CrossRunReference(t *testing.T) {
+	// Mark baseline → startRun → Reference set → session reset
+	// → c on new result → compare against reference baseline
 	m := NewModel()
 	m.results = testResults(3)
 	m.selected = 0
@@ -1105,9 +1077,9 @@ func TestV0102Workflow_CrossRunPin(t *testing.T) {
 	m = updated.(Model)
 
 	// Simulate startRun
-	m.workspace.compare.PinnedBaseline = &m.results[0]
+	m.workspace.compare.Reference = &m.results[0]
 	m.workspace.compare = NewCompareWorkspace()
-	m.workspace.compare.PinnedBaseline = &m.results[0]
+	m.workspace.compare.Reference = &m.results[0]
 	m.results = nil
 
 	// Add new results and compare
@@ -1118,25 +1090,16 @@ func TestV0102Workflow_CrossRunPin(t *testing.T) {
 	m = updated.(Model)
 
 	if m.workspace.compare.State != CompareComparing {
-		t.Fatal("c with pinned baseline should enter Compare")
+		t.Fatal("c with reference baseline should enter Compare")
 	}
-	if m.workspace.compare.PinnedBaseline == nil {
-		t.Fatal("PinnedBaseline must survive")
+	if m.workspace.compare.Reference == nil {
+		t.Fatal("Reference must survive")
 	}
 }
 
 func TestV0102Workflow_MarkSameUnmarks(t *testing.T) {
 	// Baseline marked → c on same result → clears session
-	m := NewModel()
-	m.results = testResults(3)
-	m.selected = 0
-
-	updated, _ := m.Update(keyMsgRune('c'))
-	m = updated.(Model)
-
-	// c on same result
-	updated, _ = m.Update(keyMsgRune('c'))
-	m = updated.(Model)
+	m := enterComparing(t, 0, 0)
 
 	if m.workspace.compare.State != CompareIdle {
 		t.Fatal("c on same marked result should clear session")
@@ -1147,14 +1110,95 @@ func TestV0102Workflow_MarkSameUnmarks(t *testing.T) {
 }
 
 func TestV0102Workflow_NoBaselineCleared(t *testing.T) {
-	// With PinnedBaseline set and no session, render shows Pinned state
+	// With Reference set and no session, render shows Reference state
 	m := NewModel()
-	m.workspace.compare.PinnedBaseline = &model.Result{Status: 200, Latency: 10 * time.Millisecond}
 	m.workspace.compare = NewCompareWorkspace()
-	m.workspace.compare.PinnedBaseline = &model.Result{Status: 200, Latency: 10 * time.Millisecond}
+	m.workspace.compare.Reference = &model.Result{Status: 200, Latency: 10 * time.Millisecond}
 
 	out := m.renderCompare(Region{Width: 100, Height: 30})
 	if !strings.Contains(out, "● Pinned Baseline") {
-		t.Fatal("renderCompare with pinned baseline should show ● Pinned Baseline, got:\n", out)
+		t.Fatal("renderCompare with reference should show ● Pinned Baseline, got:\n", out)
+	}
+}
+
+func TestCompare_RenderRequestDetails(t *testing.T) {
+	// Request number (#N) and timestamp must appear for both participants.
+	m := compareTestModel()
+	for i := range m.results {
+		m.results[i].Timestamp = time.Date(2024, 1, 2, 3, 4, 5+i, 0, time.UTC)
+	}
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
+	region := Region{Width: 130, Height: 40}
+
+	m.workspace.compare.View = CompareViewOverview
+	outOverview := m.renderCompare(region)
+	if !strings.Contains(outOverview, "#001") || !strings.Contains(outOverview, "03:04:05") {
+		t.Fatalf("identity should show request number and time, got:\n%s", outOverview)
+	}
+
+	m.workspace.compare.View = CompareViewRaw
+	outRaw := m.renderCompare(region)
+	if !strings.Contains(outRaw, "Request:") {
+		t.Fatal("raw view should expose Request details")
+	}
+	if !strings.Contains(outRaw, "#001") || !strings.Contains(outRaw, "#002") {
+		t.Fatal("raw view should show request number for both participants")
+	}
+}
+
+func TestV0102Workflow_RenounceReference(t *testing.T) {
+	// x in Observe with only a reference request renounces persistence.
+	m := NewModel()
+	m.results = testResults(3)
+	m.selected = 0
+	updated, _ := m.Update(keyMsgRune('c'))
+	m = updated.(Model)
+
+	// Simulate a run that sets the reference for the next run.
+	m.workspace.compare.Reference = &m.results[0]
+	m.workspace.compare = NewCompareWorkspace()
+	m.workspace.compare.Reference = &m.results[0]
+
+	m.workspace.mode = modeObserve
+	updated, _ = m.Update(keyMsgRune('x'))
+	m = updated.(Model)
+
+	if m.workspace.compare.Reference != nil {
+		t.Fatal("x should renounce the reference")
+	}
+	if m.workspace.compare.State != CompareIdle {
+		t.Fatal("workspace should be idle after renounce")
+	}
+}
+
+func TestCompare_BodyScroll(t *testing.T) {
+	// The Body view must scroll through long baseline/candidate bodies.
+	m := compareTestModel()
+	big := ""
+	for i := 0; i < 50; i++ {
+		big += fmt.Sprintf("line %d\n", i)
+	}
+	m.results[0].ResponseBody = big
+	m.results[1].ResponseBody = "short candidate"
+	m.workspace.compare.Baseline = &m.results[0]
+	m.workspace.compare.Candidate = &m.results[1]
+	m.workspace.compare.State = CompareComparing
+	m.workspace.compare.refreshAnalysis()
+	region := Region{Width: 120, Height: 20}
+
+	m.workspace.compare.View = CompareViewBody
+	m.inspectBodyOffset = 0
+	top := m.renderCompare(region)
+	m.inspectBodyOffset = 10
+	scrolled := m.renderCompare(region)
+
+	if top == scrolled {
+		t.Fatal("body view should change when scrolled")
+	}
+	if strings.Contains(scrolled, "line 0") {
+		t.Fatal("scrolled body should have moved past the first line")
 	}
 }

@@ -3,6 +3,7 @@ package model
 import "time"
 
 type Result struct {
+	Sequence        int               `json:"sequence,omitempty"`
 	Status          int               `json:"status"`
 	Latency         time.Duration     `json:"latencyNs"`
 	Timestamp       time.Time         `json:"timestamp"`

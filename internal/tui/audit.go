@@ -58,7 +58,6 @@ func newReadyModel() Model {
 func newTimelineRunningModel() Model {
 	m := NewModel()
 	m.running = true
-	m.status = "RUNNING"
 	m.startedAt = time.Now().Add(-5 * time.Second)
 	m.elapsed = 5 * time.Second
 	m.results = testResults(20)
@@ -77,7 +76,6 @@ func newLogsRunningModel() Model {
 func newTimelineRunningEmptyModel() Model {
 	m := NewModel()
 	m.running = true
-	m.status = "RUNNING"
 	m.startedAt = time.Now().Add(-2 * time.Second)
 	m.elapsed = 2 * time.Second
 	m.workspace.view = TimelineView
