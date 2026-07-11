@@ -80,8 +80,8 @@ func TestRunStartAndCancelTransitions(t *testing.T) {
 	}
 
 	cancelled := started.cancelRun()
-	if cancelled.status != "CANCELLED" {
-		t.Fatalf("status = %q", cancelled.status)
+	if cancelled.running {
+		t.Fatal("cancelRun should stop the run")
 	}
 }
 
@@ -190,8 +190,8 @@ func TestRejectsOversizedBody(t *testing.T) {
 	if started.running {
 		t.Fatal("model should not be running with oversized body")
 	}
-	if started.status != "BODY TOO LARGE (MAX 1MB)" {
-		t.Fatalf("status = %q", started.status)
+	if started.errMsg != "BODY TOO LARGE (MAX 1MB)" {
+		t.Fatalf("errMsg = %q", started.errMsg)
 	}
 }
 
@@ -304,16 +304,12 @@ func TestRunFinishedMsg(t *testing.T) {
 	m := NewModel()
 	m.running = true
 	m.startedAt = time.Now().Add(-2 * time.Second)
-	m.status = "RUNNING"
 
 	updated, _ := m.Update(runFinishedMsg{})
 	m = updated.(Model)
 
 	if m.running {
 		t.Fatal("running should be false after runFinishedMsg")
-	}
-	if m.status != "COMPLETE" {
-		t.Fatalf("status = %q (expected COMPLETE)", m.status)
 	}
 }
 
@@ -406,14 +402,10 @@ func TestCtrlX_Cancel(t *testing.T) {
 	m := NewModel()
 	m.running = true
 	m.cancel = func() {}
-	m.status = "RUNNING"
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
 	m = updated.(Model)
 
-	if m.status != "CANCELLED" {
-		t.Fatalf("status = %q (expected CANCELLED)", m.status)
-	}
 	if m.running {
 		t.Fatal("running should be false after cancelRun")
 	}
@@ -512,7 +504,6 @@ func TestHeaderMap(t *testing.T) {
 
 func TestCtrlX_NotRunning(t *testing.T) {
 	m := NewModel()
-	m.status = "SYSTEM READY"
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
 	m = updated.(Model)
@@ -520,8 +511,8 @@ func TestCtrlX_NotRunning(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("ctrl+x when not running should return nil cmd")
 	}
-	if m.status != "SYSTEM READY" {
-		t.Fatalf("status should remain 'SYSTEM READY', got %q", m.status)
+	if m.errMsg != "" {
+		t.Fatalf("errMsg should remain empty, got %q", m.errMsg)
 	}
 }
 
@@ -551,11 +542,10 @@ func TestStartRun_AlreadyRunning(t *testing.T) {
 
 func TestCancelRun_NotRunning(t *testing.T) {
 	m := NewModel()
-	m.status = "IDLE"
 
 	result := m.cancelRun()
-	if result.status != "IDLE" {
-		t.Fatalf("status should remain 'IDLE', got %q", result.status)
+	if result.running {
+		t.Fatal("cancelRun when not running must remain idle")
 	}
 }
 
@@ -580,22 +570,16 @@ func TestMultipleRunLifecycle(t *testing.T) {
 	}
 
 	cancelled := started.cancelRun()
-	if cancelled.status != "CANCELLED" {
-		t.Fatalf("status after cancel = %q, want 'CANCELLED'", cancelled.status)
-	}
 	if cancelled.running {
 		t.Fatal("running should be false after cancelRun")
 	}
 
-	// cancelRun sets running=false and status=CANCELLED; runFinishedMsg
-	// should not override the status when arriving afterwards.
+	// cancelRun sets running=false; a runFinishedMsg arriving afterwards must
+	// not resurrect the run.
 	finished, _ := cancelled.Update(runFinishedMsg{})
 	m2 := finished.(Model)
 	if m2.running {
-		t.Fatal("should not be running after runFinishedMsg")
-	}
-	if m2.status != "CANCELLED" {
-		t.Fatalf("status after cancel+finish = %q, want 'CANCELLED'", m2.status)
+		t.Fatal("runFinishedMsg must not restart a cancelled run")
 	}
 
 	restarted, cmd := m2.startRun()

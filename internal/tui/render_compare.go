@@ -26,7 +26,7 @@ var (
 func (m Model) renderCompare(region Region) string {
 	w := m.workspace.compare
 	if !w.IsComparing() {
-		if w.HasPinnedBaseline() {
+		if w.HasReference() {
 			return regionStyle(region).Render(
 				styleCompareMark.Render("● Pinned Baseline") + "\n" +
 					styleMuted.Render("Select a result and press c to compare against the pinned baseline."))
@@ -42,7 +42,7 @@ func (m Model) renderCompare(region Region) string {
 		return regionStyle(region).Render(styleMuted.Render("Comparison requires at least 80 columns."))
 	}
 
-	identity := renderComparisonIdentityBlock(&ctx.Baseline, &ctx.Candidate)
+	identity := m.renderComparisonIdentityBlock(&ctx.Baseline, &ctx.Candidate)
 
 	var body string
 	switch w.View {
@@ -55,9 +55,9 @@ func (m Model) renderCompare(region Region) string {
 	case CompareViewHeaders:
 		body = renderCompareHeaders(ctx)
 	case CompareViewBody:
-		body = renderCompareBody(ctx)
+		body = m.renderCompareBody(ctx, bodyRegion(region, identity))
 	case CompareViewRaw:
-		body = renderCompareRaw(ctx)
+		body = m.renderCompareRaw(ctx, bodyRegion(region, identity))
 	}
 
 	var parts []string
@@ -65,23 +65,54 @@ func (m Model) renderCompare(region Region) string {
 	return regionStyle(region).Render(strings.Join(parts, "\n\n"))
 }
 
+// requestNumber returns the 1-based request number for r within the current run,
+// or the stored Sequence if r is from a prior run (e.g., a reference). The number is
+// a property of the request itself, not derived from UI position. When r has no
+// resolvable number it returns a neutral placeholder so callers keep the #NNN form.
+func (m Model) requestNumber(r model.Result) string {
+	if r.Sequence != 0 {
+		return fmt.Sprintf("#%03d", r.Sequence)
+	}
+	for i, res := range m.results {
+		if resultsEqual(res, r) {
+			return fmt.Sprintf("#%03d", i+1)
+		}
+	}
+	return "#??"
+}
+
+func requestTime(r model.Result) string {
+	if r.Timestamp.IsZero() {
+		return "(no time)"
+	}
+	return r.Timestamp.Format("15:04:05")
+}
+
 // renderComparisonIdentityBlock renders the orientation header. It shows the
-// baseline and, when present, the candidate. The same block is used by the
-// full Compare workspace and the collapsed preview, so the two never drift.
-func renderComparisonIdentityBlock(baseline, candidate *model.Result) string {
-	var b strings.Builder
+// baseline and, when present, the candidate, each annotated with its request
+// number and timestamp. The same block is used by the full Compare workspace
+// and the collapsed preview, so the two never drift.
+func (m Model) renderComparisonIdentityBlock(baseline, candidate *model.Result) string {
+	var parts []string
 	if baseline != nil {
-		b.WriteString(styleCompareMark.Render("◆ Baseline"))
-		b.WriteString("\n")
-		b.WriteString(styleMuted.Render(methodPath(*baseline)))
-		b.WriteString("\n\n")
+		parts = append(parts, m.renderIdentityLine("◆", "Baseline", *baseline))
 	}
 	if candidate != nil {
-		b.WriteString(styleCompareMark.Render("▶ Candidate"))
-		b.WriteString("\n")
-		b.WriteString(styleMuted.Render(methodPath(*candidate)))
+		parts = append(parts, m.renderIdentityLine("▶", "Candidate", *candidate))
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.Join(parts, "\n\n")
+}
+
+// renderIdentityLine renders one participant's marker, label, request number,
+// timestamp and method+path on two lines. Shared by the comparison identity
+// block and the preview drawer so the two presentations never diverge.
+func (m Model) renderIdentityLine(marker, label string, r model.Result) string {
+	var b strings.Builder
+	b.WriteString(styleCompareMark.Render(fmt.Sprintf("%s %s %s", marker, label, m.requestNumber(r))))
+	b.WriteString(styleMuted.Render(" · " + requestTime(r)))
+	b.WriteString("\n")
+	b.WriteString(styleMuted.Render(methodPath(r)))
+	return b.String()
 }
 
 func methodPath(result model.Result) string {
@@ -112,26 +143,44 @@ func renderCompareDiff(ctx CompareContext) string {
 
 func renderCompareHeaders(ctx CompareContext) string {
 	hdrs := ctx.Analysis.Headers
+
+	// Each section shares the same shape (title + per-entry lines); only the
+	// entry formatting differs between added/removed and changed.
+	sections := []struct {
+		title  string
+		render func() string
+	}{
+		{"ADDED HEADERS", func() string {
+			var sb strings.Builder
+			for _, e := range hdrs.Added {
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", styleFieldName.Render(e.Name), e.Value))
+			}
+			return sb.String()
+		}},
+		{"REMOVED HEADERS", func() string {
+			var sb strings.Builder
+			for _, e := range hdrs.Removed {
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", styleFieldName.Render(e.Name), e.Value))
+			}
+			return sb.String()
+		}},
+		{"CHANGED HEADERS", func() string {
+			var sb strings.Builder
+			for _, e := range hdrs.Changed {
+				sb.WriteString(fmt.Sprintf("  %s: %s → %s\n", styleFieldName.Render(e.Name), e.OldValue, e.NewValue))
+			}
+			return sb.String()
+		}},
+	}
+
 	var b strings.Builder
-	if len(hdrs.Added) > 0 {
-		b.WriteString(sectionLine("ADDED HEADERS", false))
-		for _, e := range hdrs.Added {
-			b.WriteString(fmt.Sprintf("  %s: %s\n", styleFieldName.Render(e.Name), e.Value))
+	for _, s := range sections {
+		body := s.render()
+		if body == "" {
+			continue
 		}
-		b.WriteString("\n")
-	}
-	if len(hdrs.Removed) > 0 {
-		b.WriteString(sectionLine("REMOVED HEADERS", false))
-		for _, e := range hdrs.Removed {
-			b.WriteString(fmt.Sprintf("  %s: %s\n", styleFieldName.Render(e.Name), e.Value))
-		}
-		b.WriteString("\n")
-	}
-	if len(hdrs.Changed) > 0 {
-		b.WriteString(sectionLine("CHANGED HEADERS", false))
-		for _, e := range hdrs.Changed {
-			b.WriteString(fmt.Sprintf("  %s: %s → %s\n", styleFieldName.Render(e.Name), e.OldValue, e.NewValue))
-		}
+		b.WriteString(sectionLine(s.title, false))
+		b.WriteString(body)
 		b.WriteString("\n")
 	}
 	if b.Len() == 0 {
@@ -140,7 +189,7 @@ func renderCompareHeaders(ctx CompareContext) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func renderCompareBody(ctx CompareContext) string {
+func (m Model) renderCompareBody(ctx CompareContext, region Region) string {
 	var b strings.Builder
 	b.WriteString(sectionLine("BASELINE BODY", false))
 	b.WriteString("\n")
@@ -149,23 +198,56 @@ func renderCompareBody(ctx CompareContext) string {
 	b.WriteString(sectionLine("CANDIDATE BODY", false))
 	b.WriteString("\n")
 	b.WriteString(indentBlock(ctx.Candidate.ResponseBody))
-	return b.String()
+	return withScrollHint(b.String(), m.inspectBodyOffset, region.Height)
 }
 
-func renderCompareRaw(ctx CompareContext) string {
+func (m Model) renderCompareRaw(ctx CompareContext, region Region) string {
 	var b strings.Builder
 	b.WriteString(sectionLine("BASELINE", false))
 	b.WriteString("\n")
-	b.WriteString(renderRawResult(ctx.Baseline))
+	b.WriteString(m.renderRawResult(ctx.Baseline))
 	b.WriteString("\n\n")
 	b.WriteString(sectionLine("CANDIDATE", false))
 	b.WriteString("\n")
-	b.WriteString(renderRawResult(ctx.Candidate))
-	return b.String()
+	b.WriteString(m.renderRawResult(ctx.Candidate))
+	return withScrollHint(b.String(), m.inspectBodyOffset, region.Height)
 }
 
-func renderRawResult(r model.Result) string {
+// withScrollHint clips content vertically (like scrollContent) and, when the
+// content overflows, appends a muted hint showing the current scroll position
+// on the final line so the operator knows the view is scrollable.
+func withScrollHint(content string, offset, height int) string {
+	if height < 1 {
+		height = 1
+	}
+	lines := strings.Split(content, "\n")
+	maxOffset := len(lines) - height
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if maxOffset == 0 {
+		return scrollContent(content, offset, height)
+	}
+	// Only show the hint when there is room for both content and the hint
+	// line; otherwise fall back to plain scrolling to avoid overflow.
+	if height < 2 {
+		return scrollContent(content, offset, height)
+	}
+	// Reserve the last row for the hint.
+	scrolled := scrollContent(content, offset, height-1)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	hint := fmt.Sprintf("↑/↓ scroll · %d/%d", offset+1, maxOffset+1)
+	return scrolled + "\n" + styleMuted.Render(hint)
+}
+
+func (m Model) renderRawResult(r model.Result) string {
 	var b strings.Builder
+	b.WriteString(fmt.Sprintf("  %s %s\n", styleFieldName.Render("Request:"), m.requestNumber(r)+" · "+requestTime(r)))
 	b.WriteString(fmt.Sprintf("  %s %d\n", styleFieldName.Render("Status:"), r.Status))
 	b.WriteString(fmt.Sprintf("  %s %s\n", styleFieldName.Render("Latency:"), formatDuration(r.Latency)))
 	b.WriteString(fmt.Sprintf("  %s %s\n", styleFieldName.Render("Method:"), r.RequestMethod))
@@ -182,6 +264,42 @@ func renderRawResult(r model.Result) string {
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// bodyRegion returns the vertical space available to the scrollable Body/Raw
+// views after the fixed identity header. It never returns a non-positive
+// height so the scroll helper always has valid bounds.
+func bodyRegion(region Region, identity string) Region {
+	h := region.Height - (strings.Count(identity, "\n") + 1) - 2
+	if h < 1 {
+		h = 1
+	}
+	return Region{Width: region.Width, Height: h}
+}
+
+// scrollContent clips content to height rows starting at the given scroll
+// offset (clamped to valid bounds). Horizontal width is applied by the
+// caller's region style; only vertical scrolling is performed here.
+func scrollContent(content string, offset, height int) string {
+	if height < 1 {
+		height = 1
+	}
+	lines := strings.Split(content, "\n")
+	if offset < 0 {
+		offset = 0
+	}
+	maxOffset := len(lines) - height
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	end := offset + height
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[offset:end], "\n")
 }
 
 func indentBlock(s string) string {

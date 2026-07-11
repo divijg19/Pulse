@@ -1,5 +1,7 @@
 # Comparison Constitution
 
+↩ [internal/tui/README.md](README.md) · [COMPARE_WORKFLOW.md](COMPARE_WORKFLOW.md)
+
 ## Purpose
 
 This document defines what Compare is, what it is not, what operator questions it answers, and the architectural boundaries that govern its implementation. It serves as the specification for the v0.10.x "Explain Comparisons" release.
@@ -159,7 +161,7 @@ current `m.results` slice to know what it is comparing.
 type CompareWorkspace struct {
     Baseline       *model.Result // current baseline (resolved value)
     Candidate      *model.Result // current candidate (resolved value)
-    PinnedBaseline *model.Result // persists across runs
+    Reference *model.Result // persists across runs
     State          CompareState
     View           CompareView
     Analysis       *ComparisonAnalysis
@@ -181,7 +183,7 @@ type CompareContext struct {
 
 `CompareWorkspace.Context()` resolves the workspace into a renderer-facing
 projection. The renderer never knows whether `Baseline` originated from the
-current session or a pinned baseline — it simply renders what it is given.
+current session or a reference — it simply renders what it is given.
 
 ### Workflow operations
 
@@ -190,17 +192,16 @@ Every transition is expressed through exactly one method on `CompareWorkspace`:
 | Operation | Effect |
 |-----------|--------|
 | `MarkBaseline(r)` | Establish r as baseline; enter `BaselineMarked`; clear candidate + analysis. |
-| `Unmark()` | Clear baseline + candidate; return to `Idle`. Pinned baseline preserved. |
+| `Unmark()` | Clear baseline + candidate; return to `Idle`. Reference preserved. |
 | `SelectCandidate(r)` | Establish r as candidate; enter `Comparing`; recompute analysis once. |
 | `ReplaceCandidate(r)` | Replace candidate; recompute analysis once. |
 | `ReplaceBaseline(r)` | Replace baseline; recompute analysis once. |
 | `Swap()` | Exchange baseline and candidate; recompute analysis (perspective changes, content deltas do not). |
-| `Clear()` | Reset baseline, candidate, state, analysis to zero; `Idle`. Pinned baseline preserved. |
-| `Exit()` | No mutation — preserve the entire comparison for resume. |
+| `Clear()` | Reset baseline, candidate, state, analysis to zero; `Idle`. Reference preserved. |
 | `NextView()` / `PrevView()` | Advance / retreat the active view, wrapping around. |
 
-Predicates replace ad-hoc enum checks: `IsIdle`, `HasBaseline`, `HasCandidate`,
-`IsComparing`, `HasPinnedBaseline`, `IsBaselineResult`, `IsCandidateResult`.
+Predicates replace ad-hoc enum checks: `HasBaseline`, `IsComparing`,
+`HasReference`, `IsBaselineResult`, `IsCandidateResult`.
 
 ### Analysis is computed exactly once per transition
 
@@ -213,7 +214,7 @@ renderers consume the immutable `*ComparisonAnalysis` and never recompute.
 ```
 Idle
   │
-  │  c on result (no PinnedBaseline)
+  │  c on result (no Reference)
   ▼
 BaselineMarked
   │
@@ -236,10 +237,10 @@ BaselineMarked
 ```
 
 Notes:
-- `x` (Clear) resets the workspace (Baseline, Candidate, State, Analysis). PinnedBaseline is preserved.
+- `x` (Clear) resets the workspace (Baseline, Candidate, State, Analysis). Reference is preserved.
 - `c` on the baseline result (in any state) clears the workspace — the same way `x` does.
 - `c` on a different result (in Comparing) replaces the candidate.
-- `c` with `PinnedBaseline` set (in Idle) immediately enters Compare, using the pinned result as the implicit baseline.
+- `c` with `Reference` set (in Idle) immediately enters Compare, using reference result as the implicit baseline.
 - `Esc` (Exit) performs no mutation; the operator resumes exactly where they left off.
 
 ---
@@ -316,7 +317,7 @@ This structure is the single source of truth for the renderer. The renderer rece
 | Regression coloring | Red for regressions, green for improvements, yellow for anomalies |
 | Workflow | Mark from Observe, swap, replace candidate, separate clear from exit, cross-run pinning |
 | Discoverability | Ribbon actions, active/marked/pinned markers in Observe list |
-| State model | ComparisonSession with lifecycle, Pinned flag for cross-run survival |
+| State model | CompareWorkspace with lifecycle, Reference for cross-run survival |
 
 ### Explicitly deferred (v1.0 or later)
 
@@ -396,7 +397,7 @@ maintainable. Nothing outside the Compare subsystem changes.
 Compare is no longer a modal or a temporary screen. It is a persistent
 workspace that evolves as the operator works:
 
-* **Idle** — no active comparison. A pinned baseline may still be displayed.
+* **Idle** — no active comparison. A reference may still be displayed.
 * **BaselineMarked** — a baseline is chosen; Observe shows a collapsed preview.
 * **Comparing** — both baseline and candidate are set; the workspace is live.
 
@@ -425,7 +426,7 @@ Every view renderer consumes the identical immutable `CompareContext`.
 
 ### State is always visible
 
-The operator never mentally tracks what is marked, pinned, baseline, candidate,
+The operator never mentally tracks what is marked, referenced, baseline, candidate,
 or resumable. The interface communicates it continuously via timeline markers
 (▶ Candidate, ◆ Baseline, ● Pinned) and the Compare identity header
 (`renderComparisonIdentityBlock`).
@@ -444,11 +445,14 @@ a `Model` value — a pointer receiver would cause an interface conversion panic
 | CompareWorkspace | Single source of truth for all comparison state; resolved `*model.Result` pointers |
 | CompareContext | Renderer-facing projection; immutable during a frame |
 | View-oriented rendering | Overview / Evidence / Diff / Headers / Body / Raw, bracket-navigable |
-| Collapsed preview | The preview **is** the Compare workspace with partial context — same renderer and identity block, plus verdict and an orientation/resume hint |
+| Collapsed preview | The preview **is** the Compare workspace with partial context — same renderer and identity block, plus verdict and a context-specific keybinding line (open / clear / swap / renounce) |
 | Resumable workspace | `Esc` preserves the workspace; `c` on the candidate (▶) re-enters Compare without disturbing the comparison |
-| Orientation at every width | Below 140 columns the status line reports the active comparison, so the operator never loses context |
+| Request identity | Every participant's identity header carries its request number (`#N`) and timestamp; the Raw view prints a `Request:` line with the same |
+| Persistence renounce | `x` outside Compare clears the active comparison (reference preserved); with only a reference it renounces the reference via `RenounceReference()` |
+| Scrollable bodies | Body and Raw views scroll through their full content; scroll position persists across view switches |
+| Orientation at every width | Below 140 columns the status line reports the active comparison (incl. `Reference · x renounces`), so the operator never loses context |
 | Workflow convergence | `c`, `s`, `x`, `Esc` each own exactly one meaning |
-| Terminology convergence | Mark / Pinned Baseline / Candidate / Compare / Swap / Clear / Exit / Resume |
+| Terminology convergence | Mark / Reference / Candidate / Compare / Swap / Clear / Exit / Resume |
 
 ---
 
@@ -460,7 +464,7 @@ a `Model` value — a pointer receiver would cause an interface conversion panic
 
 3. **This release does not add statistical or multi-sample analysis.** Every Comparison compares exactly two single-shot results.
 
-4. **This release does not implement a comparison history.** Sessions are in-memory only. Pinned baselines survive one startRun cycle but are not persisted to disk.
+4. **This release does not implement a comparison history.** Sessions are in-memory only. References survive one startRun cycle but are not persisted to disk.
 
 5. **This release does not change the Observe result list beyond adding comparison markers** (▶, ◆, ●).
 

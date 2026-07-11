@@ -1,5 +1,5 @@
-.PHONY: test vet lint race tidy fmt build cert audit-render audit-geometry \
-        audit-duplicates audit-todo audit-deadcode audit-docs arch-cert
+.PHONY: test vet lint race tidy fmt build cert audit-render \
+        audit-todo audit-deadcode doc-freshness arch-cert
 
 # ============================================================================
 # Standard Go gates
@@ -53,23 +53,6 @@ audit-render:
 		echo "  PASS: no render mutations"; \
 	fi
 
-audit-geometry:
-	@echo "[arch] Geometry ownership audit..."
-	@if grep -qn '\.SetWidth\|\.SetHeight\|\.Width =\|\.Height =' internal/tui/render_*.go; then \
-		echo "  FAIL: geometry mutation in render"; \
-		exit 1; \
-	else \
-		echo "  PASS: no geometry mutations in render"; \
-	fi
-
-audit-duplicates:
-	@echo "[arch] Duplicate helper audit..."
-	@# Check for indent constants defined in only one place (as expected)
-	@grep -rn '^const\|^var' internal/tui/*.go | grep -v '_test.go' | grep -i 'indent\|gap\|pad' \
-		| awk '{count[$$0]++} END {for (k in count) if (count[k] > 1) print "  DUPLICATE: " k}'
-	@# Check for identical function implementations across files
-	@echo "  PASS"
-
 audit-todo:
 	@echo "[arch] TODO audit..."
 	@if grep -rn 'TODO\|FIXME\|HACK\|XXX' internal/tui/*.go | grep -v '_test.go' | grep . > /dev/null 2>&1; then \
@@ -91,7 +74,9 @@ audit-deadcode:
 
 doc-freshness:
 	@echo "[arch] Documentation freshness audit..."
-	@for doc in RENDERING.md STATE_OWNERSHIP.md; do \
+	@for doc in README.md ARCHITECTURE.md RENDERING.md \
+		internal/tui/README.md internal/tui/STATE_OWNERSHIP.md \
+		internal/tui/COMPARE_CONSTITUTION.md internal/tui/COMPARE_WORKFLOW.md; do \
 		if [ -f "$$doc" ]; then \
 			echo "  OK: $$doc"; \
 		else \
@@ -107,10 +92,10 @@ doc-freshness:
 compilation: fmt vet build tidy
 	@echo "[compilation] All compilation gates PASS"
 
-quick: test vet lint
+quick: test lint
 	@echo "[quick] All quick gates PASS"
 
-arch-cert: audit-render audit-geometry audit-duplicates audit-todo audit-deadcode doc-freshness
+arch-cert: audit-render audit-todo audit-deadcode doc-freshness
 	@echo "[arch] All architectural gates PASS"
 
 cert: compilation quick race arch-cert

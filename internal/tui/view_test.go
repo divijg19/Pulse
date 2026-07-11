@@ -33,7 +33,6 @@ func TestView_Running(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
 	m.running = true
-	m.status = "RUNNING"
 	m.startedAt = time.Now().Add(-2 * time.Second)
 	m.elapsed = 2 * time.Second
 	m.results = []model.Result{
@@ -657,7 +656,6 @@ func TestRenderTimeline_RunningEmpty(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 24)
 	m.running = true
-	m.status = "RUNNING"
 
 	out := m.renderTimeline(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Timeline") {
@@ -702,7 +700,6 @@ func TestRenderLogs_RunningEmpty(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 24)
 	m.running = true
-	m.status = "RUNNING"
 
 	out := m.renderLogs(Region{Width: 94, Height: 20})
 	if !contains(t, out, "Logs") {

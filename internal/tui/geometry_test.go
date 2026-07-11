@@ -159,7 +159,7 @@ func TestPayloadGeometry_WidthConsistency(t *testing.T) {
 	m.shell.Resize(100, 30)
 	m.syncPayloadGeometry(100)
 
-	geo := m.payloadGeometry
+	geo := calculatePayloadGeometry(100)
 	bodyW := m.bodyInput.Width()
 	if bodyW+4 != geo.BodyWidth {
 		t.Fatalf("bodyInput.Width()+4 = %d, want %d (BodyWidth = %d)",
@@ -179,10 +179,10 @@ func TestPayloadGeometry_ResizeIncreasesWidth(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(80, 24)
 	m.syncPayloadGeometry(80)
-	narrow := m.payloadGeometry.BodyWidth
+	narrow := calculatePayloadGeometry(80).BodyWidth
 
 	m.syncPayloadGeometry(160)
-	wide := m.payloadGeometry.BodyWidth
+	wide := calculatePayloadGeometry(160).BodyWidth
 
 	if wide <= narrow {
 		t.Fatalf("BodyWidth at 160 (%d) must be > BodyWidth at 80 (%d)", wide, narrow)

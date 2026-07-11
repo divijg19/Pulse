@@ -58,8 +58,6 @@ type Model struct {
 	shell     Shell
 	workspace Workspace
 
-	payloadGeometry payloadGeometry
-
 	activeDomain     DomainType
 	methodIndex      int
 	requestField     int
@@ -79,7 +77,6 @@ type Model struct {
 	elapsed   time.Duration
 	cancel    context.CancelFunc
 	eventCh   <-chan model.Event
-	status    string
 	errMsg    string
 	summary   metrics.Summary
 
@@ -126,14 +123,12 @@ func NewModel() Model {
 	return Model{
 		shell:            NewShell(),
 		workspace:        NewWorkspace(),
-		payloadGeometry:  geo,
 		activeDomain:     DomainRequest,
 		methodIndex:      0,
 		requestField:     reqFieldURL,
 		urlInput:         url,
 		concurrencyInput: cc,
 		bodyInput:        body,
-		status:           "SYSTEM READY",
 	}
 }
 
@@ -148,7 +143,6 @@ func (m *Model) syncPayloadGeometry(contentWidth int) {
 		m.headers[i].Key.Width = geo.KeyWidth
 		m.headers[i].Value.Width = geo.ValueWidth
 	}
-	m.payloadGeometry = geo
 }
 
 func workspaceContentWidth(shellWidth, shellHeight int) int {
@@ -199,6 +193,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case resultMsg:
 		following := m.isFollowingTail()
 		if len(m.results) < 10000 {
+			msg.Result.Sequence = len(m.results) + 1
 			m.results = append(m.results, msg.Result)
 		}
 		m.summary = metrics.Compute(m.results, m.elapsed)
@@ -213,13 +208,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.elapsed = time.Since(m.startedAt)
 		m.running = false
 		m.errMsg = "ERROR: " + strings.ToUpper(msg.Err)
-		m.status = "ERROR: " + strings.ToUpper(msg.Err)
 		return m, nil
 	case runFinishedMsg:
 		m.elapsed = time.Since(m.startedAt)
-		if m.running {
-			m.status = "COMPLETE"
-		}
 		m.running = false
 		m.errMsg = ""
 		if m.cancel != nil {
@@ -234,7 +225,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case error:
 		m.errMsg = strings.ToUpper(msg.Error())
-		m.status = "ERROR: " + strings.ToUpper(msg.Error())
 		return m, nil
 	}
 
@@ -592,7 +582,6 @@ func (m *Model) focusPayloadBody() {
 	m.bodyInput.Focus()
 }
 
-// computeComparisonAnalysis runs the Comparison Engine using the session's
 // handleMark applies the "Mark" verb to the result at the current selection.
 // It is the only place the c key performs workflow transitions. Every branch
 // routes through a single CompareWorkspace operation; this method never
@@ -606,8 +595,8 @@ func (m Model) handleMark() (tea.Model, tea.Cmd) {
 
 	switch {
 	case w.State == CompareIdle:
-		if w.HasPinnedBaseline() {
-			w.Baseline = w.PinnedBaseline
+		if w.HasReference() {
+			w.Baseline = w.Reference
 			w.SelectCandidate(r)
 			m.workspace.mode = modeCompare
 			m.inspectBodyOffset = 0
@@ -628,7 +617,7 @@ func (m Model) handleMark() (tea.Model, tea.Cmd) {
 		}
 	case w.State == CompareComparing:
 		if w.IsBaselineResult(r) {
-			// c on the baseline clears the workspace (pinned baseline survives).
+			// c on the baseline clears the workspace (reference survives).
 			w.Clear()
 			m.workspace.mode = modeObserve
 			m.inspectBodyOffset = 0
@@ -642,6 +631,20 @@ func (m Model) handleMark() (tea.Model, tea.Cmd) {
 			m.inspectBodyOffset = 0
 		}
 	}
+	return m, nil
+}
+
+// handleRenounceOrClearKey implements the context-sensitive x binding:
+// it clears the active comparison (keeping the reference), or renounces
+// the reference when only a reference request remains.
+func (m Model) handleRenounceOrClearKey() (tea.Model, tea.Cmd) {
+	w := &m.workspace.compare
+	if w.IsComparing() || w.HasBaseline() {
+		w.Clear()
+	} else if w.HasReference() {
+		w.RenounceReference()
+	}
+	m.inspectBodyOffset = 0
 	return m, nil
 }
 
@@ -688,6 +691,8 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "c":
 		return m.handleMark()
+	case "x":
+		return m.handleRenounceOrClearKey()
 	case "e":
 		m.workspace.dialog = dialogRequest
 		m.activeDomain = DomainRequest
@@ -723,13 +728,11 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	if err != nil {
 		errStr := strings.ToUpper(err.Error())
 		m.errMsg = errStr
-		m.status = errStr
 		return m, nil
 	}
 
 	if len(validated.Body) > maxTUIBodyBytes {
 		m.errMsg = "BODY TOO LARGE (MAX 1MB)"
-		m.status = "BODY TOO LARGE (MAX 1MB)"
 		return m, nil
 	}
 
@@ -741,16 +744,16 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.workspace.mode = modeObserve
 	m.workspace.dialog = dialogNone
 
-	// Pin the marked baseline so it survives the run; then reset the active
-	// comparison. The pinned baseline is the only piece of comparison state
-	// that crosses a startRun boundary.
-	var pinned *model.Result
+	// Carry forward the reference request so it survives the run; then reset the
+	// active comparison. The reference is the only piece of comparison state that
+	// crosses a startRun boundary.
+	var ref *model.Result
 	if m.workspace.compare.HasBaseline() {
-		p := *m.workspace.compare.Baseline
-		pinned = &p
+		r := *m.workspace.compare.Baseline
+		ref = &r
 	}
 	m.workspace.compare = NewCompareWorkspace()
-	m.workspace.compare.PinnedBaseline = pinned
+	m.workspace.compare.Reference = ref
 	m.running = true
 	m.cancel = cancel
 	m.eventCh = eventCh
@@ -759,7 +762,6 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	m.results = nil
 	m.selected = 0
 	m.errMsg = ""
-	m.status = "RUNNING"
 	m.summary = metrics.Summary{}
 	m.inspectBodyOffset = 0
 	m.inspectZone = zoneWhatHappened
@@ -789,8 +791,8 @@ func (m Model) isFollowingTail() bool {
 func (m Model) cancelRun() Model {
 	if m.running && m.cancel != nil {
 		m.cancel()
-		m.status = "CANCELLED"
 		m.running = false
+		m.cancel = nil
 		m.blurAll()
 	}
 	return m

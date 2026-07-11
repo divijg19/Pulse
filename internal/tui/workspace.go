@@ -49,7 +49,7 @@ var compareViewNames = [compareViewCount]string{
 
 // CompareContext is the renderer-facing projection of a comparison. It contains
 // only presentation data. The renderer never knows whether Baseline originated
-// from the current session or a pinned baseline — it simply renders what it is
+// from the current session or a reference request — it simply renders what it is
 // given. Workflow details remain inside CompareWorkspace.
 type CompareContext struct {
 	Baseline  model.Result
@@ -61,42 +61,36 @@ type CompareContext struct {
 // for workflow transitions; renderers never mutate it. Every transition is
 // expressed through exactly one operation method below.
 type CompareWorkspace struct {
-	Baseline       *model.Result // current baseline (resolved value)
-	Candidate      *model.Result // current candidate (resolved value)
-	PinnedBaseline *model.Result // persists across runs
-	State          CompareState
-	View           CompareView
-	Analysis       *ComparisonAnalysis
+	Baseline  *model.Result // current baseline (resolved value)
+	Candidate *model.Result // current candidate (resolved value)
+	Reference *model.Result // canonical reference request (survives runs)
+	State     CompareState
+	View      CompareView
+	Analysis  *ComparisonAnalysis
 }
 
 // NewCompareWorkspace returns an empty CompareWorkspace.
 func NewCompareWorkspace() CompareWorkspace {
 	return CompareWorkspace{
-		Baseline:       nil,
-		Candidate:      nil,
-		PinnedBaseline: nil,
-		State:          CompareIdle,
-		View:           CompareViewOverview,
-		Analysis:       nil,
+		Baseline:  nil,
+		Candidate: nil,
+		Reference: nil,
+		State:     CompareIdle,
+		View:      CompareViewOverview,
+		Analysis:  nil,
 	}
 }
 
 // --- Predicates ------------------------------------------------------------
 
-// IsIdle reports whether no comparison workflow is active.
-func (w CompareWorkspace) IsIdle() bool { return w.State == CompareIdle }
-
 // HasBaseline reports whether a baseline result is available.
 func (w CompareWorkspace) HasBaseline() bool { return w.Baseline != nil }
-
-// HasCandidate reports whether a candidate result is available.
-func (w CompareWorkspace) HasCandidate() bool { return w.Candidate != nil }
 
 // IsComparing reports whether both baseline and candidate are set.
 func (w CompareWorkspace) IsComparing() bool { return w.State == CompareComparing }
 
-// HasPinnedBaseline reports whether a pinned baseline survives across runs.
-func (w CompareWorkspace) HasPinnedBaseline() bool { return w.PinnedBaseline != nil }
+// HasReference reports whether a reference request survives across runs.
+func (w CompareWorkspace) HasReference() bool { return w.Reference != nil }
 
 // IsBaselineResult reports whether r is the current baseline.
 func (w CompareWorkspace) IsBaselineResult(r model.Result) bool {
@@ -122,8 +116,8 @@ func (w *CompareWorkspace) MarkBaseline(r model.Result) {
 	w.View = CompareViewOverview
 }
 
-// Unmark clears the baseline and any candidate, returning to Idle. The pinned
-// baseline is preserved.
+// Unmark clears the baseline and any candidate, returning to Idle. The
+// reference request is preserved.
 func (w *CompareWorkspace) Unmark() {
 	w.Baseline = nil
 	w.Candidate = nil
@@ -165,7 +159,7 @@ func (w *CompareWorkspace) Swap() {
 }
 
 // Clear ends the active comparison session. Baseline, candidate and analysis
-// are reset to zero; the pinned baseline survives.
+// are reset to zero; the reference survives.
 func (w *CompareWorkspace) Clear() {
 	w.Baseline = nil
 	w.Candidate = nil
@@ -173,9 +167,11 @@ func (w *CompareWorkspace) Clear() {
 	w.Analysis = nil
 }
 
-// Exit preserves the entire comparison so the operator can resume exactly where
-// they left off. It performs no state mutation.
-func (w *CompareWorkspace) Exit() {}
+// RenounceReference clears the reference request, ending its persistence across runs.
+// Only this operation removes the reference.
+func (w *CompareWorkspace) RenounceReference() {
+	w.Reference = nil
+}
 
 // NextView advances to the next comparison view, wrapping around.
 func (w *CompareWorkspace) NextView() {

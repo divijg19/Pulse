@@ -82,10 +82,7 @@ func (m Model) renderTimelineRow(index int, result model.Result, maxLatency time
 func (m Model) renderLogs(region Region) string {
 	return m.renderResultList(region, "Logs · Sequence", "No events captured yet...",
 		func(result model.Result, index int, selected bool, width int) string {
-			stamp := result.Timestamp.Format("15:04:05")
-			if result.Timestamp.IsZero() {
-				stamp = "--:--:--"
-			}
+			stamp := requestTime(result)
 			method := m.effectiveMethod(result)
 			reqURL := m.effectiveURL(result)
 
@@ -101,7 +98,7 @@ func (m Model) renderLogs(region Region) string {
 }
 
 // resultCompareMarker returns the timeline marker for the result at index,
-// applying deterministic priority: Candidate > Baseline > Pinned. Exactly one
+// applying deterministic priority: Candidate > Baseline > Reference. Exactly one
 // marker is returned per entry.
 func (m Model) resultCompareMarker(index int) string {
 	w := m.workspace.compare
@@ -113,7 +110,7 @@ func (m Model) resultCompareMarker(index int) string {
 		return "▶ "
 	case w.Baseline != nil && resultsEqual(*w.Baseline, m.results[index]):
 		return "◆ "
-	case w.PinnedBaseline != nil && resultsEqual(*w.PinnedBaseline, m.results[index]):
+	case w.Reference != nil && resultsEqual(*w.Reference, m.results[index]):
 		return "● "
 	}
 	return ""

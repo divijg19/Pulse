@@ -1136,9 +1136,6 @@ func TestV092Interaction_CtrlXFromDialog(t *testing.T) {
 	if m2.running {
 		t.Fatal("ctrl+X from Request dialog should cancel the run")
 	}
-	if m2.status != "CANCELLED" {
-		t.Fatalf("ctrl+X from Request dialog should set status to CANCELLED, got %q", m2.status)
-	}
 }
 
 // Regression: editable fields type h/j/k/l; body up/down stay in body.

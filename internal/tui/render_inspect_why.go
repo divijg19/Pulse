@@ -7,7 +7,9 @@ import (
 	"github.com/divijg19/Pulse/internal/model"
 )
 
-var promotedKeys = map[string]bool{
+// promotedHeaderKeys are the headers surfaced prominently in the summary and
+// therefore suppressed from the full header list in the WHY view.
+var promotedHeaderKeys = map[string]bool{
 	"Content-Type":     true,
 	"Content-Encoding": true,
 	"Content-Length":   true,
@@ -29,7 +31,7 @@ func (m Model) renderInspectWhy(result model.Result, maxLines int) string {
 		sort.Strings(keys)
 		lines := 0
 		for _, key := range keys {
-			if promotedKeys[key] {
+			if promotedHeaderKeys[key] {
 				continue
 			}
 			if maxLines > 0 && lines >= maxLines {
