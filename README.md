@@ -36,6 +36,7 @@ Design principles:
 - Optional browser WebUI started with `pulse web`.
 - Concurrent HTTP execution with immediate result streaming.
 - Payload editor for request headers and raw body.
+- Export captured results to JSON from the terminal UI with `w`.
 - Single deployable Go binary with embedded frontend assets.
 
 ## Core Experience
@@ -45,6 +46,7 @@ Design principles:
 3. Run and watch each request stream in real time.
 4. Select any result and press Enter to inspect full response details.
 5. Press `c` to mark a result, select another, and press `c` again to compare investigations (verdict, why, evidence, details).
+6. Press `w` to export all captured results to a timestamped JSON file in the current directory.
 
 ## Documentation Map
 
@@ -54,6 +56,8 @@ Design principles:
 | [RENDERING.md](RENDERING.md) | TUI rendering architecture, layout, render lifecycle, rendering constitution |
 | [internal/tui/README.md](internal/tui/README.md) | TUI package guide, file layout, navigation |
 | [internal/tui/STATE_OWNERSHIP.md](internal/tui/STATE_OWNERSHIP.md) | Model field ownership, lifetime, mutation rules |
+| [internal/tui/COMPARE_CONSTITUTION.md](internal/tui/COMPARE_CONSTITUTION.md) | Compare architecture: state model, analysis, rendering invariants |
+| [internal/tui/COMPARE_WORKFLOW.md](internal/tui/COMPARE_WORKFLOW.md) | Compare UX: keybindings, lifecycle, persistence, preview behaviour |
 | [web/README.md](web/README.md) | Frontend-only development details |
 
 Every document answers exactly one question. No concept is explained
@@ -103,6 +107,16 @@ Default WebUI address: http://localhost:8080
 ./pulse web
 ```
 
+### Option C: Run with Docker
+
+Build and run the container image (the frontend is built inside the image):
+
+```bash
+docker build -t pulse .
+docker run --rm -it pulse            # terminal UI
+docker run --rm -p 8080:8080 pulse web # browser WebUI on :8080
+```
+
 ## Endpoints
 
 - GET /health
@@ -137,11 +151,10 @@ curl -X POST http://localhost:8080/run \
 
 ## CI/CD
 
-- CI builds frontend, runs backend tests, and verifies server build.
-- Release runs on `v*` tags and manual dispatch.
-- Artifacts are versioned dynamically, for example:
-  - `pulse-v0.6.3-linux-amd64`
-  - `pulse-v0.6.3-windows-amd64.exe`
+- `main` CI builds the frontend and runs `gofmt`, `goimports`, `staticcheck`, `golangci-lint`, `go vet`, and the test suite (race + coverage).
+- `v*` tags trigger the Release workflow: a matrix job builds and publishes raw binaries with sha256 checksums to GitHub Releases, and GoReleaser (with its release step disabled) builds and pushes a versioned Docker image to GHCR.
+
+Check the installed version with `pulse version`.
 
 ## License
 

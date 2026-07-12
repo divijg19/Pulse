@@ -276,49 +276,15 @@ No renderer performs another renderer's work. No rendering logic lives in `View(
 
 ## Compare Rendering
 
-The Compare surface is a persistent **workspace**, not a diff screen. Its
-rendering is governed by the same purity rules as every other surface.
+The Compare surface is a persistent **workspace**, not a diff screen, and its
+rendering is governed by the same purity rules as every other surface: a single
+`CompareContext` is built once per transition and fed immutably to the view
+renderers; no view renderer performs analysis or mutates workflow state.
 
-### Context projection
-
-`renderCompare()` builds a `CompareContext` once from the active
-`CompareWorkspace`, then dispatches to a view renderer based on
-`CompareWorkspace.View`. No view renderer performs analysis or mutates
-workflow state.
-
-```
-renderCompare(region)
-   │
-   ├─ IsComparing()?  → build CompareContext (w.Context())
-   │                     └─ dispatch on w.View
-   │                          ├─ CompareViewOverview  renderCompareOverview
-   │                          ├─ CompareViewEvidence  renderCompareEvidence
-   │                          ├─ CompareViewDiff      renderCompareDiff
-   │                          ├─ CompareViewHeaders   renderCompareHeaders
-   │                          ├─ CompareViewBody      renderCompareBody
-   │                          └─ CompareViewRaw       renderCompareRaw
-   │
-   └─ otherwise → collapsed preview (Pinned Baseline, or "No comparison active")
-```
-
-### Single identity renderer
-
-The collapsed baseline preview (shown in the Observe context panel and when only
-a pinned baseline exists) and the full Compare workspace share
-`renderComparisonIdentityBlock`. There is exactly one implementation; the two
-never drift.
-
-### Views
-
-The workspace presents six views — Overview, Evidence, Diff, Headers, Body, Raw
-— in a fixed order defined by the `CompareView` enum. Bracket navigation
-(`[` / `]`) and `Tab` / `Shift+Tab` only switch the active view; they never
-trigger recomputation. The same immutable `CompareContext` feeds every view.
-
-### Analysis ownership
-
-`ComparisonAnalysis` is produced exactly once per workflow transition by
-`CompareWorkspace.refreshAnalysis()`. It is never computed during rendering.
+The Compare rendering contract — context projection, the single identity
+renderer, the six views, and analysis ownership — is specified in
+[internal/tui/COMPARE_CONSTITUTION.md](internal/tui/COMPARE_CONSTITUTION.md).
+This document covers only the rendering-purity enforcement below.
 
 ---
 
@@ -375,3 +341,5 @@ and auditable.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, components, APIs, engine, concurrency |
 | [internal/tui/README.md](internal/tui/README.md) | TUI package guide, file layout, navigation |
 | [internal/tui/STATE_OWNERSHIP.md](internal/tui/STATE_OWNERSHIP.md) | Model field ownership, lifetime, mutation rules |
+| [internal/tui/COMPARE_CONSTITUTION.md](internal/tui/COMPARE_CONSTITUTION.md) | Compare architecture: state model, analysis, rendering invariants |
+| [internal/tui/COMPARE_WORKFLOW.md](internal/tui/COMPARE_WORKFLOW.md) | Compare UX: keybindings, lifecycle, persistence, preview behaviour |

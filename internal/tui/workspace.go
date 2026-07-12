@@ -92,6 +92,18 @@ func (w CompareWorkspace) IsComparing() bool { return w.State == CompareComparin
 // HasReference reports whether a reference request survives across runs.
 func (w CompareWorkspace) HasReference() bool { return w.Reference != nil }
 
+func (w CompareWorkspace) KeybindingHints() string {
+	switch {
+	case w.IsComparing():
+		return "c on ▶ open · x clear · s swap · [ ] view"
+	case w.HasBaseline():
+		return "c compare · x clear"
+	case w.HasReference():
+		return "c compare · x renounce"
+	}
+	return ""
+}
+
 // IsBaselineResult reports whether r is the current baseline.
 func (w CompareWorkspace) IsBaselineResult(r model.Result) bool {
 	return w.Baseline != nil && resultsEqual(*w.Baseline, r)

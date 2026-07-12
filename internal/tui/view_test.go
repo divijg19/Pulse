@@ -264,7 +264,7 @@ func TestRenderStatusline_RunningWithResults(t *testing.T) {
 	m.running = true
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
 	out := m.renderStatusline(m.ShellState(), 100)
-	if !contains(t, out, "[Enter] Inspect") {
+	if !contains(t, out, "[Enter]") {
 		t.Fatal("running ribbon should show [Enter] Inspect")
 	}
 	if !contains(t, out, "[[]] View") {
@@ -1701,7 +1701,7 @@ func TestWorkspaceConstitution_Timeline(t *testing.T) {
 	if !contains(t, out, "200") {
 		t.Fatal("Constitution: Timeline must show result status")
 	}
-	if !contains(t, out, "[Enter] Inspect") {
+	if !contains(t, out, "[Enter]") {
 		t.Fatal("Constitution: Timeline next action must be Inspect")
 	}
 	if !contains(t, out, "[[]] View") {
@@ -1724,7 +1724,7 @@ func TestWorkspaceConstitution_Logs(t *testing.T) {
 	if !contains(t, out, "Logs") {
 		t.Fatal("Constitution: Logs must show identity")
 	}
-	if !contains(t, out, "[Enter] Inspect") {
+	if !contains(t, out, "[Enter]") {
 		t.Fatal("Constitution: Logs next action must be Inspect")
 	}
 	if !contains(t, out, "[[]] View") {

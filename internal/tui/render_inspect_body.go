@@ -34,10 +34,19 @@ func (m Model) renderInspectBody(result model.Result, maxLines, width int) strin
 	display := renderBodyPreview(body, maxLines+m.inspectBodyOffset)
 	lines := splitLines(display, width)
 
-	start := m.inspectBodyOffset
-	if start > len(lines) {
-		start = len(lines)
+	offset := m.inspectBodyOffset
+	if offset < 0 {
+		offset = 0
 	}
+	maxOffset := len(lines) - maxLines
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	start := offset
 	end := start + maxLines
 	if end > len(lines) {
 		end = len(lines)

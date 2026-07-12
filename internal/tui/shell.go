@@ -43,6 +43,7 @@ const (
 	ActionCompare
 	ActionClear
 	ActionSwap
+	ActionExport
 )
 
 // Action is a behavioral intent -- not a presentation object.
@@ -109,6 +110,7 @@ var actionBindings = map[ActionID]actionBinding{
 	ActionCompare:           {"c", "Mark Baseline", NavigationCategory, PriorityLow},
 	ActionClear:             {"x", "Clear Comparison", ApplicationCategory, PriorityHigh},
 	ActionSwap:              {"s", "Swap", NavigationCategory, PriorityMedium},
+	ActionExport:            {"w", "Export", OperationCategory, PriorityMedium},
 }
 
 // Shell is the permanent outer boundary of Pulse. It owns orientation,

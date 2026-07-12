@@ -70,6 +70,7 @@ func (m Model) Actions() []Action {
 			{ActionClear, ApplicationCategory, true},
 			{ActionSwap, NavigationCategory, true},
 			{ActionSwitchView, NavigationCategory, true},
+			{ActionExport, OperationCategory, len(m.results) > 0},
 			{ActionBack, ApplicationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
@@ -78,6 +79,7 @@ func (m Model) Actions() []Action {
 			{ActionZoneNext, NavigationCategory, true},
 			{ActionZoneScroll, NavigationCategory, true},
 			{ActionCompare, NavigationCategory, true},
+			{ActionExport, OperationCategory, true},
 			{ActionBack, ApplicationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
@@ -90,6 +92,7 @@ func (m Model) Actions() []Action {
 			{ActionSelect, NavigationCategory, true},
 			{ActionInspect, NavigationCategory, true},
 			{ActionSwitchView, NavigationCategory, true},
+			{ActionExport, OperationCategory, len(m.results) > 0},
 			{ActionCancel, OperationCategory, true},
 		}
 	case !m.running && len(m.results) == 0:
@@ -105,6 +108,7 @@ func (m Model) Actions() []Action {
 			{ActionSwitchView, NavigationCategory, true},
 			{ActionConfigureRequest, ConfigurationCategory, true},
 			{ActionRun, OperationCategory, true},
+			{ActionExport, OperationCategory, true},
 			{ActionQuit, ApplicationCategory, true},
 		}
 	}
@@ -291,6 +295,8 @@ func renderInteractionStatus(m Model) string {
 	switch {
 	case m.errMsg != "":
 		return m.errMsg
+	case m.statusMsg != "":
+		return styleAccent.Render(m.statusMsg)
 	case m.workspace.dialog == dialogRequest:
 		return "Editing"
 	case m.workspace.dialog == dialogConfirmQuit:

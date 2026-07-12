@@ -101,7 +101,7 @@ func newRequestPayloadModel() Model {
 	m.headers[0].Value.SetValue("application/json")
 	m.headers[1].Key.SetValue("Authorization")
 	m.headers[1].Value.SetValue("Bearer tok-f8x92k")
-	m.bodyInput.SetValue(`{"name":"pulse","version":"0.7.9"}`)
+	m.bodyInput.SetValue(`{"name":"pulse","version":"1.0.0"}`)
 	return m
 }
 

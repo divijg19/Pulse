@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	dir := "tmp/v080"
+	dir := "tmp/pulse-audit"
 	if len(os.Args) > 1 {
 		dir = os.Args[1]
 	}

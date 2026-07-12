@@ -1,0 +1,24 @@
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - unused
+    - staticcheck
+    - misspell
+    - unconvert
+    - unparam
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - unparam
+        - staticcheck
+  max-issues-per-linter: 0
+  max-same-issues: 0

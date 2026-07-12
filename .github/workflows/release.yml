@@ -8,10 +8,11 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
-  release:
-    name: Build and Publish Release
+  binaries:
+    name: Build and Publish Binaries
     runs-on: ubuntu-latest
     env:
       FILE_NAME: ""
@@ -55,11 +56,11 @@ jobs:
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-          # If triggered by a tag (v0.6.3), use it. Otherwise, fallback to 'dev'.
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
         run: |
           FILE_NAME="pulse-${VERSION}-${{ matrix.suffix }}"
-          go build -ldflags="-s -w" -o $FILE_NAME ./cmd/pulse
+          COMMIT=$(git rev-parse --short HEAD)
+          go build -ldflags="-s -w -X github.com/divijg19/Pulse/internal/version.Version=${VERSION} -X github.com/divijg19/Pulse/internal/version.Commit=${COMMIT}" -o $FILE_NAME ./cmd/pulse
           echo "FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
 
       - name: Generate checksum
@@ -69,11 +70,55 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          # Label the release exactly with the tag version (no project prefix)
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           files: |
             ${{ env.FILE_NAME }}
             ${{ env.FILE_NAME }}.sha256
-          tag_name: ${{ github.ref_name }}
           append_body: true
           fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    name: Build and Publish Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser (Docker Publish Only)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          # The GitHub Release step is disabled in .goreleaser.yml
+          # (release.disable: true) so GoReleaser only builds and publishes
+          # the Docker image, avoiding conflict with the manual binaries release.
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

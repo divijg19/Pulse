@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-and-test:
     name: Build, Test, and Verify Embed
     runs-on: ubuntu-latest
     steps:
@@ -42,3 +42,39 @@ jobs:
 
       - name: Build backend (verify embed)
         run: go build -v ./cmd/pulse
+
+  lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Check gofmt
+        run: |
+          out=$(gofmt -l internal/ cmd/ scripts/)
+          if [ -n "$out" ]; then
+            echo "gofmt issues in:"; echo "$out"; exit 1
+          fi
+
+      - name: Check goimports
+        run: |
+          out=$(go run golang.org/x/tools/cmd/goimports@latest -l internal/ cmd/ scripts/)
+          if [ -n "$out" ]; then
+            echo "goimports issues in:"; echo "$out"; exit 1
+          fi
+
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      - name: golangci-lint
+        # Run via `go run` so golangci-lint is compiled with the project's Go
+        # toolchain (the prebuilt action binary is built with an older Go and
+        # refuses to lint a module targeting a newer Go).
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
