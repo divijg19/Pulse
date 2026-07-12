@@ -8,6 +8,7 @@ Pulse has two user-facing entrypoints:
 
 - `pulse`: canonical terminal UI.
 - `pulse web`: embedded browser WebUI server.
+- `pulse version`: prints the build version and commit.
 
 Pulse has two execution planes:
 
@@ -181,12 +182,13 @@ Result payload implications:
 - `pulse web` serves embedded frontend assets; no separate runtime static server required.
 - Release artifacts are versioned by tag and target tuple.
 
-Release naming contract:
+Release artifacts (raw binaries, published by the Release workflow's matrix job; `install.sh` downloads these directly):
 
 - `pulse-${VERSION}-linux-amd64`
 - `pulse-${VERSION}-windows-amd64.exe`
 - `pulse-${VERSION}-mac-amd64`
 - `pulse-${VERSION}-mac-arm64`
+- Container image: `ghcr.io/divijg19/pulse:${VERSION}`
 
 ## Repository Structure
 
@@ -196,11 +198,14 @@ Pulse/
 ├── cmd/pulse/             # canonical CLI/TUI entrypoint + embedded WebUI assets
 ├── internal/api/          # request validation + SSE HTTP handlers
 ├── internal/engine/       # concurrent HTTP execution
+├── internal/export/       # result export to JSON
+├── internal/model/        # DTO contracts
 ├── internal/runconfig/    # shared request validation
 ├── internal/server/       # reusable WebUI server startup
 ├── internal/stream/       # pub/sub hub for SSE fan-out
 ├── internal/tui/          # terminal UI
-├── internal/model/        # DTO contracts
+├── internal/version/      # build version metadata
+├── scripts/audit/         # TUI surface capture tool
 ├── web/                   # SolidJS frontend source
 └── .github/workflows/     # CI and release pipelines
 ```
@@ -219,3 +224,5 @@ See [RENDERING.md](RENDERING.md).
 | [RENDERING.md](RENDERING.md) | TUI rendering architecture, layout, render lifecycle, constitution |
 | [internal/tui/README.md](internal/tui/README.md) | TUI package guide, file layout, navigation |
 | [internal/tui/STATE_OWNERSHIP.md](internal/tui/STATE_OWNERSHIP.md) | Model field ownership, lifetime, mutation rules |
+| [internal/tui/COMPARE_CONSTITUTION.md](internal/tui/COMPARE_CONSTITUTION.md) | Compare architecture: state model, analysis, rendering invariants |
+| [internal/tui/COMPARE_WORKFLOW.md](internal/tui/COMPARE_WORKFLOW.md) | Compare UX: keybindings, lifecycle, persistence, preview behaviour |

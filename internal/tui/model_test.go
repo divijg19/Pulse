@@ -3,6 +3,7 @@ package tui
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -850,6 +851,34 @@ func TestInspect_QuitOpensConfirm(t *testing.T) {
 	m = updated.(Model)
 	if m.workspace.dialog != dialogConfirmQuit {
 		t.Fatal("q from inspect should open confirm dialog")
+	}
+}
+
+func TestObserve_ExportKeySetsStatus(t *testing.T) {
+	m := NewModel()
+	m.results = []model.Result{{Status: 200, Latency: 5 * time.Millisecond}}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(Model)
+	if m.statusMsg == "" {
+		t.Fatal("w should set a status message after export")
+	}
+	if !strings.Contains(m.statusMsg, "EXPORTED") {
+		t.Fatalf("status should report export success, got %q", m.statusMsg)
+	}
+	// The export writes to the current directory; clean up the artifact.
+	if idx := strings.Index(m.statusMsg, "→ "); idx >= 0 {
+		_ = os.Remove(strings.TrimSpace(m.statusMsg[idx+len("→ "):]))
+	}
+}
+
+func TestObserve_ExportKeyEmptyResults(t *testing.T) {
+	m := NewModel()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(Model)
+	if m.statusMsg != "NOTHING TO EXPORT" {
+		t.Fatalf("empty results should report nothing to export, got %q", m.statusMsg)
 	}
 }
 

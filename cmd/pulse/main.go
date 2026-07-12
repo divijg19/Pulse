@@ -12,6 +12,7 @@ import (
 
 	"github.com/divijg19/Pulse/internal/server"
 	"github.com/divijg19/Pulse/internal/tui"
+	"github.com/divijg19/Pulse/internal/version"
 )
 
 //go:embed static/*
@@ -31,6 +32,9 @@ func run(args []string) error {
 	switch args[0] {
 	case "web":
 		return runWeb(args[1:])
+	case "version", "-v", "--version":
+		fmt.Printf("pulse %s (%s)\n", version.Version, version.Commit)
+		return nil
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -101,13 +105,14 @@ func displayURL(addr string) string {
 }
 
 func printUsage() {
-	fmt.Print(`Pulse
+	fmt.Printf(`Pulse %s
 
 Usage:
   pulse                 Start the canonical terminal UI
   pulse tui             Start the canonical terminal UI
   pulse web [--addr :8080]
                         Start the browser WebUI
+  pulse version         Show version information
   pulse help            Show this help
-`)
+`, version.Version)
 }

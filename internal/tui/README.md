@@ -98,10 +98,12 @@ Every user interaction flows through a single `Update()` method:
 tea.Msg → Model.Update()
   ├─ tea.WindowSizeMsg → resize shell, sync geometry
   ├─ tea.KeyMsg → dispatch to workspace key handler
-  │    ├─ mode keys (Enter, Esc) → transition between ready and observe
-  │    ├─ view keys (Tab) → switch between timeline and logs
-  │    ├─ dialog keys (e, i, c, q) → open/close dialogs
-  │    └─ navigation keys (up, down, left, right) → move within surfaces
+   │    ├─ Enter → open Inspect (from the Observe result list)
+   │    ├─ [ ] → switch Timeline / Logs view (Observe)
+   │    ├─ Ctrl+R → run · Ctrl+X → cancel
+   │    ├─ dialog keys (e configure, c compare, w export, q quit)
+   │    ├─ Tab / Shift+Tab → switch field or zone (dialog / inspect / compare)
+   │    └─ navigation keys (up/k, down/j, pgup, pgdown) → move within surfaces
   ├─ resultMsg → append result to results list
   ├─ tickMsg → update elapsed timer
   └─ runFinishedMsg → finalize run, compute summary

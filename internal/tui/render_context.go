@@ -46,14 +46,7 @@ func (m Model) renderComparePreview(region Region) string {
 	// Context-specific keybindings make the next action obvious without leaving
 	// the drawer, including how to renounce a reference.
 	b.WriteString("\n\n")
-	switch {
-	case w.IsComparing():
-		b.WriteString(styleMuted.Render("c on ▶ open · x clear · s swap · [ ] view"))
-	case w.HasBaseline():
-		b.WriteString(styleMuted.Render("c compare · x clear"))
-	case w.HasReference():
-		b.WriteString(styleMuted.Render("c compare · x renounce"))
-	}
+	b.WriteString(styleMuted.Render(w.KeybindingHints()))
 
 	return regionStyle(region).Render(b.String())
 }

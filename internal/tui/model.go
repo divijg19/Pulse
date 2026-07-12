@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/divijg19/Pulse/internal/engine"
+	"github.com/divijg19/Pulse/internal/export"
 	"github.com/divijg19/Pulse/internal/metrics"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
@@ -78,6 +79,7 @@ type Model struct {
 	cancel    context.CancelFunc
 	eventCh   <-chan model.Event
 	errMsg    string
+	statusMsg string
 	summary   metrics.Summary
 
 	inspectZone       int
@@ -648,6 +650,22 @@ func (m Model) handleRenounceOrClearKey() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleExportKey serializes the captured results to a timestamped JSON file
+// and surfaces the path (or the failure) as a transient status message.
+func (m Model) handleExportKey() (tea.Model, tea.Cmd) {
+	if len(m.results) == 0 {
+		m.statusMsg = "NOTHING TO EXPORT"
+		return m, nil
+	}
+	path, err := export.Export(m.results, "")
+	if err != nil {
+		m.statusMsg = "EXPORT FAILED: " + strings.ToUpper(err.Error())
+		return m, nil
+	}
+	m.statusMsg = "EXPORTED " + strconv.Itoa(len(m.results)) + " RESULTS → " + path
+	return m, nil
+}
+
 func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
@@ -693,6 +711,8 @@ func (m Model) handleObserveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleMark()
 	case "x":
 		return m.handleRenounceOrClearKey()
+	case "w":
+		return m.handleExportKey()
 	case "e":
 		m.workspace.dialog = dialogRequest
 		m.activeDomain = DomainRequest
@@ -715,6 +735,7 @@ func (m Model) startRun() (Model, tea.Cmd) {
 	if m.running {
 		return m, nil
 	}
+	m.statusMsg = ""
 
 	req := model.RunRequest{
 		URL:         m.urlInput.Value(),

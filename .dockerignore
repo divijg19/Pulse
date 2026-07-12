@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+web/node_modules
+web/dist
+cmd/pulse/static/assets
+*.md
+LICENSE
+Dockerfile
+.dockerignore
+.goreleaser.yml

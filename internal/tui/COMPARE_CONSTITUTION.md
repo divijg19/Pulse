@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This document defines what Compare is, what it is not, what operator questions it answers, and the architectural boundaries that govern its implementation. It serves as the specification for the v0.10.x "Explain Comparisons" release.
+This document defines what Compare is, what it is not, what operator questions it answers, and the architectural boundaries that govern its implementation. It is the specification for the Compare feature.
 
 ---
 
@@ -102,23 +102,7 @@ Never color solely because values differ. "The active result has a different sta
 
 ## Operator Workflow
 
-The canonical comparison workflow is:
-
-```
-Idle
-  ↓
-Mark Baseline       (c on a result — establishes the reference)
-  ↓
-Compare Candidate   (c on a different result — establishes the comparison target)
-  ↓
-Swap                (exchange baseline and candidate)
-  ↓
-Exit Compare        (Esc — preserves session for later)
-  ↓
-Clear Comparison    (x — ends the active comparison)
-```
-
-Key workflow properties:
+The canonical comparison workflow (mark baseline with `c`, compare a candidate with `c`, swap with `s`, exit with `Esc`, clear with `x`) and its lifecycle transitions are specified in [COMPARE_WORKFLOW.md](COMPARE_WORKFLOW.md). Key workflow properties:
 
 * **Continuous**: The operator never needs to leave Observe to manage comparisons.
 * **Reversible**: Every action (mark, swap, clear) has an inverse or an undo.
@@ -211,30 +195,8 @@ renderers consume the immutable `*ComparisonAnalysis` and never recompute.
 
 ### State machine
 
-```
-Idle
-  │
-  │  c on result (no Reference)
-  ▼
-BaselineMarked
-  │
-  ├── c on same result  →  Idle (unmark)
-  │
-  │  c on different result
-  └────────────────────────────► Comparing
-                                     │
-                          ┌──────────┼──────────┐
-                          │          │          │
-                    c on baseline   s         Esc
-                          │          │          │
-                          ▼          ▼          ▼
-                       Idle      Comparing   Observe
-                          (swap)    (preserve session)
-                          │
-                          │ x or c on baseline
-                          ▼
-                        Idle
-```
+The full state-machine diagram and lifecycle transitions are specified in
+[COMPARE_WORKFLOW.md](COMPARE_WORKFLOW.md).
 
 Notes:
 - `x` (Clear) resets the workspace (Baseline, Candidate, State, Analysis). Reference is preserved.
@@ -305,7 +267,7 @@ This structure is the single source of truth for the renderer. The renderer rece
 
 ---
 
-## v0.9.9 Scope
+## Scope
 
 ### In scope
 
@@ -319,26 +281,25 @@ This structure is the single source of truth for the renderer. The renderer rece
 | Discoverability | Ribbon actions, active/marked/pinned markers in Observe list |
 | State model | CompareWorkspace with lifecycle, Reference for cross-run survival |
 
-### Explicitly deferred (v1.0 or later)
+### Explicitly deferred
 
 | Feature | Reason |
 |---|---|
 | Full semantic JSON body diff | Needs its own design (JSON path awareness, huge payload limits, streaming) |
 | Binary diff | Specialized requirement, not core to HTTP observability |
-| Three-way comparison | Additional complexity not justified by v0.9.9 mission |
+| Three-way comparison | Additional complexity not justified by the current mission |
 | N-way comparison | Would require multi-result session model |
 | Statistical latency analysis | Needs multiple samples per result |
 | Persisted comparison history | Out of scope for TUI-first release |
-| Comparison exports | Out of scope for v0.9.9 |
-| AI-generated summaries | v1.0+ capability, needs separate architecture |
+| AI-generated summaries | Future capability, needs separate architecture |
 
 ---
 
-## v0.10.0 Scope — Explain Comparisons
+## Rendering model
 
-v0.10.0 is a **rendering release**. The comparison engine is unchanged; the renderer was
-rebuilt around a single, invariant information hierarchy so operators understand a
-comparison within seconds.
+The comparison renderer is built around a single, invariant information hierarchy so
+operators understand a comparison within seconds. The engine is unchanged; the renderer
+is rebuilt to present analysis in a fixed order.
 
 ### Stable information hierarchy
 
@@ -385,12 +346,12 @@ timeout transitions. Each verifies verdict, Why, Evidence, and Details correctne
 
 ---
 
-## v0.10.2 Scope — Compare Workspace Convergence
+## Workspace model
 
-v0.10.2 is the **final architectural convergence** of Compare. It transforms
-Compare from a transient diff screen into a persistent operator workspace whose
-state is always visible and whose implementation is simple, cohesive and
-maintainable. Nothing outside the Compare subsystem changes.
+Compare is a persistent operator workspace whose state is always visible and whose
+implementation is simple, cohesive, and maintainable. It is no longer a transient
+diff screen: it evolves as the operator works, and nothing outside the Compare
+subsystem changes.
 
 ### Compare is a workspace
 
@@ -458,7 +419,7 @@ a `Model` value — a pointer receiver would cause an interface conversion panic
 
 ## Non-Goals (explicit)
 
-1. **This release does not add a diff library dependency.** Body preview diff uses line-based string comparison in pure Go. A proper diff algorithm (patience diff, LCS) may be added in v1.0.
+1. **This release does not add a diff library dependency.** Body preview diff uses line-based string comparison in pure Go. A proper diff algorithm (patience diff, LCS) may be added in a future release.
 
 2. **This release does not change Inspect.** Inspect retains its current rendering and interaction model. Compare stops calling Inspect render functions, but Inspect itself does not change.
 

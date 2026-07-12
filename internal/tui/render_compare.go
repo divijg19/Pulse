@@ -356,6 +356,10 @@ func renderWhy(flags []Flag) string {
 	}
 
 	preferred := []string{"status", "latency", "headers", "body", "error"}
+	prefSet := make(map[string]bool, len(preferred))
+	for _, p := range preferred {
+		prefSet[p] = true
+	}
 	sorted := make([]string, 0, len(order))
 	for _, p := range preferred {
 		for _, f := range order {
@@ -365,14 +369,7 @@ func renderWhy(flags []Flag) string {
 		}
 	}
 	for _, f := range order {
-		found := false
-		for _, s := range sorted {
-			if f == s {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !prefSet[f] {
 			sorted = append(sorted, f)
 		}
 	}
@@ -414,10 +411,24 @@ func renderWhy(flags []Flag) string {
 			}
 		},
 		"headers": func(d *fieldDir) whyLine {
-			return whyLine{styleMuted.Render("·"), "Headers changed"}
+			switch {
+			case d.regression:
+				return whyLine{styleRegression.Render("▼"), "Headers regressed"}
+			case d.improvement:
+				return whyLine{styleImprovement.Render("▲"), "Headers improved"}
+			default:
+				return whyLine{styleMuted.Render("·"), "Headers changed"}
+			}
 		},
 		"body": func(d *fieldDir) whyLine {
-			return whyLine{styleMuted.Render("·"), "Body changed"}
+			switch {
+			case d.regression:
+				return whyLine{styleRegression.Render("▼"), "Body regressed"}
+			case d.improvement:
+				return whyLine{styleImprovement.Render("▲"), "Body improved"}
+			default:
+				return whyLine{styleMuted.Render("·"), "Body changed"}
+			}
 		},
 	}
 

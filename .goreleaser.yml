@@ -1,0 +1,49 @@
+version: 2
+
+project_name: pulse
+
+before:
+  hooks:
+    - go mod tidy
+    - bun install --cwd=web --frozen-lockfile
+    - bun --cwd=web run build
+
+builds:
+  - id: pulse
+    main: ./cmd/pulse
+    binary: pulse
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/divijg19/Pulse/internal/version.Version={{.Tag}}
+      - -X github.com/divijg19/Pulse/internal/version.Commit={{.ShortCommit}}
+
+dockers_v2:
+  - images:
+      - "ghcr.io/divijg19/pulse"
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  disable: true
