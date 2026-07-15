@@ -7,7 +7,7 @@ import (
 )
 
 type Hub struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	clients map[chan model.Event]bool
 }
 
@@ -34,15 +34,19 @@ func (h *Hub) Remove(ch chan model.Event) {
 }
 
 func (h *Hub) Broadcast(event model.Event) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
+	// A read lock lets concurrent broadcasts fan out in parallel while keeping
+	// Add/Remove (write lock) mutually exclusive, so a channel is never closed
+	// while a broadcast is sending to it. The sends are non-blocking, so the
+	// lock is held only for the brief fan-out, not across any slow client.
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	for ch := range h.clients {
 		select {
 		case ch <- event:
 		default:
-			// If the channel is blocked, skip it to avoid blocking the entire broadcast
+			// If the channel is blocked, skip it to avoid blocking the
+			// broadcast. Slow clients therefore miss events rather than
+			// stalling the engine.
 		}
-		// drop slow clients to prevent blocking the hub
 	}
 }

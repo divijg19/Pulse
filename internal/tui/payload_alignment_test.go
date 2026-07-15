@@ -20,7 +20,7 @@ func TestPayload_Hierarchy_Regression(t *testing.T) {
 	}
 
 	out := m.renderPayloadDomain(100)
-	lines := strings.Split(out, "\n")
+	lines := strings.Split(stripANSI(out), "\n")
 
 	var headersHeading string
 	var bodyHeading string
@@ -50,16 +50,19 @@ func TestPayload_Hierarchy_Regression(t *testing.T) {
 		t.Errorf("Headings misalignment: %q vs %q", headersHeading, bodyHeading)
 	}
 
-	// 2. Verify content alignment
+	// 2. Verify content alignment. The selected header row carries a "▶ "
+	// selection cursor that legitimately offsets its text by two columns;
+	// strip it so we compare the actual content column.
 	if len(headerRow) == 0 || len(bodyLine) == 0 {
 		t.Fatal("Content lines not found")
 	}
-	if strings.Index(headerRow, "Content-Type") != strings.Index(bodyLine, "line 1") {
+	headerContent := strings.Replace(headerRow, "▶ ", "", 1)
+	if strings.Index(headerContent, "Content-Type") != strings.Index(bodyLine, "line 1") {
 		t.Errorf("Content misalignment: %q vs %q", headerRow, bodyLine)
 	}
 
 	// 3. Verify hierarchy (Section < Content)
-	if strings.Index(headerRow, "Content-Type") <= strings.Index(headersHeading, "HEADERS") {
+	if strings.Index(headerContent, "Content-Type") <= strings.Index(headersHeading, "HEADERS") {
 		t.Errorf("Header row not indented beneath section")
 	}
 }
@@ -78,7 +81,7 @@ func TestPayload_Hierarchy_ContextPanelWide(t *testing.T) {
 	}
 
 	out := m.renderPayloadDomain(100)
-	lines := strings.Split(out, "\n")
+	lines := strings.Split(stripANSI(out), "\n")
 
 	var headersHeading string
 	var bodyHeading string
@@ -112,7 +115,8 @@ func TestPayload_Hierarchy_ContextPanelWide(t *testing.T) {
 	if len(headerRow) == 0 || len(bodyLine) == 0 {
 		t.Fatal("Content lines not found at wide width")
 	}
-	if strings.Index(headerRow, "Content-Type") != strings.Index(bodyLine, "line 1") {
+	headerContent := strings.Replace(headerRow, "▶ ", "", 1)
+	if strings.Index(headerContent, "Content-Type") != strings.Index(bodyLine, "line 1") {
 		t.Errorf("Wide: Content misalignment: %q vs %q", headerRow, bodyLine)
 	}
 }

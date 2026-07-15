@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/divijg19/Pulse/internal/metrics"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
@@ -126,16 +128,32 @@ func (m Model) requestActions() []Action {
 }
 
 // stripANSI removes ANSI escape sequences from a string.
+//
+// It consumes both CSI sequences (ESC [ ... <final byte 0x40-0x7E>) and OSC
+// sequences (ESC ] ... <final byte>), so rendered lipgloss output can be
+// measured or truncated by its visible width without the escape bytes being
+// counted as characters.
 func stripANSI(s string) string {
 	var out strings.Builder
+	out.Grow(len(s))
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\x1b' {
-			for i < len(s) && s[i] != 'm' {
+		if s[i] != '\x1b' {
+			out.WriteByte(s[i])
+			continue
+		}
+		// ESC [ or ESC ]: a CSI/OSC sequence terminated by a final byte in the
+		// range 0x40-0x7E.
+		if i+1 < len(s) && (s[i+1] == '[' || s[i+1] == ']') {
+			i += 2
+			for i < len(s) && (s[i] < 0x40 || s[i] > 0x7e) {
 				i++
 			}
 			continue
 		}
-		out.WriteByte(s[i])
+		// Bare ESC: skip it and the following byte.
+		if i+1 < len(s) {
+			i++
+		}
 	}
 	return out.String()
 }
@@ -164,10 +182,26 @@ func (m Model) ShellState() ShellState {
 const contextThreshold = 140
 const contextMinWidth = 28
 
-func (m Model) View() string {
+// View renders the full TUI frame. The metrics summary is derived once here
+// (rather than on every result message) so the run hot path stays O(1) per
+// event; the pointer receiver lets the value-receiver render helpers observe
+// the refreshed summary through their copied receiver.
+func (m Model) View() tea.View {
+	mp := &m
+	return mp.view()
+}
+
+func (m *Model) view() tea.View {
 	w, h := m.shell.Dimensions()
 	if w == 0 {
-		return "Pulse is starting..."
+		v := tea.NewView("Pulse is starting...")
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
+	if len(m.results) > 0 {
+		m.summary = metrics.Compute(m.results, m.elapsed)
 	}
 
 	layout := m.shell.Layout()
@@ -187,7 +221,10 @@ func (m Model) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(m.renderStatusline(state, layout.Command.Width))
 
-	return styleBase.Width(layout.Context.Width).Height(h).Render(sb.String())
+	v := tea.NewView(styleBase.Width(layout.Context.Width).Height(h).Render(sb.String()))
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 func (m Model) renderWorkspaceContent(region Region, width int) string {

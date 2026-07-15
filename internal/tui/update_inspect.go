@@ -1,6 +1,6 @@
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import tea "charm.land/bubbletea/v2"
 
 func (m Model) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {

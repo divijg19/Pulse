@@ -6,21 +6,21 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
 func contains(t *testing.T, s, substr string) bool {
 	t.Helper()
-	return strings.Contains(s, substr)
+	return strings.Contains(stripANSI(s), substr)
 }
 
 func TestView_Idle(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "GET") {
 		t.Fatal("View should contain method")
 	}
@@ -38,7 +38,7 @@ func TestView_Running(t *testing.T) {
 	m.results = []model.Result{
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "r/s") {
 		t.Fatal("running view should show requests per second")
 	}
@@ -81,13 +81,13 @@ func TestRenderReady_HidesAfterFirstRun(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
 
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "Ready to execute") {
 		t.Fatal("first launch should show Ready surface with readiness status")
 	}
 
 	m.results = []model.Result{{Status: 200, Latency: 100 * time.Millisecond}}
-	out = m.View()
+	out = m.View().Content
 	if contains(t, out, "Ready to execute") {
 		t.Fatal("after results exist, Ready should not appear")
 	}
@@ -744,7 +744,7 @@ func TestView_WidthMinClamp(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(40, 30)
 
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "GET") {
 		t.Fatal("View should contain method even at small width")
 	}
@@ -754,7 +754,7 @@ func TestView_PayloadNotShown(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
 
-	out := m.View()
+	out := m.View().Content
 	if contains(t, out, "HEADERS") {
 		t.Fatal("View should not contain HEADERS when payload dialog is closed")
 	}
@@ -1004,7 +1004,7 @@ func TestRenderWorkspace_InspectorDrillDown(t *testing.T) {
 	}
 	m.selected = 0
 
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "Result 1") {
 		t.Fatal("workspace with inspector should show result number")
 	}
@@ -1096,7 +1096,7 @@ func TestConfirmQuit_PreservesWorkspace(t *testing.T) {
 	m.running = true
 	m.workspace.dialog = dialogConfirmQuit
 
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "Ctrl+C") {
 		t.Fatal("confirm quit should show ctrl+c prompt")
 	}
@@ -1424,7 +1424,7 @@ func TestShellInvariant_ActionsAreIntents(t *testing.T) {
 func TestShellInvariant_ViewOwnsSeparators(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 	if !contains(t, out, "─") {
 		t.Fatal("View must render shell separators")
 	}
@@ -1665,7 +1665,7 @@ func TestRenderMetadata(t *testing.T) {
 func TestWorkspaceConstitution_Ready(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 
 	if !contains(t, out, "READY") {
 		t.Fatal("Constitution: Ready must show READY identity")
@@ -1693,7 +1693,7 @@ func TestWorkspaceConstitution_Timeline(t *testing.T) {
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 
 	if !contains(t, out, "Timeline") {
 		t.Fatal("Constitution: Timeline must show identity")
@@ -1719,7 +1719,7 @@ func TestWorkspaceConstitution_Logs(t *testing.T) {
 		{Status: 200, Latency: 100 * time.Millisecond},
 	}
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 
 	if !contains(t, out, "Logs") {
 		t.Fatal("Constitution: Logs must show identity")
@@ -1748,7 +1748,7 @@ func TestWorkspaceConstitution_Inspect(t *testing.T) {
 	}
 	m.selected = 0
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 
 	if !contains(t, out, "INSPECT") {
 		t.Fatal("Constitution: Inspect must show INSPECT identity in ribbon")
@@ -1774,7 +1774,7 @@ func TestWorkspaceConstitution_Request(t *testing.T) {
 	m := NewModel()
 	m.workspace.dialog = dialogRequest
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 
 	if !contains(t, out, "REQUEST") {
 		t.Fatal("Constitution: Request must show REQUEST identity")
@@ -1869,9 +1869,9 @@ func TestInvestigation_BodyScrolling(t *testing.T) {
 	}
 
 	// Scroll down twice
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 
 	// Render with 3 visible lines starting at offset 2
@@ -1897,7 +1897,7 @@ func TestInvestigation_Continuity(t *testing.T) {
 	m.selected = 1
 
 	// Esc should return to Observe and preserve selection
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.mode != modeObserve {
 		t.Fatal("Esc should return to Observe mode")
@@ -1921,21 +1921,21 @@ func TestInvestigation_ZoneNavigation(t *testing.T) {
 	}
 
 	// Tab to WHY zone
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.inspectZone != zoneWhy {
 		t.Fatal("Tab should advance to WHY zone")
 	}
 
 	// Tab to BODY zone
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.inspectZone != zoneBody {
 		t.Fatal("Tab should advance to BODY zone")
 	}
 
 	// Tab wraps back to WHAT HAPPENED
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.inspectZone != zoneWhatHappened {
 		t.Fatal("Tab should wrap to WHAT HAPPENED zone")
@@ -1995,7 +1995,7 @@ func TestHeaderDeleteSafety(t *testing.T) {
 
 	// ctrl+d with bodyFocus (-1) selectedHead must not panic
 	// (regression: missing guard would slice m.headers[:bodyFocus])
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	updated, _ := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'd'})
 	m = updated.(Model)
 
 	// State should be unchanged — still at body focus, no headers
@@ -2020,7 +2020,7 @@ func TestInvestigationStateResetOnEnter(t *testing.T) {
 	m.inspectBodyOffset = 5
 
 	// Enter inspect mode — must reset zone and offset
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	if m.workspace.mode != modeInspect {
 		t.Fatal("enter should switch to inspect mode")
@@ -2121,7 +2121,7 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
 		m.selected = 1
-		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		updated, _ := m.handleInspectKey(tea.KeyPressMsg{Text: "c"})
 		m = updated.(Model)
 		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
 			t.Fatal("first c should store marked baseline")
@@ -2137,7 +2137,7 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m.workspace.compare.Baseline = &m.results[1]
 		m.workspace.compare.State = CompareBaselineMarked
 		m.selected = 2
-		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		updated, _ := m.handleInspectKey(tea.KeyPressMsg{Text: "c"})
 		m = updated.(Model)
 		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
 			t.Fatal("marked should remain 1")
@@ -2156,7 +2156,7 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m.selected = 1
 		m.workspace.compare.Baseline = &m.results[1]
 		m.workspace.compare.State = CompareBaselineMarked
-		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		updated, _ := m.handleInspectKey(tea.KeyPressMsg{Text: "c"})
 		m = updated.(Model)
 		if m.workspace.compare.Baseline != nil {
 			t.Fatal("c on same marked result should unmark")
@@ -2170,7 +2170,7 @@ func TestCompare_MarkLifecycle(t *testing.T) {
 		m := compareTestModel()
 		m.workspace.mode = modeInspect
 		m.selected = 0
-		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		updated, _ := m.handleInspectKey(tea.KeyPressMsg{Text: "c"})
 		m = updated.(Model)
 		if !resultsEqual(*m.workspace.compare.Baseline, m.results[0]) {
 			t.Fatal("mark should be 0")
@@ -2188,7 +2188,7 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 		m.workspace.compare.State = CompareComparing
 		m.workspace.compare.refreshAnalysis()
 		m.workspace.view = LogsView
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyEsc})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 		m = updated.(Model)
 		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
 			t.Fatal("Esc should preserve marked")
@@ -2211,7 +2211,7 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 		m.workspace.compare.Candidate = &m.results[2]
 		m.workspace.compare.State = CompareComparing
 		m.workspace.compare.refreshAnalysis()
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Text: "q"})
 		m = updated.(Model)
 		if m.workspace.dialog != dialogConfirmQuit {
 			t.Fatal("q should open confirm quit dialog")
@@ -2229,7 +2229,7 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 		m.workspace.mode = modeInspect
 		m.workspace.compare.Baseline = &m.results[1]
 		m.workspace.compare.State = CompareBaselineMarked
-		updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyEsc})
+		updated, _ := m.handleInspectKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 		m = updated.(Model)
 		if !resultsEqual(*m.workspace.compare.Baseline, m.results[1]) {
 			t.Fatal("Esc from Inspect should preserve mark")
@@ -2247,12 +2247,12 @@ func TestCompare_CompareKeyLifecycle(t *testing.T) {
 		m.workspace.compare.State = CompareComparing
 		m.workspace.compare.refreshAnalysis()
 		m.workspace.view = LogsView
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Text: "x"})
 		m = updated.(Model)
 
 		m.workspace.mode = modeInspect
 		m.selected = 0
-		updated2, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+		updated2, _ := m.handleInspectKey(tea.KeyPressMsg{Text: "c"})
 		m = updated2.(Model)
 		if !resultsEqual(*m.workspace.compare.Baseline, m.results[0]) {
 			t.Fatal("after x, c should mark fresh result")
@@ -2272,7 +2272,7 @@ func TestCompare_InvestigationReset(t *testing.T) {
 	m.inspectZone = zoneBody
 	m.inspectBodyOffset = 10
 
-	updated, _ := m.handleInspectKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	updated, _ := m.handleInspectKey(tea.KeyPressMsg{Text: "c"})
 	m = updated.(Model)
 
 	if m.workspace.mode != modeCompare {
@@ -2422,7 +2422,7 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("up scrolls body", func(t *testing.T) {
 		m.inspectBodyOffset = 5
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyUp})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Code: tea.KeyUp})
 		m2 := updated.(Model)
 		if m2.inspectBodyOffset != 4 {
 			t.Fatal("up should decrement body offset")
@@ -2431,7 +2431,7 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("up does not scroll below 0", func(t *testing.T) {
 		m.inspectBodyOffset = 0
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyUp})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Code: tea.KeyUp})
 		m2 := updated.(Model)
 		if m2.inspectBodyOffset != 0 {
 			t.Fatal("up should not scroll below 0")
@@ -2440,7 +2440,7 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("k scrolls body (vim key)", func(t *testing.T) {
 		m.inspectBodyOffset = 5
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Text: "k"})
 		m2 := updated.(Model)
 		if m2.inspectBodyOffset != 4 {
 			t.Fatal("k should decrement body offset")
@@ -2449,7 +2449,7 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("j scrolls body (vim key)", func(t *testing.T) {
 		m.inspectBodyOffset = 5
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Text: "j"})
 		m2 := updated.(Model)
 		if m2.inspectBodyOffset != 6 {
 			t.Fatal("j should increment body offset")
@@ -2458,7 +2458,7 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("down scrolls body", func(t *testing.T) {
 		m.inspectBodyOffset = 5
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyDown})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Code: tea.KeyDown})
 		m2 := updated.(Model)
 		if m2.inspectBodyOffset != 6 {
 			t.Fatal("down should increment body offset")
@@ -2467,12 +2467,12 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("bracket navigation cycles views forward", func(t *testing.T) {
 		m.workspace.compare.View = CompareViewOverview
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Text: "]"})
 		m2 := updated.(Model)
 		if m2.workspace.compare.View != CompareViewEvidence {
 			t.Fatal("] should advance view")
 		}
-		updated, _ = m2.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+		updated, _ = m2.handleCompareKey(tea.KeyPressMsg{Text: "]"})
 		m3 := updated.(Model)
 		if m3.workspace.compare.View != CompareViewDiff {
 			t.Fatal("] should advance view")
@@ -2481,7 +2481,7 @@ func TestCompare_Navigation(t *testing.T) {
 
 	t.Run("bracket navigation cycles views backward", func(t *testing.T) {
 		m.workspace.compare.View = CompareViewDiff
-		updated, _ := m.handleCompareKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
+		updated, _ := m.handleCompareKey(tea.KeyPressMsg{Text: "["})
 		m2 := updated.(Model)
 		if m2.workspace.compare.View != CompareViewEvidence {
 			t.Fatal("[ should move view backward")
@@ -2521,7 +2521,7 @@ func TestCompare_HandleKeyDispatch(t *testing.T) {
 	m.workspace.compare.State = CompareComparing
 	m.workspace.compare.refreshAnalysis()
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 
 	if m.workspace.mode != modeObserve {
@@ -2744,7 +2744,7 @@ func TestPayloadRender_BodyAndHeadersRender(t *testing.T) {
 	m.bodyInput.SetValue("test content")
 
 	out := m.renderPayloadDomain(80)
-	lines := strings.Split(out, "\n")
+	lines := strings.Split(stripANSI(out), "\n")
 
 	bodyHeading := false
 	headersHeading := false
@@ -2950,7 +2950,7 @@ func TestValidation_ConcurrencyDeduplication(t *testing.T) {
 	out := m.renderExecDomain(80)
 
 	// Count occurrences of "Must be between" — should be exactly 1
-	count := strings.Count(out, "Must be between")
+	count := strings.Count(stripANSI(out), "Must be between")
 	if count != 1 {
 		t.Fatalf("concurrency error must appear exactly once, got %d", count)
 	}

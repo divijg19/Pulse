@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/divijg19/Pulse/internal/model"
 )
@@ -17,11 +17,11 @@ import (
 // ---------------------------------------------------------------------------
 
 func keyMsgRune(r rune) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+	return tea.KeyPressMsg{Text: string(r)}
 }
 
-func keyMsgKey(t tea.KeyType) tea.KeyMsg {
-	return tea.KeyMsg{Type: t}
+func keyMsgKey(t rune) tea.KeyMsg {
+	return tea.KeyPressMsg{Code: t}
 }
 
 func typeName(v interface{}) string {
@@ -69,9 +69,9 @@ func TestV091Constitution_SurfacesAreNamedTypes(t *testing.T) {
 
 func TestV091Ownership_ArrowKeysNeverProduceTextInRequestDomain(t *testing.T) {
 	m := newRequestModel()
-	for _, k := range []tea.KeyType{tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight} {
+	for _, k := range []rune{tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight} {
 		urlBefore := m.urlInput.Value()
-		m2, _ := m.Update(tea.KeyMsg{Type: k})
+		m2, _ := m.Update(tea.KeyPressMsg{Code: k})
 		m = m2.(Model)
 		if m.urlInput.Value() != urlBefore {
 			t.Fatalf("arrow key %v should not modify URL value: got %q", k, m.urlInput.Value())
@@ -84,7 +84,7 @@ func TestV091Ownership_VimKeysTypeInEditableFields(t *testing.T) {
 	m := newRequestModel()
 
 	// 'k' on URL field should type "k", not navigate to Method.
-	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	m2, _ := m.Update(tea.KeyPressMsg{Text: "k"})
 	m2m := m2.(Model)
 	if m2m.requestField != reqFieldURL {
 		t.Fatal("'k' on URL should stay in URL field, not navigate")
@@ -94,7 +94,7 @@ func TestV091Ownership_VimKeysTypeInEditableFields(t *testing.T) {
 	}
 
 	// Arrows still navigate between fields.
-	m3, _ := m2m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m3, _ := m2m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m3m := m3.(Model)
 	if m3m.requestField != reqFieldMethod {
 		t.Fatal("↑ on URL should navigate to Method field")
@@ -108,14 +108,14 @@ func TestV091Ownership_ArrowKeysInPayloadDomain(t *testing.T) {
 	m.headerSubfocus = subfocusKey
 
 	// ↑ at row 0 should cross to DomainRequest
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m2 := updated.(Model)
 	if m2.activeDomain != DomainRequest {
 		t.Fatal("↑ at first header row should cross to Request domain")
 	}
 
 	// ↓ at URL should cross back to Payload
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated2, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m3 := updated2.(Model)
 	if m3.activeDomain != DomainPayload {
 		t.Fatal("↓ at URL should cross back to Payload domain")
@@ -129,7 +129,7 @@ func TestV091Ownership_ArrowKeysTraversePayloadBodyBoundary(t *testing.T) {
 	m.headerSubfocus = subfocusValue
 
 	// ↓ at last header value should go to body
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m2 := updated.(Model)
 	if m2.selectedHead != bodyFocus {
 		t.Fatal("↓ at last header row should advance to body")
@@ -139,7 +139,7 @@ func TestV091Ownership_ArrowKeysTraversePayloadBodyBoundary(t *testing.T) {
 	}
 
 	// ↑ at body should stay in body (editor cursor move, not navigation)
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated2, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m3 := updated2.(Model)
 	if m3.selectedHead != bodyFocus {
 		t.Fatal("↑ at body should stay in body (move editor cursor, not navigate)")
@@ -152,12 +152,12 @@ func TestV091Ownership_ArrowKeysTraversePayloadBodyBoundary(t *testing.T) {
 func TestV091Ownership_ExecDomainArrowAdjustsConcurrency(t *testing.T) {
 	m := newRequestExecModel()
 	m.concurrencyInput.SetValue("5")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m2 := updated.(Model)
 	if m2.concurrencyInput.Value() != "6" {
 		t.Fatalf("↑ in exec domain should increment concurrency: got %q", m2.concurrencyInput.Value())
 	}
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated2, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m3 := updated2.(Model)
 	if m3.concurrencyInput.Value() != "5" {
 		t.Fatalf("↓ in exec domain should decrement concurrency: got %q", m3.concurrencyInput.Value())
@@ -174,7 +174,7 @@ func TestV091Ownership_FocusedGuardPreventsGhostTyping(t *testing.T) {
 
 	// 'j' on URL field should type into urlInput, stay in request domain,
 	// and not ghost-type into concurrencyInput.
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
 	m2 := updated.(Model)
 	if !strings.HasSuffix(m2.urlInput.Value(), "j") {
 		t.Fatal("'j' on URL should insert 'j' into urlInput, got", m2.urlInput.Value())
@@ -191,28 +191,28 @@ func TestV091Ownership_AdvanceDomainGranularTab(t *testing.T) {
 	m := newRequestModel()
 
 	// Tab: URL → Payload (Key, row 0)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m2 := updated.(Model)
 	if m2.activeDomain != DomainPayload || m2.selectedHead != 0 || m2.headerSubfocus != subfocusKey {
 		t.Fatal("Tab from URL should go to Payload header Key")
 	}
 
 	// Tab: Key → Value
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated2, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m3 := updated2.(Model)
 	if m3.activeDomain != DomainPayload || m3.headerSubfocus != subfocusValue {
 		t.Fatal("Tab from header Key should go to header Value")
 	}
 
 	// Tab: Value → Body
-	updated3, _ := m3.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated3, _ := m3.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m4 := updated3.(Model)
 	if m4.selectedHead != bodyFocus {
 		t.Fatal("Tab from header Value should go to body")
 	}
 
 	// Tab: Body → Exec
-	updated4, _ := m4.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated4, _ := m4.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m5 := updated4.(Model)
 	if m5.activeDomain != DomainExec {
 		t.Fatal("Tab from body should go to Exec domain")
@@ -382,7 +382,7 @@ func TestV092Focus_TransitionConsistency(t *testing.T) {
 	m.headerSubfocus = subfocusKey
 	m.headers = append(m.headers, newHeaderRow())
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	updated, _ := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'd'})
 	m = updated.(Model)
 	if !m.bodyInput.Focused() {
 		t.Fatal("after delete last header: bodyInput should be focused")
@@ -395,7 +395,7 @@ func TestV092Focus_TransitionConsistency(t *testing.T) {
 	m2.headerSubfocus = subfocusKey
 	m2.headers = append(m2.headers, newHeaderRow(), newHeaderRow(), newHeaderRow())
 
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	updated2, _ := m2.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'd'})
 	m2 = updated2.(Model)
 	if len(m2.headers) != 2 {
 		t.Fatalf("after delete middle: headers = %d (expected 2)", len(m2.headers))
@@ -421,7 +421,7 @@ func TestV092Architecture_RenderDoesNotMutate(t *testing.T) {
 	head := m.selectedHead
 	running := m.running
 
-	before := m.View()
+	before := m.View().Content
 
 	if m.workspace.mode != mode {
 		t.Fatal("render mutated workspace.mode")
@@ -442,7 +442,7 @@ func TestV092Architecture_RenderDoesNotMutate(t *testing.T) {
 		t.Fatal("render mutated running")
 	}
 
-	after := m.View()
+	after := m.View().Content
 	if before != after {
 		t.Fatal("View() is non-deterministic: two calls produced different output")
 	}
@@ -468,7 +468,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		m.workspace.compare.Baseline = &m.results[0]
 		m.workspace.compare.State = CompareBaselineMarked
 
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2, _ := m.Update(tea.KeyPressMsg{Text: "c"})
 		m2m := m2.(Model)
 		if m2m.workspace.compare.State == CompareComparing && m2m.workspace.compare.Analysis == nil {
 			t.Fatal("H1: State=Comparing but Analysis=nil after observe baseline marked")
@@ -486,7 +486,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		m.workspace.compare.Reference = &m.results[0]
 		m.workspace.compare.refreshAnalysis()
 
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2, _ := m.Update(tea.KeyPressMsg{Text: "c"})
 		m2m := m2.(Model)
 		if m2m.workspace.compare.State == CompareComparing && m2m.workspace.compare.Analysis == nil {
 			t.Fatal("State=Comparing but Analysis=nil after observe replace candidate")
@@ -501,7 +501,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		m.workspace.compare.Reference = &m.results[0]
 		m.workspace.compare.State = CompareIdle
 
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2, _ := m.Update(tea.KeyPressMsg{Text: "c"})
 		m2m := m2.(Model)
 		if m2m.workspace.compare.State == CompareComparing && m2m.workspace.compare.Analysis == nil {
 			t.Fatal("State=Comparing but Analysis=nil after inspect idle with pin")
@@ -516,7 +516,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		m.workspace.compare.Baseline = &m.results[0]
 		m.workspace.compare.State = CompareBaselineMarked
 
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		m2, _ := m.Update(tea.KeyPressMsg{Text: "c"})
 		m2m := m2.(Model)
 		if m2m.workspace.compare.State == CompareComparing && m2m.workspace.compare.Analysis == nil {
 			t.Fatal("State=Comparing but Analysis=nil after inspect baseline marked")
@@ -533,7 +533,7 @@ func TestV099Comparing_StateComparingImpliesAnalysis(t *testing.T) {
 		m.workspace.compare.State = CompareComparing
 		m.workspace.compare.refreshAnalysis()
 
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+		m2, _ := m.Update(tea.KeyPressMsg{Text: "s"})
 		m2m := m2.(Model)
 		if m2m.workspace.compare.State != CompareComparing {
 			t.Fatal("swap should remain in Comparing state")
@@ -767,13 +767,13 @@ func TestV0100_CompareBehaviourScenarios(t *testing.T) {
 			setComparing(&m, &sc.baseline, &sc.candidate)
 
 			m.workspace.compare.View = CompareViewOverview
-			outOverview := m.renderCompare(Region{Width: 100, Height: 30})
+			outOverview := stripANSI(m.renderCompare(Region{Width: 100, Height: 30}))
 
 			m.workspace.compare.View = CompareViewEvidence
-			outEvidence := m.renderCompare(Region{Width: 100, Height: 30})
+			outEvidence := stripANSI(m.renderCompare(Region{Width: 100, Height: 30}))
 
 			m.workspace.compare.View = CompareViewDiff
-			outDetails := m.renderCompare(Region{Width: 100, Height: 30})
+			outDetails := stripANSI(m.renderCompare(Region{Width: 100, Height: 30}))
 
 			// The semantic order (WHY → EVIDENCE → DETAILS) must hold across the
 			// three views taken together; renderCompare renders one view per call

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/divijg19/Pulse/internal/engine"
 	"github.com/divijg19/Pulse/internal/export"
 	"github.com/divijg19/Pulse/internal/metrics"
@@ -111,13 +111,14 @@ func NewModel() Model {
 	cc.SetValue(strconv.Itoa(runconfig.DefaultConcurrency))
 	cc.Prompt = ""
 	cc.CharLimit = 3
-	cc.Width = 4
+	cc.SetWidth(4)
 
 	geo := calculatePayloadGeometry(76)
 
 	body := textarea.New()
 	body.Placeholder = `{"name":"pulse"}`
 	body.Prompt = ""
+	body.ShowLineNumbers = false
 	body.CharLimit = 1 << 20
 	body.SetHeight(geo.BodyHeight)
 	body.SetWidth(geo.BodyWidth)
@@ -142,8 +143,8 @@ func (m *Model) syncPayloadGeometry(contentWidth int) {
 	geo := calculatePayloadGeometry(contentWidth)
 	m.bodyInput.SetWidth(geo.BodyWidth)
 	for i := range m.headers {
-		m.headers[i].Key.Width = geo.KeyWidth
-		m.headers[i].Value.Width = geo.ValueWidth
+		m.headers[i].Key.SetWidth(geo.KeyWidth)
+		m.headers[i].Value.SetWidth(geo.ValueWidth)
 	}
 }
 
@@ -198,7 +199,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Result.Sequence = len(m.results) + 1
 			m.results = append(m.results, msg.Result)
 		}
-		m.summary = metrics.Compute(m.results, m.elapsed)
 		if following {
 			m.selected = len(m.results) - 1
 		}
@@ -876,13 +876,13 @@ func newHeaderRow() headerRow {
 	key.Prompt = ""
 	key.Placeholder = "Header"
 	key.CharLimit = 256
-	key.Width = geo.KeyWidth
+	key.SetWidth(geo.KeyWidth)
 
 	value := textinput.New()
 	value.Prompt = ""
 	value.Placeholder = "Value"
 	value.CharLimit = 2048
-	value.Width = geo.ValueWidth
+	value.SetWidth(geo.ValueWidth)
 
 	return headerRow{Key: key, Value: value}
 }

@@ -15,6 +15,12 @@ type StreamHandler struct {
 	Hub *stream.Hub
 }
 
+// streamClientBuffer sizes each SSE subscriber's event channel. A single run
+// emits at most runconfig.MaxConcurrency results, so this multiple leaves
+// headroom for overlapping runs and several concurrent subscribers before the
+// Hub's drop-on-full policy begins discarding events.
+const streamClientBuffer = runconfig.MaxConcurrency * 8
+
 func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -28,7 +34,11 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	clientChan := make(chan model.Event, runconfig.MaxConcurrency)
+	// Buffer well beyond a single run's event volume so overlapping runs and
+	// multiple subscribers don't immediately overflow and lose results. The
+	// Hub still drops on a full buffer to keep the engine from stalling, so
+	// this only widens the window before a slow client starts missing events.
+	clientChan := make(chan model.Event, streamClientBuffer)
 	h.Hub.Add(clientChan)
 	defer h.Hub.Remove(clientChan)
 
