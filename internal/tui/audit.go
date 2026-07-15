@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/divijg19/Pulse/internal/metrics"
 	"github.com/divijg19/Pulse/internal/model"
 )
 
@@ -39,7 +38,7 @@ func AllAuditSurfaces() []AuditSurface {
 func WriteAuditCapture(surface AuditSurface, w, h int, dir string) (string, error) {
 	m := surface.Setup()
 	m.shell.Resize(w, h)
-	out := m.View()
+	out := m.View().Content
 	name := fmt.Sprintf("%s_%dx%d.ansi", surface.Name, w, h)
 	path := filepath.Join(dir, name)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -61,7 +60,6 @@ func newTimelineRunningModel() Model {
 	m.startedAt = time.Now().Add(-5 * time.Second)
 	m.elapsed = 5 * time.Second
 	m.results = testResults(20)
-	m.summary = metrics.Compute(m.results, m.elapsed)
 	m.selected = 5
 	m.workspace.view = TimelineView
 	return m
@@ -86,7 +84,6 @@ func newInspectModel() Model {
 	m := NewModel()
 	m.workspace.mode = modeInspect
 	m.results = testResults(20)
-	m.summary = metrics.Compute(m.results, 5*time.Second)
 	m.selected = 3
 	return m
 }

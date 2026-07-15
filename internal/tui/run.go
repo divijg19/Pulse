@@ -3,11 +3,11 @@ package tui
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func Run() error {
-	program := tea.NewProgram(NewModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	program := tea.NewProgram(NewModel())
 	if _, err := program.Run(); err != nil {
 		return fmt.Errorf("run tui: %w", err)
 	}

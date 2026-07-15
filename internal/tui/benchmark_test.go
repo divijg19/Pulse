@@ -10,7 +10,7 @@ func BenchmarkView_Ready(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		m.View()
+		_ = m.View().Content
 	}
 }
 
@@ -20,7 +20,7 @@ func BenchmarkView_TimelineRunning(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		m.View()
+		_ = m.View().Content
 	}
 }
 
@@ -30,7 +30,7 @@ func BenchmarkView_RequestDialog(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		m.View()
+		_ = m.View().Content
 	}
 }
 
@@ -40,7 +40,7 @@ func BenchmarkView_Inspect(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		m.View()
+		_ = m.View().Content
 	}
 }
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/divijg19/Pulse/internal/model"
 )
@@ -17,7 +17,7 @@ import (
 func TestLayout_ContextPanelAtWideWidths(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(160, 40)
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "Selection") {
 		t.Fatal("wide terminal should show context panel")
 	}
@@ -26,7 +26,7 @@ func TestLayout_ContextPanelAtWideWidths(t *testing.T) {
 func TestLayout_NoContextPanelAtMediumWidths(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(100, 30)
-	out := m.View()
+	out := m.View().Content
 	if strings.Contains(out, "Selected Request") {
 		t.Fatal("medium terminal should NOT show context panel")
 	}
@@ -35,7 +35,7 @@ func TestLayout_NoContextPanelAtMediumWidths(t *testing.T) {
 func TestLayout_NoContextPanelWhenEmpty(t *testing.T) {
 	m := NewModel()
 	m.shell.Resize(160, 40)
-	out := m.View()
+	out := m.View().Content
 	if strings.Contains(out, "Selected Request") {
 		t.Fatal("empty model should not show Selected Request context")
 	}
@@ -48,7 +48,7 @@ func TestLayout_NoContextPanelWhenEmpty(t *testing.T) {
 func TestLayout_WidePrimaryAndContext(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(160, 40)
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "Selection") {
 		t.Fatal("wide terminal (>=140) must show context panel")
 	}
@@ -60,7 +60,7 @@ func TestLayout_WidePrimaryAndContext(t *testing.T) {
 func TestLayout_MediumPrimaryOnly(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(120, 40)
-	out := m.View()
+	out := m.View().Content
 	if strings.Contains(out, "Selection") {
 		t.Fatal("medium terminal (<140) must NOT show context panel")
 	}
@@ -72,7 +72,7 @@ func TestLayout_MediumPrimaryOnly(t *testing.T) {
 func TestLayout_CompactNoPanic(t *testing.T) {
 	m := newTimelineRunningModel()
 	m.shell.Resize(60, 10)
-	out := m.View()
+	out := m.View().Content
 	if len(out) == 0 {
 		t.Fatal("compact terminal must not panic or produce empty output")
 	}

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func TestV091Adaptive_AllSurfacesAtAllLayouts(t *testing.T) {
@@ -23,7 +23,7 @@ func TestV091Adaptive_AllSurfacesAtAllLayouts(t *testing.T) {
 				t.Run(fmt.Sprintf("%dx%d", s.w, s.h), func(t *testing.T) {
 					m := c.Setup()
 					m.shell.Resize(s.w, s.h)
-					out := m.View()
+					out := m.View().Content
 					if len(out) == 0 {
 						t.Fatal("empty output  --  surface must render")
 					}
@@ -66,7 +66,7 @@ func TestV092Geometry_RendersWithoutWrap(t *testing.T) {
 					s.setup(&m)
 					m.shell.Resize(w, h)
 
-					view := m.View()
+					view := m.View().Content
 					if view == "" {
 						t.Fatal("view returned empty string")
 					}
@@ -97,7 +97,7 @@ func TestV092Geometry_NoPanicAtExtremeSizes(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", sz.w, sz.h), func(t *testing.T) {
 			m := NewModel()
 			m.shell.Resize(sz.w, sz.h)
-			_ = m.View() // must not panic
+			_ = m.View().Content // must not panic
 		})
 	}
 }
@@ -113,8 +113,8 @@ func TestV092Layout_SpacingIsDeterministic(t *testing.T) {
 	m.headers = append(m.headers, newHeaderRow())
 	m.shell.Resize(80, 24)
 
-	a := m.View()
-	b := m.View()
+	a := m.View().Content
+	b := m.View().Content
 
 	if a != b {
 		t.Fatal("same model rendered twice at same size produced different output")
@@ -143,7 +143,7 @@ func TestV092Layout_AllLayoutsRender(t *testing.T) {
 				t.Fatalf("negative context or command width")
 			}
 
-			view := m.View()
+			view := m.View().Content
 			if view == "" {
 				t.Fatal("View() returned empty string")
 			}
@@ -161,16 +161,16 @@ func TestPayloadGeometry_WidthConsistency(t *testing.T) {
 
 	geo := calculatePayloadGeometry(100)
 	bodyW := m.bodyInput.Width()
-	if bodyW+4 != geo.BodyWidth {
-		t.Fatalf("bodyInput.Width()+4 = %d, want %d (BodyWidth = %d)",
-			bodyW+4, geo.BodyWidth, geo.BodyWidth)
+	if bodyW != geo.BodyWidth {
+		t.Fatalf("bodyInput.Width() = %d, want %d (BodyWidth = %d)",
+			bodyW, geo.BodyWidth, geo.BodyWidth)
 	}
 	if len(m.headers) > 0 {
-		if m.headers[0].Key.Width != geo.KeyWidth {
-			t.Fatalf("header[0].Key.Width = %d, want %d", m.headers[0].Key.Width, geo.KeyWidth)
+		if m.headers[0].Key.Width() != geo.KeyWidth {
+			t.Fatalf("header[0].Key.Width = %d, want %d", m.headers[0].Key.Width(), geo.KeyWidth)
 		}
-		if m.headers[0].Value.Width != geo.ValueWidth {
-			t.Fatalf("header[0].Value.Width = %d, want %d", m.headers[0].Value.Width, geo.ValueWidth)
+		if m.headers[0].Value.Width() != geo.ValueWidth {
+			t.Fatalf("header[0].Value.Width = %d, want %d", m.headers[0].Value.Width(), geo.ValueWidth)
 		}
 	}
 }
@@ -278,7 +278,7 @@ func TestV098Regression_PayloadGeometryContextPanelAware(t *testing.T) {
 		t.Fatal("'e' should open Request dialog")
 	}
 
-	bodyW := m.bodyInput.Width() + 4 // 4-char gutter
+	bodyW := m.bodyInput.Width()
 	expected := calculatePayloadGeometry(payloadContentWidth(160, 24)).BodyWidth
 	if bodyW != expected {
 		t.Fatalf("dialog-open: body width = %d, want %d (payloadContentWidth=%d)",
@@ -297,7 +297,7 @@ func TestV098Regression_PayloadGeometryContextPanelAware(t *testing.T) {
 	m4, _ := m3.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
 	m3 = m4.(Model)
 
-	bodyW2 := m3.bodyInput.Width() + 4
+	bodyW2 := m3.bodyInput.Width()
 	if bodyW2 != expected {
 		t.Fatalf("WindowSizeMsg: body width = %d, want %d", bodyW2, expected)
 	}
@@ -308,7 +308,7 @@ func TestV098Regression_PayloadGeometryContextPanelAware(t *testing.T) {
 	m6, _ := m5.Update(keyMsgRune('e'))
 	m5 = m6.(Model)
 
-	bodyW3 := m5.bodyInput.Width() + 4
+	bodyW3 := m5.bodyInput.Width()
 	expected3 := calculatePayloadGeometry(payloadContentWidth(100, 24)).BodyWidth
 	if bodyW3 != expected3 {
 		t.Fatalf("narrow shell: body width = %d, want %d", bodyW3, expected3)

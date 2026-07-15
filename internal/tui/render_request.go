@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
 
@@ -61,7 +61,7 @@ func (m Model) renderExecDomain(width int) string {
 	ccLabel := accentOrMuted(indentField+"Concurrency", active)
 	b.WriteString(fmt.Sprintf("%s: %s  (1-%d)\n", ccLabel, ccText, runconfig.MaxConcurrency))
 
-	ccValue, ccErr := strconv.Atoi(ccText)
+	ccValue, ccErr := strconv.Atoi(m.concurrencyInput.Value())
 	inlineConcurrencyFired := ccErr == nil && (ccValue < runconfig.MinConcurrency || ccValue > runconfig.MaxConcurrency)
 	if inlineConcurrencyFired {
 		b.WriteString(indentNested)

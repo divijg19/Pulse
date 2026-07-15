@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/divijg19/Pulse/internal/model"
 	"github.com/divijg19/Pulse/internal/runconfig"
 )
@@ -21,7 +21,7 @@ func TestMethodSelection(t *testing.T) {
 	m.urlInput.Focus()
 
 	// Tab advances from URL field to Payload domain (stays within request dialog)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogRequest {
 		t.Fatal("tab should not close request dialog")
@@ -89,13 +89,13 @@ func TestRunStartAndCancelTransitions(t *testing.T) {
 func TestViewSwitching(t *testing.T) {
 	m := NewModel()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "]"})
 	m = updated.(Model)
 	if m.workspace.view != LogsView {
 		t.Fatalf("view = %v (expected LogsView)", m.workspace.view)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "["})
 	m = updated.(Model)
 	if m.workspace.view != TimelineView {
 		t.Fatalf("view = %v (expected TimelineView)", m.workspace.view)
@@ -110,14 +110,14 @@ func TestResultSelection_PageUpDown(t *testing.T) {
 	}
 	m.selected = 25
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
 	m = updated.(Model)
 	expected := 25 + max(5, 30/2)
 	if m.selected != expected {
 		t.Fatalf("pgdown: selected = %d, want %d", m.selected, expected)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
 	m = updated.(Model)
 	expected = 25
 	if m.selected != expected {
@@ -133,21 +133,21 @@ func TestResultSelectionAndInspect(t *testing.T) {
 	}
 
 	// Navigate down to second result
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 	if m.selected != 1 {
 		t.Fatalf("selected = %d", m.selected)
 	}
 
 	// Enter Inspect mode
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	if m.workspace.mode != modeInspect {
 		t.Fatal("should enter inspect mode")
 	}
 
 	// ESC back to Observe
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.mode != modeObserve {
 		t.Fatal("should return to observe mode")
@@ -163,14 +163,14 @@ func TestHeaderAddRemove(t *testing.T) {
 	m.headers = append(m.headers, newHeaderRow())
 
 	// ctrl+n adds a header row
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+	updated, _ := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'n'})
 	m = updated.(Model)
 	if len(m.headers) != 2 {
 		t.Fatalf("after ctrl+n headers = %d (expected 2)", len(m.headers))
 	}
 
 	// ctrl+d removes last header row
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	updated, _ = m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'd'})
 	m = updated.(Model)
 	if len(m.headers) != 1 {
 		t.Fatalf("after ctrl+d headers = %d (expected 1)", len(m.headers))
@@ -318,7 +318,7 @@ func TestCtrlC_QuitIdle(t *testing.T) {
 	m := NewModel()
 	m.running = false
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'c'})
 	m = updated.(Model)
 
 	if cmd != nil {
@@ -333,7 +333,7 @@ func TestQ_QuitIdle(t *testing.T) {
 	m := NewModel()
 	m.running = false
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
 	m = updated.(Model)
 
 	if cmd != nil {
@@ -350,7 +350,7 @@ func TestCtrlC_WhileRunning_ShowsConfirm(t *testing.T) {
 	m.cancel = func() {}
 
 	// First ctrl+c shows confirmation dialog
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'c'})
 	m = updated.(Model)
 
 	if cmd != nil {
@@ -361,7 +361,7 @@ func TestCtrlC_WhileRunning_ShowsConfirm(t *testing.T) {
 	}
 
 	// Second ctrl+c confirms quit
-	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd = m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'c'})
 	_ = updated.(Model)
 
 	if cmd == nil {
@@ -376,7 +376,7 @@ func TestConfirmQuit_OtherKeyCancels(t *testing.T) {
 	m.cancel = func() {}
 
 	// Any key other than q/ctrl+c/enter cancels
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "x"})
 	m = updated.(Model)
 
 	if cmd != nil {
@@ -391,7 +391,7 @@ func TestCtrlR_WhileRunning(t *testing.T) {
 	m := NewModel()
 	m.running = true
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	updated, cmd := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'r'})
 	m = updated.(Model)
 
 	if cmd != nil {
@@ -404,7 +404,7 @@ func TestCtrlX_Cancel(t *testing.T) {
 	m.running = true
 	m.cancel = func() {}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	updated, _ := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'x'})
 	m = updated.(Model)
 
 	if m.running {
@@ -506,7 +506,7 @@ func TestHeaderMap(t *testing.T) {
 func TestCtrlX_NotRunning(t *testing.T) {
 	m := NewModel()
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	updated, cmd := m.Update(tea.KeyPressMsg{Mod: tea.ModCtrl, Code: 'x'})
 	m = updated.(Model)
 
 	if cmd != nil {
@@ -519,7 +519,7 @@ func TestCtrlX_NotRunning(t *testing.T) {
 
 func TestMouseMsg_NoCrash(t *testing.T) {
 	m := NewModel()
-	updated, cmd := m.Update(tea.MouseMsg{})
+	updated, cmd := m.Update(tea.MouseClickMsg{})
 	_ = updated.(Model)
 	if cmd != nil {
 		t.Fatal("MouseMsg should return nil cmd")
@@ -595,7 +595,7 @@ func TestMultipleRunLifecycle(t *testing.T) {
 func TestRequestDialog_OpenClose(t *testing.T) {
 	m := NewModel()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "e"})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogRequest {
 		t.Fatal("pressing e should open request dialog")
@@ -604,7 +604,7 @@ func TestRequestDialog_OpenClose(t *testing.T) {
 		t.Fatal("pressing e should set active domain to request")
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogNone {
 		t.Fatal("pressing esc should close request dialog")
@@ -625,7 +625,7 @@ func TestRequestDialog_ExecDomain_OpenClose(t *testing.T) {
 	}
 
 	// Esc closes the request dialog
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogNone {
 		t.Fatal("pressing esc should close request dialog")
@@ -650,7 +650,7 @@ func TestRequestDialog_PayloadDomain_OpenClose(t *testing.T) {
 	}
 
 	// Esc closes the request dialog
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogNone {
 		t.Fatal("pressing esc should close request dialog")
@@ -663,7 +663,7 @@ func TestRequestDialog_ExecDomain_ArrowUp(t *testing.T) {
 	m.activeDomain = DomainExec
 
 	initial := m.concurrency()
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 
 	if m.concurrency() != initial+1 {
@@ -677,7 +677,7 @@ func TestRequestDialog_ExecDomain_ArrowDown(t *testing.T) {
 	m.activeDomain = DomainExec
 	m.setConcurrency(50)
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 
 	if m.concurrency() != 49 {
@@ -692,7 +692,7 @@ func TestRequestDialog_RequestDomain_EscCloses(t *testing.T) {
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogNone {
 		t.Fatal("esc should close request dialog")
@@ -706,7 +706,7 @@ func TestRequestDialog_RequestDomain_EnterKeepsOpen(t *testing.T) {
 	m.requestField = reqFieldURL
 	m.urlInput.Focus()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogRequest {
 		t.Fatal("enter should NOT close request dialog (esc-only)")
@@ -727,21 +727,21 @@ func TestRequestDialog_RequestDomain_MethodSwitching(t *testing.T) {
 	}
 
 	// Right arrow increments
-	updated, _ := m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyRight})
+	updated, _ := m.handleRequestDomainKey(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(Model)
 	if m.methodIndex != 1 {
 		t.Errorf("after right, methodIndex = %d, want 1", m.methodIndex)
 	}
 
 	// Left arrow decrements
-	updated, _ = m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyLeft})
+	updated, _ = m.handleRequestDomainKey(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(Model)
 	if m.methodIndex != 0 {
 		t.Errorf("after left, methodIndex = %d, want 0", m.methodIndex)
 	}
 
 	// Left at min does not go below 0
-	updated, _ = m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyLeft})
+	updated, _ = m.handleRequestDomainKey(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(Model)
 	if m.methodIndex != 0 {
 		t.Errorf("left at min should stay 0, got %d", m.methodIndex)
@@ -749,7 +749,7 @@ func TestRequestDialog_RequestDomain_MethodSwitching(t *testing.T) {
 
 	// Right at max does not exceed
 	m.methodIndex = len(methods) - 1
-	updated, _ = m.handleRequestDomainKey(tea.KeyMsg{Type: tea.KeyRight})
+	updated, _ = m.handleRequestDomainKey(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(Model)
 	if m.methodIndex != len(methods)-1 {
 		t.Errorf("right at max should stay %d, got %d", len(methods)-1, m.methodIndex)
@@ -764,7 +764,7 @@ func TestRequestDialog_RequestDomain_TabAdvancesToPayload(t *testing.T) {
 	m.urlInput.Focus()
 
 	// Tab should advance to payload domain (URL → Payload)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.activeDomain != DomainPayload {
 		t.Fatal("tab from URL field should advance to payload domain")
@@ -781,13 +781,13 @@ func TestRequestDialog_RequestDomain_ArrowAtUrlKeepsMethod(t *testing.T) {
 	initialMethod := m.methodIndex
 
 	// Left/right on URL should not change method
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(Model)
 	if m.methodIndex != initialMethod {
 		t.Fatal("left arrow on URL should not change method")
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(Model)
 	if m.methodIndex != initialMethod {
 		t.Fatal("right arrow on URL should not change method")
@@ -800,7 +800,7 @@ func TestRequestDialog_ExecDomain_EscCloses(t *testing.T) {
 	m.activeDomain = DomainExec
 	m.concurrencyInput.Focus()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogNone {
 		t.Fatal("esc should close request dialog")
@@ -813,7 +813,7 @@ func TestRequestDialog_ExecDomain_EnterKeepsOpen(t *testing.T) {
 	m.activeDomain = DomainExec
 	m.concurrencyInput.Focus()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogRequest {
 		t.Fatal("enter should NOT close request dialog (esc-only)")
@@ -824,7 +824,7 @@ func TestInspect_EnterFromObserve(t *testing.T) {
 	m := NewModel()
 	m.results = []model.Result{{Status: 200}}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	if m.workspace.mode != modeInspect {
 		t.Fatal("enter with results should enter inspect mode")
@@ -836,7 +836,7 @@ func TestInspect_EscToObserve(t *testing.T) {
 	m.workspace.mode = modeInspect
 	m.results = []model.Result{{Status: 200}}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(Model)
 	if m.workspace.mode != modeObserve {
 		t.Fatal("esc from inspect should return to observe")
@@ -847,7 +847,7 @@ func TestInspect_QuitOpensConfirm(t *testing.T) {
 	m := NewModel()
 	m.workspace.mode = modeInspect
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "q"})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogConfirmQuit {
 		t.Fatal("q from inspect should open confirm dialog")
@@ -858,7 +858,7 @@ func TestObserve_ExportKeySetsStatus(t *testing.T) {
 	m := NewModel()
 	m.results = []model.Result{{Status: 200, Latency: 5 * time.Millisecond}}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "w"})
 	m = updated.(Model)
 	if m.statusMsg == "" {
 		t.Fatal("w should set a status message after export")
@@ -875,7 +875,7 @@ func TestObserve_ExportKeySetsStatus(t *testing.T) {
 func TestObserve_ExportKeyEmptyResults(t *testing.T) {
 	m := NewModel()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "w"})
 	m = updated.(Model)
 	if m.statusMsg != "NOTHING TO EXPORT" {
 		t.Fatalf("empty results should report nothing to export, got %q", m.statusMsg)
@@ -890,7 +890,7 @@ func TestViewSwitch_PreservesSelection(t *testing.T) {
 	}
 	m.selected = 1
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "]"})
 	m2 := updated.(Model)
 	if m2.selected != 1 {
 		t.Fatalf("selection should be preserved after view switch, got %d", m2.selected)
@@ -905,7 +905,7 @@ func TestRequestDialog_RequestDomain_TypingDoesNotClose(t *testing.T) {
 	m.urlInput.Focus()
 
 	// Typing text should go to urlInput, not close dialog
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "/"})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogRequest {
 		t.Fatal("typing text should not close request dialog")
@@ -921,7 +921,7 @@ func TestRequestDialog_ExecDomain_TypesDigits(t *testing.T) {
 	m.activeDomain = DomainExec
 	m.concurrencyInput.Focus()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "5"})
 	m = updated.(Model)
 
 	if !strings.Contains(m.concurrencyInput.Value(), "5") {
@@ -938,20 +938,20 @@ func TestRequestDialog_PayloadDomain_HeaderNavigationUpDown(t *testing.T) {
 	m.headers = append(m.headers, newHeaderRow(), newHeaderRow())
 
 	m.selectedHead = 0
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 	if m.selectedHead != 1 {
 		t.Fatalf("down from index 0 should go to 1, got %d", m.selectedHead)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 	if m.selectedHead != 0 {
 		t.Fatalf("up from index 1 should go to 0, got %d", m.selectedHead)
 	}
 
 	// ↑ at row 0 crosses domain boundary to URL
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 	if m.activeDomain != DomainRequest || m.requestField != reqFieldURL {
 		t.Fatalf("up at first header row should go to URL, got domain=%d field=%d", m.activeDomain, m.requestField)
@@ -965,7 +965,7 @@ func TestRequestDialog_PayloadDomain_HeaderNavigationUpDown(t *testing.T) {
 	m2.headerSubfocus = subfocusKey
 	m2.headers = append(m2.headers, newHeaderRow(), newHeaderRow())
 	m2.selectedHead = 1
-	updated2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated2, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m2 = updated2.(Model)
 	if m2.selectedHead != bodyFocus {
 		t.Fatalf("down at last header index should go to body, got %d", m2.selectedHead)
@@ -981,20 +981,20 @@ func TestRequestDialog_PayloadDomain_TabAdvancesToBodyAndExec(t *testing.T) {
 	m.headers = append(m.headers, newHeaderRow())
 
 	// Tab within payload: Key → Value → Body
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.headerSubfocus != subfocusValue {
 		t.Fatalf("first tab should go to Value subfocus, got subfocus=%d", m.headerSubfocus)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.selectedHead != bodyFocus {
 		t.Fatalf("second tab from last header should go to body, got selectedHead=%d", m.selectedHead)
 	}
 
 	// Tab from body → next domain (execution)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.activeDomain != DomainExec {
 		t.Fatalf("tab from body should advance to execution domain, got domain=%d", m.activeDomain)
@@ -1032,8 +1032,11 @@ func TestResultMsg_NoEventChannel(t *testing.T) {
 	if len(m2.results) != 1 {
 		t.Fatalf("result should be added, got %d results", len(m2.results))
 	}
-	if m2.summary.Total != 1 {
-		t.Fatalf("summary should reflect 1 result, got %d", m2.summary.Total)
+	// The summary is derived when the frame renders, not on each result
+	// message; the rendered metrics line must still reflect the single result.
+	m2.shell.Resize(80, 24)
+	if !contains(t, m2.View().Content, "100% ok") {
+		t.Fatal("rendered frame should reflect the result in its summary")
 	}
 }
 
@@ -1043,13 +1046,13 @@ func TestConfirmQuit_FromInspectMode(t *testing.T) {
 	m.running = true
 	m.cancel = func() {}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "q"})
 	m = updated.(Model)
 	if m.workspace.dialog != dialogConfirmQuit {
 		t.Fatal("q from inspect should open confirm dialog")
 	}
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
 	_ = updated.(Model)
 	if cmd == nil {
 		t.Fatal("confirm from inspect should return a quit command")
@@ -1062,7 +1065,7 @@ func TestRequestDialog_ExecDomain_ArrowsAtMax(t *testing.T) {
 	m.activeDomain = DomainExec
 	m.setConcurrency(100)
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 	if m.concurrency() != 101 {
 		t.Fatalf("concurrency at max after up = %d (expected 101)", m.concurrency())
@@ -1075,7 +1078,7 @@ func TestRequestDialog_ExecDomain_ArrowsAtMin(t *testing.T) {
 	m.activeDomain = DomainExec
 	m.setConcurrency(1)
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 	if m.concurrency() != 0 {
 		t.Fatalf("concurrency at min after down = %d (expected 0)", m.concurrency())
@@ -1098,20 +1101,20 @@ func TestInspectNavigation_TabCyclesZones(t *testing.T) {
 	}
 
 	// Tab should cycle forward
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.inspectZone != zoneWhy {
 		t.Fatalf("after tab: zone = %d, want %d", m.inspectZone, zoneWhy)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.inspectZone != zoneBody {
 		t.Fatalf("after second tab: zone = %d, want %d", m.inspectZone, zoneBody)
 	}
 
 	// Tab wraps to start
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 	if m.inspectZone != zoneWhatHappened {
 		t.Fatalf("after third tab: zone = %d, want %d", m.inspectZone, zoneWhatHappened)
@@ -1127,14 +1130,14 @@ func TestInspectNavigation_HomeAndEnd(t *testing.T) {
 	m.inspectZone = zoneWhy
 
 	// Home jumps to WHAT HAPPENED
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyHome})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
 	m = updated.(Model)
 	if m.inspectZone != zoneWhatHappened {
 		t.Fatalf("home: zone = %d, want %d", m.inspectZone, zoneWhatHappened)
 	}
 
 	// End jumps to BODY
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
 	m = updated.(Model)
 	if m.inspectZone != zoneBody {
 		t.Fatalf("end: zone = %d, want %d", m.inspectZone, zoneBody)
@@ -1150,21 +1153,21 @@ func TestInspectNavigation_BodyScrolling(t *testing.T) {
 	}
 
 	// Down should increment body offset
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 	if m.inspectBodyOffset != 1 {
 		t.Fatalf("down: offset = %d, want 1", m.inspectBodyOffset)
 	}
 
 	// Up should decrement body offset
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 	if m.inspectBodyOffset != 0 {
 		t.Fatalf("up: offset = %d, want 0", m.inspectBodyOffset)
 	}
 
 	// Up at offset 0 should stay
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 	if m.inspectBodyOffset != 0 {
 		t.Fatalf("up at 0: offset = %d, want 0", m.inspectBodyOffset)
@@ -1173,12 +1176,12 @@ func TestInspectNavigation_BodyScrolling(t *testing.T) {
 	// Zone WHAT HAPPENED should not scroll
 	m.inspectZone = zoneWhatHappened
 	m.inspectBodyOffset = 5
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 	if m.inspectBodyOffset != 5 {
 		t.Fatalf("up in whatHappened: offset changed to %d", m.inspectBodyOffset)
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 	if m.inspectBodyOffset != 5 {
 		t.Fatalf("down in whatHappened: offset changed to %d", m.inspectBodyOffset)

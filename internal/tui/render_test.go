@@ -98,7 +98,7 @@ func TestV091VisualRhythm_IdentityPrecedesFirstDomain(t *testing.T) {
 
 func TestV091Visual_BadgeUsesAccentBackground(t *testing.T) {
 	m := newRequestModel()
-	out := m.View()
+	out := m.View().Content
 
 	// Badge "REQUEST" must be present with accent background style
 	if !strings.Contains(out, "REQUEST") {
@@ -115,7 +115,7 @@ func TestV091Visual_BadgeUsesAccentBackground(t *testing.T) {
 
 func TestV091Visual_DomainHeaderUsesWeightNotBox(t *testing.T) {
 	m := newRequestModel()
-	out := m.View()
+	out := m.View().Content
 	// Domain header "Request" should be rendered with ━ (active weight)
 	if !strings.Contains(out, "━") {
 		t.Fatal("active domain header should use heavy weight ━")
@@ -141,7 +141,7 @@ func TestV091Visual_BadgeStatusSeparate(t *testing.T) {
 
 func TestV091Visual_ThreeLevelTypography(t *testing.T) {
 	m := newRequestModel()
-	out := m.View()
+	out := m.View().Content
 	// Level 1: Badge "REQUEST"  --  must appear
 	if !strings.Contains(out, "REQUEST") {
 		t.Fatal("Level 1 typography (badge) must be visible")
